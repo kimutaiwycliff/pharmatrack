@@ -15,19 +15,7 @@ export function LoginForm() {
   const [pinState, pinAction, pinPending] = useActionState(signInWithPin, initial)
 
   return (
-    <div className="w-full max-w-[420px]">
-      {/* Logo */}
-      <div className="flex items-center gap-2 justify-center mb-7">
-        <div className="w-9 h-9 rounded-lg bg-[var(--pt-green)] flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </div>
-        <span className="text-xl font-bold tracking-tight text-[var(--pt-text)]">
-          Pharma<span className="text-[var(--pt-green)]">Track</span>
-        </span>
-      </div>
-
+    <div className="w-full">
       <div className="bg-white rounded-xl border border-[var(--pt-border)] shadow-sm p-8">
         <h1 className="text-xl font-bold tracking-tight text-[var(--pt-text)] mb-1">Welcome back</h1>
         <p className="text-sm text-[var(--pt-text-secondary)] mb-6">Sign in to start your shift</p>
