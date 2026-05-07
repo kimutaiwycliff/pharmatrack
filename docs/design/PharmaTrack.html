@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>PharmaTrack — POS & Inventory</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+
+  <link rel="stylesheet" href="tokens.css"/>
+
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      font-family: "Inter", system-ui, sans-serif;
+      background: #f0eee9;
+      overscroll-behavior: none;
+    }
+    #root { width: 100vw; height: 100vh; }
+    /* Make sure artboard children get pt class for tokens */
+    [data-screen-label] { font-family: "Inter", system-ui, sans-serif; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="icons.jsx"></script>
+  <script type="text/babel" src="chrome.jsx"></script>
+  <script type="text/babel" src="screens/login.jsx"></script>
+  <script type="text/babel" src="screens/pos.jsx"></script>
+  <script type="text/babel" src="screens/dashboard.jsx"></script>
+  <script type="text/babel" src="screens/inventory.jsx"></script>
+  <script type="text/babel" src="screens/stock-receive.jsx"></script>
+  <script type="text/babel" src="screens/staff.jsx"></script>
+  <script type="text/babel" src="screens/shift-report.jsx"></script>
+  <script type="text/babel" src="screens/settings.jsx"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect } = React;
+
+    // Wraps a screen with the .pt class so tokens cascade
+    const Screen = ({ children }) => (
+      <div className="pt" style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: 12 }}>
+        {children}
+      </div>
+    );
+
+    // POS variant that lives inside an artboard but can show modals scoped
+    // inside it (since pt-overlay is position:absolute).
+    const POSWithModal = ({ initialModal, mpesaMode }) => {
+      const [m, setM] = useState(initialModal || null);
+      // re-mount key so we can reset
+      return (
+        <Screen>
+          <POSScreen openModal={setM}/>
+          {m === "cash" && <CashModal total={225} onClose={() => setM(null)} onConfirm={() => setM("receipt")}/>}
+          {m === "mpesa" && <MpesaModal total={225} initialMode={mpesaMode} onClose={() => setM(null)} onConfirm={() => setM("receipt")}/>}
+          {m === "split" && <SplitModal total={225} onClose={() => setM(null)} onConfirm={() => setM("receipt")}/>}
+          {m === "receipt" && <ReceiptModal onClose={() => setM(null)}/>}
+        </Screen>
+      );
+    };
+
+    const App = () => (
+      <DesignCanvas>
+        <DCSection
+          id="auth"
+          title="01 · Authentication"
+          subtitle="Two ways to start a shift — full email login or quick PIN for cashiers"
+        >
+          <DCArtboard id="login" label="01 · Login" width={520} height={760} data-screen-label="01 Login">
+            <Screen><LoginScreen/></Screen>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="pos"
+          title="02 · Point of Sale"
+          subtitle="The terminal a cashier lives in all day. Empty cart, mid-sale, plus modals for each payment path."
+        >
+          <DCArtboard id="pos" label="02 · POS Terminal" width={1280} height={800} data-screen-label="02 POS Terminal">
+            <Screen><POSScreen/></Screen>
+          </DCArtboard>
+
+          <DCArtboard id="cash-modal" label="03 · Cash Payment" width={1280} height={800} data-screen-label="03 Cash Payment">
+            <POSWithModal initialModal="cash"/>
+          </DCArtboard>
+
+          <DCArtboard id="mpesa-modal" label="04 · M-Pesa · STK Push" width={1280} height={800} data-screen-label="04 M-Pesa STK Push">
+            <POSWithModal initialModal="mpesa" mpesaMode="prompt"/>
+          </DCArtboard>
+
+          <DCArtboard id="mpesa-manual" label="04a · M-Pesa · Manual Confirm" width={1280} height={800} data-screen-label="04a M-Pesa Manual">
+            <POSWithModal initialModal="mpesa" mpesaMode="manual"/>
+          </DCArtboard>
+
+          <DCArtboard id="split-modal" label="04b · Split Payment" width={1280} height={800} data-screen-label="04b Split Payment">
+            <POSWithModal initialModal="split"/>
+          </DCArtboard>
+
+          <DCArtboard id="receipt-modal" label="05 · Sale Complete" width={1280} height={800} data-screen-label="05 Receipt">
+            <POSWithModal initialModal="receipt"/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="owner"
+          title="03 · Owner Console"
+          subtitle="The back-of-house view — daily numbers, stock health, deliveries, and people."
+        >
+          <DCArtboard id="dashboard" label="06 · Dashboard" width={1440} height={920} data-screen-label="06 Dashboard">
+            <Screen><DashboardScreen/></Screen>
+          </DCArtboard>
+
+          <DCArtboard id="inventory" label="07 · Inventory" width={1440} height={920} data-screen-label="07 Inventory">
+            <Screen><InventoryScreen/></Screen>
+          </DCArtboard>
+
+          <DCArtboard id="stock-receive" label="08 · Stock Receive" width={1440} height={920} data-screen-label="08 Stock Receive">
+            <Screen><StockReceiveScreen/></Screen>
+          </DCArtboard>
+
+          <DCArtboard id="staff" label="09 · Staff" width={1440} height={920} data-screen-label="09 Staff">
+            <Screen><StaffScreen/></Screen>
+          </DCArtboard>
+
+          <DCArtboard id="shifts" label="10 · Shift Report" width={1440} height={920} data-screen-label="10 Shift Report">
+            <Screen><ShiftReportScreen/></Screen>
+          </DCArtboard>
+
+          <DCArtboard id="settings" label="11 · Settings" width={1440} height={1100} data-screen-label="11 Settings">
+            <Screen><SettingsScreen/></Screen>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+
+# Environment variables — NEVER commit secrets
+apps/web/.env.local
+apps/web/.env.*.local
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+.turbo/
+
+# TypeScript
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# Supabase local dev (keep migrations and seeds)
+supabase/.branches/
+supabase/.temp/

@@ -1,0 +1,10 @@
+{
+  "name": "pharmatrack",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "seed": "tsx supabase/seed/run-seed.ts"
+  }
+}
