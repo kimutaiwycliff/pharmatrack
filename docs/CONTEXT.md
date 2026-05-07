@@ -20,8 +20,8 @@
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Scaffolding & Database Foundation | Complete |
-| 2 | Authentication & Navigation Shell | Next |
-| 3 | Barcode Engine & Product Lookup | Not Started |
+| 2 | Authentication & Navigation Shell | Complete |
+| 3 | Barcode Engine & Product Lookup | Next |
 | 4 | Point of Sale Terminal | Not Started |
 | 5 | Inventory Management | Not Started |
 | 6 | Staff & Shift Management | Not Started |
@@ -167,6 +167,52 @@ Key tokens:
 6. settings.jsx — Settings + live receipt preview
 7. stock-receive.jsx — Stock receiving workflow
 8. shift-report.jsx — Shift report table with variance
+
+---
+
+## Phase 2 — Completed Tasks
+
+### Task 2.1 — Auth Proxy & Login Page (COMPLETE)
+
+- `apps/web/proxy.ts` — Next.js 16 auth proxy (replaces middleware.ts; Next.js 16 breaking change)
+  - Exports `proxy` function + `config` matcher
+  - Redirects unauthenticated users to `/login`; redirects authenticated users away from `/login`
+- `apps/web/app/(auth)/layout.tsx` — centered auth layout
+- `apps/web/app/(auth)/login/page.tsx` — login page
+- `apps/web/app/(auth)/login/actions.ts` — server actions: `signInWithEmail`, `signInWithPin`, `signOut`
+  - PIN login: phone → profile lookup → bcrypt verify → magic link OTP → session exchange
+- `apps/web/components/auth/LoginForm.tsx` — email/PIN tab switcher
+- `apps/web/components/auth/PinLoginForm.tsx` — PIN numpad + phone input
+
+### Task 2.2 — App Shell (COMPLETE)
+
+- `apps/web/components/layout/Sidebar.tsx` — collapsible sidebar, role-filtered nav, user footer with sign-out
+- `apps/web/components/layout/AppTopBar.tsx` — top bar with breadcrumb, notifications, avatar
+- `apps/web/components/layout/BranchSelector.tsx` — dropdown for owners/managers with >1 branch
+- `apps/web/app/(dashboard)/layout.tsx` — dashboard shell: fetches profile + branches, wraps in Providers
+- `apps/web/app/(dashboard)/dashboard/page.tsx` — KPI placeholder grid (Phase 7 will populate)
+
+### Task 2.3 — POS Shell & Shifts (COMPLETE)
+
+- `apps/web/app/(pos)/layout.tsx` — POS layout wrapping PosShell with profile + branches
+- `apps/web/app/(pos)/pos/page.tsx` — POS placeholder (Phase 4 will build full terminal)
+- `apps/web/components/pos/PosShell.tsx` — POS top bar, shift gating (clock-in required), clock-out button
+- `apps/web/components/pos/ClockInDialog.tsx` — full-screen mandatory gate with opening float
+- `apps/web/components/pos/ClockOutDialog.tsx` — closing cash + variance display
+- `apps/web/app/api/shifts/route.ts` — POST (clock-in) + PATCH (clock-out) with auth + validation
+- `apps/web/lib/hooks/useActiveShift.ts` — TanStack Query hook for active shift polling
+
+### Task 2.4 — Session & UI Stores (COMPLETE)
+
+- `apps/web/lib/store/sessionStore.ts` — Zustand: profile + branches
+- `apps/web/lib/store/uiStore.ts` — Zustand + persist: sidebar collapsed, activeBranchId
+- `apps/web/components/providers.tsx` — QueryClientProvider + SessionInit (syncs server data to Zustand)
+- `apps/web/app/layout.tsx` — Sonner `<Toaster />` added at root
+
+### next.config.ts changes (Phase 2)
+
+- Removed `reactCompiler: true` — caused OOM crashes with Turbopack (too much Babel overhead)
+- Added `serverExternalPackages: ['@react-pdf/renderer', '@react-pdf/yoga']` — prevents WASM bundling crash
 
 ---
 

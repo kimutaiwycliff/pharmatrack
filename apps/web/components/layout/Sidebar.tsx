@@ -1,0 +1,141 @@
+"use client"
+
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import {
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  PackagePlus,
+  Users,
+  Clock,
+  BarChart3,
+  Settings,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
+import { useUIStore } from "@/lib/store/uiStore"
+import { useSessionStore } from "@/lib/store/sessionStore"
+import { signOut } from "@/app/(auth)/login/actions"
+import type { UserRole } from "@pharmatrack/types"
+
+interface NavItem {
+  label: string
+  href: string
+  icon: React.ComponentType<{ size?: number; className?: string }>
+  roles: UserRole[]
+}
+
+const NAV: NavItem[] = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["owner", "manager", "pharmacist"] },
+  { label: "POS Terminal", href: "/pos", icon: ShoppingCart, roles: ["owner", "manager", "pharmacist", "cashier"] },
+  { label: "Inventory", href: "/inventory", icon: Package, roles: ["owner", "manager", "pharmacist"] },
+  { label: "Stock Receive", href: "/inventory/receive", icon: PackagePlus, roles: ["owner", "manager", "pharmacist"] },
+  { label: "Staff", href: "/staff", icon: Users, roles: ["owner", "manager"] },
+  { label: "Shifts", href: "/shifts", icon: Clock, roles: ["owner", "manager"] },
+  { label: "Reports", href: "/reports", icon: BarChart3, roles: ["owner"] },
+  { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
+]
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+}
+
+export function Sidebar() {
+  const pathname = usePathname()
+  const collapsed = useUIStore((s) => s.sidebarCollapsed)
+  const toggle = useUIStore((s) => s.toggleSidebar)
+  const profile = useSessionStore((s) => s.profile)
+  const role = (profile?.role ?? "cashier") as UserRole
+
+  const visibleNav = NAV.filter((item) => item.roles.includes(role))
+
+  return (
+    <aside
+      className={[
+        "flex flex-col shrink-0 border-r border-[var(--pt-border)] bg-white transition-all duration-200",
+        collapsed ? "w-16" : "w-60",
+      ].join(" ")}
+    >
+      {/* Logo */}
+      <div className={["flex items-center h-14 px-4 shrink-0", collapsed ? "justify-center" : "gap-2"].join(" ")}>
+        <div className="w-8 h-8 rounded-lg bg-[var(--pt-green)] flex items-center justify-center shrink-0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </div>
+        {!collapsed && (
+          <span className="text-[15px] font-bold tracking-tight text-[var(--pt-text)]">
+            Pharma<span className="text-[var(--pt-green)]">Track</span>
+          </span>
+        )}
+      </div>
+
+      {/* Nav */}
+      <nav className="flex flex-col gap-0.5 px-2 flex-1 py-2">
+        {visibleNav.map((item) => {
+          const active = pathname === item.href || pathname.startsWith(item.href + "/")
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={collapsed ? item.label : undefined}
+              className={[
+                "flex items-center gap-3 rounded-lg px-3 h-9 text-[13.5px] font-medium transition-colors",
+                active
+                  ? "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
+                  : "text-[var(--pt-text-secondary)] hover:bg-gray-50 hover:text-[var(--pt-text)]",
+                collapsed ? "justify-center px-0" : "",
+              ].join(" ")}
+            >
+              <item.icon size={18} className="shrink-0" />
+              {!collapsed && item.label}
+            </Link>
+          )
+        })}
+      </nav>
+
+      {/* Collapse toggle */}
+      <button
+        onClick={toggle}
+        className="mx-auto mb-2 w-7 h-7 rounded-full border border-[var(--pt-border)] bg-white flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors"
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+      </button>
+
+      {/* User footer */}
+      <div className="border-t border-[var(--pt-border)] px-3 py-3 flex items-center gap-2.5">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+          style={{ background: "var(--pt-green-50)", color: "var(--pt-green-600)" }}
+        >
+          {initials(profile?.full_name ?? "?")}
+        </div>
+        {!collapsed && (
+          <>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold truncate">{profile?.full_name}</p>
+              <p className="text-[11px] text-[var(--pt-text-secondary)] capitalize">{profile?.role}</p>
+            </div>
+            <form action={signOut}>
+              <button
+                type="submit"
+                title="Sign out"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-gray-100 transition-colors"
+              >
+                <LogOut size={15} />
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    </aside>
+  )
+}
