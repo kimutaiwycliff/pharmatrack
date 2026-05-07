@@ -21,8 +21,8 @@
 |-------|-------------|--------|
 | 1 | Scaffolding & Database Foundation | Complete |
 | 2 | Authentication & Navigation Shell | Complete |
-| 3 | Barcode Engine & Product Lookup | Next |
-| 4 | Point of Sale Terminal | Not Started |
+| 3 | Barcode Engine & Product Lookup | Complete |
+| 4 | Point of Sale Terminal | Next |
 | 5 | Inventory Management | Not Started |
 | 6 | Staff & Shift Management | Not Started |
 | 7 | Owner Dashboard & Reports | Not Started |
@@ -213,6 +213,49 @@ Key tokens:
 
 - Removed `reactCompiler: true` — caused OOM crashes with Turbopack (too much Babel overhead)
 - Added `serverExternalPackages: ['@react-pdf/renderer', '@react-pdf/yoga']` — prevents WASM bundling crash
+
+---
+
+## Phase 3 — Completed Tasks
+
+### Task 3.1 — Global Barcode Scanner (COMPLETE)
+
+- `apps/web/lib/barcode/barcodeParser.ts` — pure functions (no DOM):
+  - `parseBarcode(raw)` — main entry point
+  - `isGS1(raw)` — detects FNC1 (`\x1D`) or `]d2`/`]C1` symbology identifiers
+  - `parseGS1(raw)` — uses gs1js GS1Reader to extract AIs: (01) GTIN-14, (17) expiry YYMMDD, (10) batch, (21) serial
+  - `normalizeGTIN(gtin)` — trims leading zero on GTIN-14 → GTIN-13
+  - `detectBarcodeType(raw)` — EAN13 | EAN8 | GS1_128 | CODE39 | CODE128 | UNKNOWN
+  - **Import note:** gs1js uses named export `{ GS1Reader }`, loaded via `require()` (no TS types)
+- `apps/web/lib/barcode/useBarcodeScanner.ts` — React hook
+  - Listens on document keydown; buffers chars; if gap <50ms → scanner input
+  - Processes on Enter or after 100ms timeout with ≥3 buffered chars
+  - 300ms debounce between scans
+  - Skips input/textarea elements for non-Enter keys
+- `apps/web/lib/barcode/__tests__/barcodeParser.test.ts` — 16 Vitest tests, all passing
+- `apps/web/vitest.config.ts` — vitest config (node environment, alias @/)
+
+### Task 3.2 — Product Lookup API (COMPLETE)
+
+- `apps/web/app/api/products/lookup/route.ts` — GET `/api/products/lookup?barcode=...&branch_id=...`
+  - Checks Upstash Redis cache first (TTL 1 hour); graceful fallback if Redis not configured
+  - Queries Supabase on `gtin` then `barcode_raw`, computes stock_on_hand from batches
+  - Falls back to Open Food Facts API for unknown barcodes (name + manufacturer suggestion)
+  - Response: `{ found, product?: ProductWithStock, suggestion?: { name, manufacturer, gtin } }`
+- `apps/web/lib/hooks/useProductLookup.ts` — TanStack Query hook, 5-min stale time
+
+### Task 3.3 — New Product Registration (COMPLETE)
+
+- `apps/web/components/inventory/NewProductDialog.tsx` — 4-step Dialog:
+  - Step 1: Identity (name, brand, manufacturer, GTIN — pre-filled from scan)
+  - Step 2: Pharmaceutical (strength, dosage form, category, Rx toggle, controlled toggle + PPB warning)
+  - Step 3: Units & Pricing (base unit, pack label, units/pack, pack cost calculator → per-unit, selling price, live margin %)
+  - Step 4: Confirm & First Batch (summary card, batch number, expiry date, qty, supplier)
+  - Zod validation at each step; controlled substance PPB warning
+- `apps/web/app/api/products/route.ts` — POST create product (owner/manager/pharmacist only)
+- `apps/web/app/api/batches/route.ts` — POST create batch, invalidates Redis cache
+
+**Note:** shadcn Select in this project uses `@base-ui/react` — `onValueChange` signature is `(value: string | null, eventDetails) => void`, not `(value: string) => void`.
 
 ---
 
