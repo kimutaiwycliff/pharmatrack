@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PinLoginForm } from "./PinLoginForm"
+import { Eye, EyeOff } from "lucide-react"
 
 const initial: ActionState = {}
 
 export function LoginForm() {
   const [tab, setTab] = useState<"email" | "pin">("email")
+  const [showPassword, setShowPassword] = useState(false)
   const [emailState, emailAction, emailPending] = useActionState(signInWithEmail, initial)
   const [pinState, pinAction, pinPending] = useActionState(signInWithPin, initial)
 
@@ -54,18 +56,27 @@ export function LoginForm() {
               />
             </div>
             <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium mb-1.5 block">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className="h-11 pr-11"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text-secondary)] transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
               </div>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="••••••••"
-                className="h-11"
-                required
-              />
             </div>
 
             {emailState.error && (
