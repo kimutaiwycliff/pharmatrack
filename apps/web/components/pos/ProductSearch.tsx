@@ -1,0 +1,232 @@
+"use client"
+
+import { useState, useRef, useCallback } from "react"
+import { Search, ScanBarcode, Plus, AlertCircle } from "lucide-react"
+import { useCartStore } from "@/lib/store/cartStore"
+import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
+import { useProductLookup } from "@/lib/hooks/useProductLookup"
+import { useQuery } from "@tanstack/react-query"
+import { formatKES } from "@/lib/store/cartStore"
+import { cacheProduct } from "@/lib/offline/db"
+import type { ProductWithStock } from "@pharmatrack/types"
+
+const PILL_COLORS = [
+  "#16a34a", "#d97706", "#2563eb", "#7c3aed",
+  "#db2777", "#0891b2", "#ea580c", "#65a30d",
+]
+
+interface Props {
+  branchId: string
+  onBarcodeNotFound?: (barcode: string) => void
+  scannerEnabled?: boolean
+}
+
+function useProductSearch(q: string, branchId: string) {
+  return useQuery<{ products: ProductWithStock[] }>({
+    queryKey: ["productSearch", q, branchId],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/products/search?q=${encodeURIComponent(q)}&branch_id=${branchId}`,
+      )
+      if (!res.ok) throw new Error("Search failed")
+      return res.json() as Promise<{ products: ProductWithStock[] }>
+    },
+    enabled: branchId.length > 0,
+    staleTime: 30_000,
+    gcTime: 60_000,
+  })
+}
+
+export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = true }: Props) {
+  const [searchText, setSearchText] = useState("")
+  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
+  const [recentScans, setRecentScans] = useState<string[]>([])
+  const addItem = useCartStore((s) => s.addItem)
+
+  const { data: lookupData, isFetching: lookupFetching } = useProductLookup(
+    scannedBarcode,
+    branchId,
+  )
+
+  const { data: searchData, isFetching: searchFetching } = useProductSearch(searchText, branchId)
+  const { data: featuredData } = useProductSearch("", branchId)
+
+  const handleProductAdd = useCallback(
+    (product: ProductWithStock) => {
+      addItem(product)
+      if (product.name) {
+        setRecentScans((prev) => {
+          const filtered = prev.filter((n) => n !== product.name)
+          return [product.name!, ...filtered].slice(0, 6)
+        })
+      }
+      cacheProduct(product).catch(() => {})
+    },
+    [addItem],
+  )
+
+  const prevLookup = useRef<string | null>(null)
+  if (lookupData && scannedBarcode && prevLookup.current !== scannedBarcode) {
+    prevLookup.current = scannedBarcode
+    if (lookupData.found && lookupData.product) {
+      handleProductAdd(lookupData.product)
+      setScannedBarcode(null)
+    } else {
+      onBarcodeNotFound?.(scannedBarcode)
+      setScannedBarcode(null)
+    }
+  }
+
+  useBarcodeScanner({
+    enabled: scannerEnabled,
+    onScan: (event) => {
+      if (!event.gtin) return
+      setScannedBarcode(event.gtin)
+      setSearchText("")
+    },
+  })
+
+  const displayProducts = searchText.length >= 2 ? (searchData?.products ?? []) : []
+  const quickAdd = (featuredData?.products ?? []).slice(0, 6)
+  const isLoading = lookupFetching || searchFetching
+
+  return (
+    <div className="flex flex-col h-full p-6 gap-5 overflow-hidden">
+      {/* Search input */}
+      <div className="relative shrink-0">
+        <Search
+          size={17}
+          className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--pt-text-tertiary)]"
+        />
+        <input
+          type="text"
+          value={searchText}
+          onChange={(e) => {
+            setSearchText(e.target.value)
+            setScannedBarcode(null)
+          }}
+          placeholder="Scan barcode or search product…"
+          className="w-full h-14 pl-12 pr-14 text-[15px] border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent bg-white"
+        />
+        <ScanBarcode
+          size={18}
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--pt-text-secondary)]"
+        />
+      </div>
+
+      {/* Scanner status */}
+      <div className="shrink-0">
+        <div
+          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${
+            isLoading
+              ? "bg-amber-50 text-amber-600"
+              : "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+          {isLoading ? "Looking up…" : "Scanner ready · USB/Keyboard"}
+        </div>
+      </div>
+
+      {/* Inline search results */}
+      {searchText.length >= 2 && (
+        <div className="shrink-0 max-h-52 overflow-y-auto rounded-xl border border-[var(--pt-border)] bg-white">
+          {displayProducts.length === 0 && !searchFetching && (
+            <div className="flex items-center gap-2 px-4 py-3 text-sm text-[var(--pt-text-secondary)]">
+              <AlertCircle size={15} />
+              No products found — scan barcode to register new
+            </div>
+          )}
+          {displayProducts.map((p) => (
+            <button
+              key={p.product_id}
+              onClick={() => {
+                handleProductAdd(p)
+                setSearchText("")
+              }}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left border-b border-[var(--pt-border)] last:border-b-0 transition-colors"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{p.name}</p>
+                <p className="text-xs text-[var(--pt-text-secondary)]">
+                  {[p.strength, p.dosage_form].filter(Boolean).join(" · ")} · {p.stock_on_hand ?? 0} in stock
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-3">
+                <span className="text-sm font-bold tabular-nums">{formatKES(p.selling_price ?? 0)}</span>
+                <div className="w-6 h-6 rounded-md bg-[var(--pt-green-50)] flex items-center justify-center text-[var(--pt-green)]">
+                  <Plus size={13} />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Recently scanned */}
+      {recentScans.length > 0 && searchText.length < 2 && (
+        <div className="shrink-0">
+          <p className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider mb-2">
+            Recently scanned
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {recentScans.map((name) => {
+              const product = featuredData?.products.find((x) => x.name === name)
+              return (
+                <button
+                  key={name}
+                  onClick={() => product && handleProductAdd(product)}
+                  disabled={!product}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-[var(--pt-border)] bg-white text-xs font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  <Plus size={11} className="text-[var(--pt-green)]" />
+                  {name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Quick add grid */}
+      {searchText.length < 2 && (
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <p className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider mb-2 shrink-0">
+            Quick add
+          </p>
+          <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-3 gap-2.5 content-start">
+            {quickAdd.map((p, i) => (
+              <button
+                key={p.product_id}
+                onClick={() => handleProductAdd(p)}
+                className="bg-white border border-[var(--pt-border)] rounded-xl p-3 text-left flex flex-col justify-between hover:border-[var(--pt-green)] hover:shadow-sm transition-all min-h-[100px]"
+              >
+                <div
+                  className="w-7 h-7 rounded-md flex items-center justify-center mb-2 text-sm"
+                  style={{
+                    background: (PILL_COLORS[i % PILL_COLORS.length] ?? "#16a34a") + "20",
+                    color: PILL_COLORS[i % PILL_COLORS.length] ?? "#16a34a",
+                  }}
+                >
+                  💊
+                </div>
+                <p className="text-xs font-semibold leading-tight line-clamp-2">{p.name}</p>
+                <div className="flex justify-between items-center mt-1.5">
+                  <span className="text-[10px] text-[var(--pt-text-secondary)]">
+                    {p.stock_on_hand ?? 0} stk
+                  </span>
+                  <span className="text-xs font-bold tabular-nums">{formatKES(p.selling_price ?? 0)}</span>
+                </div>
+              </button>
+            ))}
+            {quickAdd.length === 0 && (
+              <div className="col-span-3 text-center text-sm text-[var(--pt-text-tertiary)] py-8">
+                No products in inventory yet
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

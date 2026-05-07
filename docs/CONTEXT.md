@@ -22,8 +22,8 @@
 | 1 | Scaffolding & Database Foundation | Complete |
 | 2 | Authentication & Navigation Shell | Complete |
 | 3 | Barcode Engine & Product Lookup | Complete |
-| 4 | Point of Sale Terminal | Next |
-| 5 | Inventory Management | Not Started |
+| 4 | Point of Sale Terminal | Complete |
+| 5 | Inventory Management | Next |
 | 6 | Staff & Shift Management | Not Started |
 | 7 | Owner Dashboard & Reports | Not Started |
 | 8 | Settings, Polish & Production | Not Started |
@@ -256,6 +256,71 @@ Key tokens:
 - `apps/web/app/api/batches/route.ts` — POST create batch, invalidates Redis cache
 
 **Note:** shadcn Select in this project uses `@base-ui/react` — `onValueChange` signature is `(value: string | null, eventDetails) => void`, not `(value: string) => void`.
+
+---
+
+## Phase 4 — Completed Tasks
+
+### Task 4.1 — Cart Store (COMPLETE)
+
+- `apps/web/lib/store/cartStore.ts` — Zustand store persisted to sessionStorage
+  - `addItem`, `removeItem`, `updateQty`, `setDiscount`, `clearCart`
+  - `cartSubtotal()`, `cartTotal()`, `formatKES()` — pure helpers exported alongside store
+  - Cart resets between browser sessions (sessionStorage); survives accidental page refresh
+
+### Task 4.2 — Offline DB (COMPLETE)
+
+- `apps/web/lib/offline/db.ts` — Dexie.js IndexedDB store
+  - `products` table: caches `ProductWithStock` for offline barcode lookup
+  - `offlineSales` table: queues sales created while offline (pending sync implementation in Phase 8)
+  - Helpers: `cacheProduct`, `getCachedProduct`, `queueOfflineSale`, `getUnsyncedSales`, `markSaleSynced`
+
+### Task 4.3 — Sales API (COMPLETE)
+
+- `apps/web/app/api/sales/route.ts` — POST `/api/sales`
+  - Auth check → Zod validation → generate receipt number (PostgreSQL RPC `generate_receipt_number`)
+  - FEFO batch deduction: fetches batches ordered by `expiry_date ASC`, deducts from earliest-expiring first
+  - Optimistic decrement: `UPDATE … WHERE id=X AND quantity_remaining=Y` (concurrent-safe)
+  - Splits into multiple `sale_items` rows when a single batch has insufficient stock
+  - Controlled substance log entry for is_controlled products
+  - Returns `{ sale, items }`
+
+### Task 4.4 — M-Pesa Integration (COMPLETE)
+
+- `apps/web/app/api/mpesa/route.ts` — POST `/api/mpesa` — Daraja STK push
+  - Graceful dev fallback: if `MPESA_SHORTCODE` is placeholder, returns `{ simulated: true }` so UI falls back to manual confirm
+  - Supports `MPESA_SANDBOX=false` to switch to production Daraja endpoint
+- `apps/web/app/api/mpesa/callback/route.ts` — POST (Safaricom webhook callback)
+  - `MPESA_CALLBACK_URL` in `.env.local` must point to this endpoint (requires public HTTPS URL in production)
+
+### Task 4.5 — Support APIs (COMPLETE)
+
+- `apps/web/app/api/products/search/route.ts` — GET `/api/products/search?q=&branch_id=`
+  - Text search on `name`, `brand_name`, `strength` (ilike); returns up to 20 products from `product_stock` view
+- `apps/web/app/api/categories/route.ts` — GET `/api/categories` — org categories list
+- `apps/web/app/api/suppliers/route.ts` — GET `/api/suppliers` — org suppliers list
+
+### Task 4.6 — POS Terminal UI (COMPLETE)
+
+- `apps/web/components/pos/CartPanel.tsx` — left-side cart:
+  - Scrollable item list with qty stepper (`+`/`-` buttons) and remove button
+  - Inline discount field
+  - Three payment buttons: CASH / M-PESA / SPLIT
+  - Controlled substance badge on item rows
+- `apps/web/components/pos/ProductSearch.tsx` — right-side search:
+  - Integrates `useBarcodeScanner` hook; fires `onBarcodeNotFound(barcode)` when GTIN unknown
+  - Live text search (≥2 chars) against `/api/products/search`
+  - Quick-add grid: 6 featured products from branch inventory
+  - Recently-scanned pill buttons
+  - Caches scanned products to IndexedDB via `cacheProduct()`
+- `apps/web/components/pos/CashModal.tsx` — cash payment dialog with quick-amount buttons + change display
+- `apps/web/components/pos/MpesaModal.tsx` — M-Pesa dialog with STK push / manual confirm toggle; timer countdown; auto-fallback to manual on STK failure
+- `apps/web/components/pos/SplitModal.tsx` — split payment with allocation bar, cash %, M-Pesa code or STK push
+- `apps/web/components/pos/ReceiptModal.tsx` — thermal receipt preview (80mm format); Print + New Sale actions
+- `apps/web/app/(pos)/pos/page.tsx` — full POS page (replaces placeholder):
+  - 55/45 split layout (CartPanel left, ProductSearch right)
+  - Orchestrates payment flow: modal → `POST /api/sales` → ReceiptModal
+  - `NewProductDialog` triggered on unknown barcode scan
 
 ---
 
