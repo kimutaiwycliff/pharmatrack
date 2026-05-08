@@ -31,6 +31,33 @@ const createBatchSchema = z.object({
   notes: z.string().optional(),
 })
 
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const productId = searchParams.get("product_id")
+  const branchId = searchParams.get("branch_id")
+
+  if (!productId || !branchId) {
+    return NextResponse.json({ error: "product_id and branch_id required" }, { status: 400 })
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { data, error } = await supabase
+    .from("product_batches")
+    .select("*")
+    .eq("product_id", productId)
+    .eq("branch_id", branchId)
+    .order("expiry_date", { ascending: true })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ batches: data ?? [] })
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const {
