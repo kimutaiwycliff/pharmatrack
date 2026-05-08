@@ -112,3 +112,37 @@
     @apply font-sans;
   }
 }
+
+@media print {
+  /* Hide everything except the receipt */
+  body > * { display: none !important; }
+  #receipt-printable { display: block !important; }
+
+  #receipt-printable {
+    position: fixed;
+    inset: 0;
+    width: 80mm;
+    margin: 0 auto;
+    padding: 8mm 6mm;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    color: #000;
+    background: #fff;
+  }
+
+  #receipt-printable .receipt-divider {
+    border-top: 1px dashed #666;
+    margin: 6px 0;
+  }
+
+  #receipt-printable .receipt-total {
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+}

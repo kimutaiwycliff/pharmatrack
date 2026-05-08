@@ -1,6 +1,7 @@
 "use client"
 
-import { Check, Printer, ArrowRight } from "lucide-react"
+import { useState } from "react"
+import { Check, Printer, ArrowRight, FileDown, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { formatKES } from "@/lib/store/cartStore"
@@ -31,7 +32,41 @@ function formatDate(iso: string) {
   })
 }
 
+async function downloadPDF(data: ReceiptData) {
+  const [{ pdf }, { ReceiptPDFDocument }] = await Promise.all([
+    import("@react-pdf/renderer"),
+    import("./ReceiptPDF"),
+  ])
+  const blob = await pdf(
+    <ReceiptPDFDocument
+      sale={data.sale}
+      items={data.items}
+      orgName={data.orgName}
+      branchName={data.branchName}
+      branchAddress={data.branchAddress}
+    />,
+  ).toBlob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `receipt-${data.sale.receipt_number}.pdf`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function ReceiptModal({ open, data, onNewSale }: Props) {
+  const [pdfLoading, setPdfLoading] = useState(false)
+
+  async function handlePDF() {
+    if (!data) return
+    setPdfLoading(true)
+    try {
+      await downloadPDF(data)
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onNewSale()}>
       <DialogContent
@@ -53,7 +88,7 @@ export function ReceiptModal({ open, data, onNewSale }: Props) {
 
             {/* Thermal receipt */}
             <div className="px-7 pb-2">
-              <div className="border border-dashed border-[var(--pt-border-strong)] rounded-xl p-5 font-mono text-[11px] space-y-2">
+              <div id="receipt-printable" className="border border-dashed border-[var(--pt-border-strong)] rounded-xl p-5 font-mono text-[11px] space-y-2">
                 <div className="text-center space-y-0.5">
                   <p className="font-bold text-[13px] tracking-widest uppercase">
                     {data.orgName}
@@ -140,7 +175,8 @@ export function ReceiptModal({ open, data, onNewSale }: Props) {
                 <Printer size={14} />
                 Print
               </Button>
-              <Button variant="outline" className="text-xs h-10" disabled>
+              <Button variant="outline" onClick={handlePDF} disabled={pdfLoading} className="gap-1.5 text-xs h-10">
+                {pdfLoading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                 PDF
               </Button>
               <Button
