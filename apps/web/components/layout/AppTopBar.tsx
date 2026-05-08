@@ -2,6 +2,7 @@
 
 import { Bell, Menu, ChevronRight } from "lucide-react"
 import { BranchSelector } from "./BranchSelector"
+import { ShiftClockWidget } from "@/components/shifts/ShiftClockWidget"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { Button } from "@/components/ui/button"
@@ -44,6 +45,8 @@ export function AppTopBar() {
       </div>
 
       <div className="flex-1" />
+
+      <ShiftClockWidget />
 
       {/* Notifications */}
       <button className="relative w-9 h-9 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors">
