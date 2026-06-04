@@ -36,7 +36,7 @@ const NAV: NavItem[] = [
   { label: "Stock Receive", href: "/inventory/receive", icon: PackagePlus, roles: ["owner", "manager", "pharmacist"] },
   { label: "Staff", href: "/staff", icon: Users, roles: ["owner", "manager"] },
   { label: "Shifts", href: "/shifts", icon: Clock, roles: ["owner", "manager"] },
-  { label: "Reports", href: "/reports", icon: BarChart3, roles: ["owner"] },
+  { label: "Reports", href: "/reports", icon: BarChart3, roles: ["owner", "manager"] },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
 ]
 
