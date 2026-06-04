@@ -34,7 +34,44 @@ const createProductSchema = z.object({
   reorder_quantity: z.number().int().positive().default(100),
   is_controlled: z.boolean().default(false),
   requires_prescription: z.boolean().default(false),
+  image_url: z.string().url().nullable().optional(),
+  max_discount_percent: z.number().min(0).max(100).nullable().optional(),
 })
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const q = searchParams.get("q")?.trim() ?? ""
+  const categoryId = searchParams.get("category_id")
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
+  const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { data: profile } = await supabase
+    .from("profiles").select("organization_id").eq("id", user.id).single()
+  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+
+  let query = supabase
+    .from("products")
+    .select("*", { count: "exact" })
+    .eq("organization_id", profile.organization_id)
+    .order("name", { ascending: true })
+
+  if (q.length >= 2) {
+    query = query.or(`name.ilike.%${q}%,brand_name.ilike.%${q}%,gtin.ilike.%${q}%,strength.ilike.%${q}%`)
+  }
+  if (categoryId) query = query.eq("category_id", categoryId)
+
+  const offset = (page - 1) * limit
+  query = query.range(offset, offset + limit - 1)
+
+  const { data, count, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ products: data ?? [], total: count ?? 0, page, limit })
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()

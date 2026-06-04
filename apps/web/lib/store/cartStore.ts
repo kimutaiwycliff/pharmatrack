@@ -45,6 +45,7 @@ export const useCartStore = create<CartStore>()(
             line_total: price,
             base_unit: product.base_unit ?? "unit",
             is_controlled: product.is_controlled ?? false,
+            max_discount_percent: product.max_discount_percent ?? null,
           }
           return { items: [...state.items, item] }
         }),

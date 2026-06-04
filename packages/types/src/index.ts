@@ -77,9 +77,22 @@ export interface Product {
   requires_prescription: boolean
   is_controlled: boolean
   is_active: boolean
+  image_url: string | null
+  max_discount_percent: number | null
   created_by: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ProductPackSize {
+  id: string
+  product_id: string
+  pack_label: string
+  units_per_pack: number
+  selling_price: number
+  barcode: string | null
+  is_active: boolean
+  created_at: string
 }
 
 export interface ProductBatch {
@@ -120,6 +133,8 @@ export interface ProductStock {
   requires_prescription: boolean | null
   is_controlled: boolean | null
   is_active: boolean | null
+  image_url: string | null
+  max_discount_percent: number | null
   stock_on_hand: number | null
   earliest_expiry: string | null
   batch_count: number | null
@@ -209,6 +224,7 @@ export interface CartItem {
   line_total: number
   base_unit: string
   is_controlled: boolean
+  max_discount_percent: number | null
 }
 
 // Shift summary for the shift report screen

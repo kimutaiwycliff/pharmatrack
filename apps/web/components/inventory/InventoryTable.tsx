@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { MoreHorizontal, Layers, Pill } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { useState, useRef, useEffect } from "react"
+import { MoreHorizontal, Layers, Pill, Pencil } from "lucide-react"
 import { formatKES } from "@/lib/store/cartStore"
 import { BatchesSheet } from "./BatchesSheet"
+import { EditProductSheet } from "./EditProductSheet"
 import type { ProductStock } from "@pharmatrack/types"
 
 interface InventoryRow extends ProductStock {
@@ -49,8 +49,56 @@ function ExpiryCell({ expiry, days }: { expiry: string | null; days: number | nu
   )
 }
 
+function ActionMenu({ product, onBatches, onEdit }: {
+  product: InventoryRow
+  onBatches: () => void
+  onEdit: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handle)
+    return () => document.removeEventListener("mousedown", handle)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-gray-100 hover:text-[var(--pt-text-secondary)] transition-colors"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-8 z-20 bg-white border border-[var(--pt-border)] rounded-lg shadow-lg py-1 min-w-[152px]">
+          <button
+            onClick={() => { onBatches(); setOpen(false) }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--pt-text)] hover:bg-gray-50 transition-colors"
+          >
+            <Layers size={14} />
+            View Batches
+          </button>
+          <button
+            onClick={() => { onEdit(); setOpen(false) }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--pt-text)] hover:bg-gray-50 transition-colors"
+          >
+            <Pencil size={14} />
+            Edit Product
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function InventoryTable({ products, branchId, isLoading }: Props) {
   const [batchesProduct, setBatchesProduct] = useState<ProductStock | null>(null)
+  const [editProductId, setEditProductId] = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -197,12 +245,11 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
 
                 {/* Actions */}
                 <td className="px-4 py-3.5">
-                  <button
-                    onClick={() => setBatchesProduct(p)}
-                    className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-gray-100 hover:text-[var(--pt-text-secondary)] transition-colors"
-                  >
-                    <MoreHorizontal size={16} />
-                  </button>
+                  <ActionMenu
+                    product={p}
+                    onBatches={() => setBatchesProduct(p)}
+                    onEdit={() => setEditProductId(p.product_id ?? null)}
+                  />
                 </td>
               </tr>
             ))}
@@ -215,6 +262,11 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
         branchId={branchId}
         open={batchesProduct !== null}
         onClose={() => setBatchesProduct(null)}
+      />
+
+      <EditProductSheet
+        productId={editProductId}
+        onClose={() => setEditProductId(null)}
       />
     </>
   )

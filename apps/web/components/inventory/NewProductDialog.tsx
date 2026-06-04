@@ -71,6 +71,7 @@ const step3Schema = z.object({
   cost_price: z.number().nonnegative().optional(),
   selling_price: z.number().positive("Selling price is required"),
   reorder_level: z.number().int().nonnegative(),
+  max_discount_percent: z.number().min(0).max(100).nullable().optional(),
 })
 
 const step4Schema = z.object({
@@ -193,6 +194,7 @@ export function NewProductDialog({
   const [costPrice, setCostPrice] = useState("")
   const [sellingPrice, setSellingPrice] = useState("")
   const [reorderLevel, setReorderLevel] = useState(10)
+  const [maxDiscountPercent, setMaxDiscountPercent] = useState("")
 
   // Step 4 state
   const [batchNumber, setBatchNumber] = useState(prefill?.batchNumber ?? "")
@@ -233,6 +235,7 @@ export function NewProductDialog({
           cost_price: costPerUnit > 0 ? costPerUnit : undefined,
           selling_price: parseFloat(sellingPrice),
           reorder_level: reorderLevel,
+          max_discount_percent: maxDiscountPercent !== "" ? parseFloat(maxDiscountPercent) : null,
         })
         break
       case 4:
@@ -294,6 +297,7 @@ export function NewProductDialog({
             cost_price: costPerUnit > 0 ? costPerUnit : undefined,
             selling_price: parseFloat(sellingPrice),
             reorder_level: reorderLevel,
+            max_discount_percent: maxDiscountPercent !== "" ? parseFloat(maxDiscountPercent) : null,
           }),
         })
 
@@ -603,18 +607,35 @@ export function NewProductDialog({
               <FieldError msg={errors["selling_price"]} />
             </div>
 
-            <div>
-              <Label htmlFor="reorder_level" className="text-sm font-medium">
-                Reorder level (in {baseUnit}s)
-              </Label>
-              <Input
-                id="reorder_level"
-                type="number"
-                min={0}
-                value={reorderLevel}
-                onChange={(e) => setReorderLevel(parseInt(e.target.value) || 0)}
-                className="mt-1.5 h-10"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="reorder_level" className="text-sm font-medium">
+                  Reorder level (in {baseUnit}s)
+                </Label>
+                <Input
+                  id="reorder_level"
+                  type="number"
+                  min={0}
+                  value={reorderLevel}
+                  onChange={(e) => setReorderLevel(parseInt(e.target.value) || 0)}
+                  className="mt-1.5 h-10"
+                />
+              </div>
+              <div>
+                <Label htmlFor="max_discount" className="text-sm font-medium">Max discount %</Label>
+                <Input
+                  id="max_discount"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  placeholder="No limit"
+                  value={maxDiscountPercent}
+                  onChange={(e) => setMaxDiscountPercent(e.target.value)}
+                  className="mt-1.5 h-10"
+                />
+                <FieldError msg={errors["max_discount_percent"]} />
+              </div>
             </div>
           </div>
         )}

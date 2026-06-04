@@ -298,6 +298,47 @@ export type Database = {
           },
         ]
       }
+      product_pack_sizes: {
+        Row: {
+          barcode: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          pack_label: string
+          product_id: string
+          selling_price: number
+          units_per_pack: number
+        }
+        Insert: {
+          barcode?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          pack_label: string
+          product_id: string
+          selling_price: number
+          units_per_pack: number
+        }
+        Update: {
+          barcode?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          pack_label?: string
+          product_id?: string
+          selling_price?: number
+          units_per_pack?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_pack_sizes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           barcode_raw: string | null
@@ -310,9 +351,11 @@ export type Database = {
           dosage_form: string | null
           gtin: string | null
           id: string
+          image_url: string | null
           is_active: boolean
           is_controlled: boolean
           manufacturer: string | null
+          max_discount_percent: number | null
           name: string
           organization_id: string
           pack_label: string | null
@@ -335,9 +378,11 @@ export type Database = {
           dosage_form?: string | null
           gtin?: string | null
           id?: string
+          image_url?: string | null
           is_active?: boolean
           is_controlled?: boolean
           manufacturer?: string | null
+          max_discount_percent?: number | null
           name: string
           organization_id: string
           pack_label?: string | null
@@ -360,9 +405,11 @@ export type Database = {
           dosage_form?: string | null
           gtin?: string | null
           id?: string
+          image_url?: string | null
           is_active?: boolean
           is_controlled?: boolean
           manufacturer?: string | null
+          max_discount_percent?: number | null
           name?: string
           organization_id?: string
           pack_label?: string | null
@@ -724,8 +771,10 @@ export type Database = {
           dosage_form: string | null
           earliest_expiry: string | null
           gtin: string | null
+          image_url: string | null
           is_active: boolean | null
           is_controlled: boolean | null
+          max_discount_percent: number | null
           name: string | null
           organization_id: string | null
           pack_label: string | null

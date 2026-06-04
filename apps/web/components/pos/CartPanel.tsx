@@ -1,6 +1,6 @@
 "use client"
 
-import { Minus, Plus, Trash2, ShoppingCart } from "lucide-react"
+import { Minus, Plus, Trash2, ShoppingCart, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCartStore, cartSubtotal, cartTotal, formatKES } from "@/lib/store/cartStore"
 import type { CartItem } from "@pharmatrack/types"
@@ -50,6 +50,17 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
   const subtotal = cartSubtotal(items)
   const total = cartTotal(items, discount)
   const hasItems = items.length > 0
+
+  // Most restrictive product discount cap across all cart items
+  const maxAllowedDiscount = (() => {
+    const limits = items
+      .map(i => i.max_discount_percent)
+      .filter((v): v is number => v !== null && v !== undefined)
+    if (limits.length === 0) return null
+    const minPct = Math.min(...limits)
+    return (subtotal * minPct) / 100
+  })()
+  const discountExceedsLimit = maxAllowedDiscount !== null && discount > maxAllowedDiscount
 
   return (
     <div className="flex flex-col h-full border-r border-[var(--pt-border)]">
@@ -121,7 +132,14 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
             <span className="tabular-nums">{formatKES(subtotal)}</span>
           </div>
           <div className="flex justify-between items-center text-sm text-[var(--pt-text-secondary)]">
-            <span>Discount</span>
+            <span>
+              Discount
+              {maxAllowedDiscount !== null && (
+                <span className="ml-1 text-[10px] text-[var(--pt-text-tertiary)]">
+                  (max {formatKES(maxAllowedDiscount)})
+                </span>
+              )}
+            </span>
             <div className="flex items-center gap-1">
               <span className="text-[var(--pt-text-secondary)]">KSh</span>
               <input
@@ -130,10 +148,21 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
                 value={discount || ""}
                 onChange={(e) => setDiscount(Number(e.target.value) || 0)}
                 placeholder="0"
-                className="w-24 h-7 px-2 text-right text-sm font-medium border border-[var(--pt-border)] rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--pt-green)] tabular-nums"
+                className={[
+                  "w-24 h-7 px-2 text-right text-sm font-medium border rounded-md focus:outline-none focus:ring-1 tabular-nums",
+                  discountExceedsLimit
+                    ? "border-[var(--pt-red)] focus:ring-[var(--pt-red)] text-[var(--pt-red)]"
+                    : "border-[var(--pt-border)] focus:ring-[var(--pt-green)]",
+                ].join(" ")}
               />
             </div>
           </div>
+          {discountExceedsLimit && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700">
+              <AlertTriangle size={12} className="shrink-0" />
+              Discount exceeds product limit — manager approval required
+            </div>
+          )}
           <div className="flex justify-between items-baseline pt-3 border-t border-dashed border-[var(--pt-border-strong)]">
             <span className="text-sm font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide">
               Total
