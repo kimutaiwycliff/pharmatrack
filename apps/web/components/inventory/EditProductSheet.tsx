@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
 import { formatKES } from "@/lib/store/cartStore"
+import { CategorySelect } from "./CategorySelect"
 import type { Product, ProductPackSize } from "@pharmatrack/types"
 
 interface Props {
@@ -359,6 +360,11 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                     {DOSAGE_FORMS.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </Field>
+              </Section>
+
+              {/* Category */}
+              <Section title="Category">
+                <CategorySelect value={form.category_id ?? null} onChange={(id) => setF("category_id", id)} />
               </Section>
 
               {/* Units & Pricing */}

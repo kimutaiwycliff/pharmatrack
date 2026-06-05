@@ -58,18 +58,21 @@ export type Database = {
           id: string
           name: string
           organization_id: string
+          parent_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
           organization_id: string
+          parent_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
           organization_id?: string
+          parent_id?: string | null
         }
         Relationships: [
           {
@@ -77,6 +80,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
             referencedColumns: ["id"]
           },
         ]

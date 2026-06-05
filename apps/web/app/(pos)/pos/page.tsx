@@ -44,19 +44,7 @@ export default function PosPage() {
   const clearCart = useCartStore((s) => s.clearCart)
   const total = cartTotal(items, discount)
 
-  // Fetch categories + suppliers for NewProductDialog
-  const { data: catData } = useQuery<{ categories: Array<{ id: string; name: string }> }>({
-    queryKey: ["categories", activeBranch?.id],
-    queryFn: async () => {
-      if (!activeBranch) return { categories: [] }
-      const res = await fetch(`/api/categories`)
-      if (!res.ok) return { categories: [] }
-      return res.json() as Promise<{ categories: Array<{ id: string; name: string }> }>
-    },
-    enabled: !!activeBranch,
-    staleTime: 300_000,
-  })
-
+  // Suppliers for NewProductDialog (categories are fetched by CategorySelect)
   const { data: supData } = useQuery<{ suppliers: Array<{ id: string; name: string }> }>({
     queryKey: ["suppliers", activeBranch?.id],
     queryFn: async () => {
@@ -69,7 +57,6 @@ export default function PosPage() {
     staleTime: 300_000,
   })
 
-  const categories = catData?.categories ?? []
   const suppliers = supData?.suppliers ?? []
 
   async function submitSale(params: {
@@ -213,7 +200,6 @@ export default function PosPage() {
         onOpenChange={setNewProductOpen}
         prefill={notFoundBarcode ? { gtin: notFoundBarcode } : undefined}
         branchId={activeBranch.id}
-        categories={categories}
         suppliers={suppliers}
         onCreated={() => {
           setNewProductOpen(false)

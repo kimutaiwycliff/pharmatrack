@@ -43,7 +43,16 @@ export interface Category {
   id: string
   organization_id: string
   name: string
+  parent_id: string | null
   created_at: string
+}
+
+// Category with its subcategories nested (for two-level pickers/managers)
+export interface CategoryWithChildren {
+  id: string
+  name: string
+  parent_id: string | null
+  children: Array<{ id: string; name: string; parent_id: string }>
 }
 
 export interface Supplier {

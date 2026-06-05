@@ -2,11 +2,12 @@
 
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight } from "lucide-react"
+import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree } from "lucide-react"
 import { toast } from "sonner"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { EditProductSheet } from "@/components/inventory/EditProductSheet"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
+import { CategoryManager } from "@/components/inventory/CategoryManager"
 import { formatKES } from "@/lib/store/cartStore"
 import type { Product } from "@pharmatrack/types"
 
@@ -51,6 +52,7 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1)
   const [editId, setEditId] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
+  const [catMgrOpen, setCatMgrOpen] = useState(false)
   const search = useDebounce(rawSearch, 300)
 
   const { data: categoriesData } = useQuery({
@@ -97,13 +99,22 @@ export default function ProductsPage() {
             {total} product{total !== 1 ? "s" : ""} in catalogue
           </p>
         </div>
-        <button
-          onClick={() => setNewOpen(true)}
-          className="inline-flex items-center gap-2 px-4 h-9 rounded-lg bg-[var(--pt-green)] text-white text-sm font-semibold hover:bg-[var(--pt-green-600)] transition-colors"
-        >
-          <Plus size={16} />
-          Add Product
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCatMgrOpen(true)}
+            className="inline-flex items-center gap-2 px-3.5 h-9 rounded-lg border border-[var(--pt-border)] text-[var(--pt-text-secondary)] text-sm font-semibold hover:bg-gray-50 transition-colors"
+          >
+            <FolderTree size={16} />
+            Manage categories
+          </button>
+          <button
+            onClick={() => setNewOpen(true)}
+            className="inline-flex items-center gap-2 px-4 h-9 rounded-lg bg-[var(--pt-green)] text-white text-sm font-semibold hover:bg-[var(--pt-green-600)] transition-colors"
+          >
+            <Plus size={16} />
+            Add Product
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -290,7 +301,6 @@ export default function ProductsPage() {
           open={newOpen}
           onOpenChange={setNewOpen}
           branchId=""
-          categories={categories}
           suppliers={suppliers}
           onCreated={(_product) => {
             setNewOpen(false)
@@ -298,6 +308,8 @@ export default function ProductsPage() {
           }}
         />
       )}
+
+      <CategoryManager open={catMgrOpen} onOpenChange={setCatMgrOpen} />
     </div>
   )
 }
