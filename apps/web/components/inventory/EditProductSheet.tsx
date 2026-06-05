@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { X, Upload, Trash2, Plus, Loader2, ImageIcon, PackageOpen } from "lucide-react"
 import { toast } from "sonner"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
@@ -310,8 +310,8 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
   }
 
   return (
-    <Sheet open={!!productId} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent side="right" showCloseButton={false} className="w-full sm:max-w-[560px] p-0 flex flex-col gap-0">
+    <Dialog open={!!productId} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent showCloseButton={false} className="sm:max-w-2xl w-full max-h-[90vh] p-0 flex flex-col gap-0 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--pt-border)] shrink-0">
           <div className="flex items-center gap-3">
@@ -451,7 +451,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
             </Button>
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
