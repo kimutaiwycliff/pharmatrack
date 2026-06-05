@@ -119,7 +119,7 @@ export default function InventoryPage() {
 
       {/* Summary chips */}
       {summary && (
-        <div className="grid grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
           {[
             { label: "Out of stock", value: summary.outOfStock, color: "text-[var(--pt-red)]" },
             { label: "Low stock",    value: summary.lowStock,    color: "text-[var(--pt-amber)]" },

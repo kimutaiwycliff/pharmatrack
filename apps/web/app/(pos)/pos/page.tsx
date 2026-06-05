@@ -125,9 +125,9 @@ export default function PosPage() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-[var(--pt-bg)]">
-      {/* Left — Cart */}
-      <div className="w-[55%] flex flex-col min-h-0">
+    <div className="flex flex-col md:flex-row h-full overflow-hidden bg-[var(--pt-bg)]">
+      {/* Cart — below on mobile, left on desktop */}
+      <div className="order-2 md:order-1 w-full md:w-[55%] h-2/5 md:h-full flex flex-col min-h-0 border-t md:border-t-0 md:border-r border-[var(--pt-border)]">
         <CartPanel
           cashierName={profile.full_name}
           onPay={setPayModal}
@@ -135,8 +135,8 @@ export default function PosPage() {
         />
       </div>
 
-      {/* Right — Product search */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Product search — on top on mobile, right on desktop */}
+      <div className="order-1 md:order-2 flex-1 w-full h-3/5 md:h-full flex flex-col min-h-0 overflow-hidden">
         <ProductSearch
           branchId={activeBranch.id}
           onBarcodeNotFound={handleBarcodeNotFound}

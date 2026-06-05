@@ -12,21 +12,20 @@ function initials(name: string) {
 }
 
 export function AppTopBar() {
-  const setSidebarCollapsed = useUIStore((s) => s.setSidebarCollapsed)
-  const collapsed = useUIStore((s) => s.sidebarCollapsed)
+  const setMobileNavOpen = useUIStore((s) => s.setMobileNavOpen)
   const profile = useSessionStore((s) => s.profile)
   const branches = useSessionStore((s) => s.branches)
   const activeBranchId = useUIStore((s) => s.activeBranchId)
   const activeBranch = branches.find((b) => b.id === activeBranchId) ?? branches[0]
 
   return (
-    <header className="h-14 border-b border-[var(--pt-border)] bg-white flex items-center px-4 gap-4 shrink-0">
+    <header className="h-14 border-b border-[var(--pt-border)] bg-white flex items-center px-3 sm:px-4 gap-2 sm:gap-4 shrink-0">
       {/* Mobile hamburger */}
       <Button
         variant="ghost"
         size="icon"
         className="lg:hidden"
-        onClick={() => setSidebarCollapsed(!collapsed)}
+        onClick={() => setMobileNavOpen(true)}
       >
         <Menu size={18} />
       </Button>

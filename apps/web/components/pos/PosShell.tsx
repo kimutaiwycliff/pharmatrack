@@ -40,7 +40,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--pt-bg)]">
       {/* POS Top Bar */}
-      <header className="h-14 border-b border-[var(--pt-border)] bg-white flex items-center px-4 gap-4 shrink-0">
+      <header className="h-14 border-b border-[var(--pt-border)] bg-white flex items-center px-3 sm:px-4 gap-2 sm:gap-4 shrink-0">
         {/* Logo */}
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-[var(--pt-green)] flex items-center justify-center">
@@ -63,7 +63,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
 
         {/* Shift indicator */}
         {shift && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--pt-green-50)] text-[var(--pt-green-600)] text-xs font-semibold">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--pt-green-50)] text-[var(--pt-green-600)] text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-[var(--pt-green)] animate-pulse" />
             Shift active · {formatDuration(shift.clocked_in_at)}
           </div>
@@ -74,7 +74,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
           <Link href="/dashboard">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8">
               <ArrowLeft size={13} />
-              Dashboard
+              <span className="hidden sm:inline">Dashboard</span>
             </Button>
           </Link>
         )}
@@ -102,7 +102,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
             className="gap-1.5 text-xs h-8 text-[var(--pt-red)] border-[var(--pt-red)] hover:bg-[var(--pt-red-50)]"
           >
             <Clock size={13} />
-            End Shift
+            <span className="hidden sm:inline">End Shift</span>
           </Button>
         )}
 

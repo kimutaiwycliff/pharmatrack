@@ -67,7 +67,7 @@ function SupplierRow({ supplier, canManage }: { supplier: Supplier; canManage: b
   if (editing) {
     return (
       <div className="px-5 py-4 space-y-3 border-b border-[var(--pt-border)] last:border-b-0">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Input placeholder="Supplier name *" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-9" autoFocus />
           <Input placeholder="Phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className="h-9" />
           <Input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className="h-9" />

@@ -29,7 +29,7 @@ const updateSchema = z.object({
   reorder_quantity: z.number().int().positive().optional(),
   is_controlled: z.boolean().optional(),
   requires_prescription: z.boolean().optional(),
-  image_url: z.string().url().nullable().optional(),
+  image_url: z.string().nullable().optional(),
   max_discount_percent: z.number().min(0).max(100).nullable().optional(),
   is_active: z.boolean().optional(),
 })

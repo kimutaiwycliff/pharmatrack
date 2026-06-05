@@ -35,7 +35,7 @@ const createProductSchema = z.object({
   reorder_quantity: z.number().int().positive().default(100),
   is_controlled: z.boolean().default(false),
   requires_prescription: z.boolean().default(false),
-  image_url: z.string().url().nullable().optional(),
+  image_url: z.string().nullable().optional(),
   max_discount_percent: z.number().min(0).max(100).nullable().optional(),
 })
 
