@@ -1,17 +1,25 @@
--- PharmaTrack Development Seed Data
+-- PharmaTrack Development Seed Data — Realistic Kenyan Pharmacy Catalogue
 -- Run AFTER 001_initial_schema.sql and 002_rls.sql
--- Idempotent: uses ON CONFLICT DO NOTHING
 --
--- UUID key:
---   Org:        a1b2c3d4-0001-...
---   Branches:   b1b2c3d4-0002-...
---   Categories: c1000000-0000-...
---   Suppliers:  d1000000-0000-...   (was s1..., s not hex)
---   Products:   e1000000-0000-...   (was p1..., p not hex)
---   Batches:    ab000001-...        (was bt..., t not hex)
+-- This seed mirrors the real product mix, brands, manufacturers and KES
+-- pricing stocked by Kenyan pharmacies (Goodlife, PharmaPlus, MyDawa, MEDS).
+-- It is pitch-ready: ~85 products across 14 categories, with batches that
+-- intentionally include healthy stock, low stock, out-of-stock, near-expiry
+-- and expired cases so the dashboard alerts have something to show.
+--
+-- Idempotent: catalogue tables are cleared and re-inserted on every run.
+-- Org / branches / profiles / auth users are NOT touched here (see run-seed.ts).
+--
+-- Notes on the data model:
+--   * selling_price / cost_price are PER base_unit (per tablet, per ml, per
+--     bottle, per device, etc.) in KES.
+--   * Loose dispensed items (tablets/capsules) use units_per_pack = pack size.
+--   * Pre-packed items (syrups, creams, devices) use base_unit = the package
+--     and units_per_pack = 1.
+--   * gtin uses the Kenya GS1 company prefix (616) for a realistic scan demo.
 
 -- ============================================================
--- ORGANIZATION
+-- ORGANIZATION + BRANCHES (kept stable for auth/profile FKs)
 -- ============================================================
 
 INSERT INTO organizations (id, name, registration_number, phone, email, address, settings)
@@ -22,12 +30,8 @@ VALUES (
   '+254 712 345 678',
   'info@nairobipharmacy.co.ke',
   'Kimathi Street, Nairobi CBD',
-  '{"currency":"KES","tax_rate":0.16,"receipt_footer":"Thank you for your business","tax_enabled":false}'
+  '{"currency":"KES","tax_rate":0.16,"receipt_footer":"Thank you for your business. Get well soon!","tax_enabled":false}'
 ) ON CONFLICT (id) DO NOTHING;
-
--- ============================================================
--- BRANCHES
--- ============================================================
 
 INSERT INTO branches (id, organization_id, name, address, phone, is_active)
 VALUES
@@ -36,35 +40,57 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
+-- CLEAR EXISTING CATALOGUE (safe: no sales/cs_log reference these yet)
+-- ============================================================
+
+DELETE FROM product_batches
+ WHERE product_id IN (SELECT id FROM products WHERE organization_id = 'a1b2c3d4-0001-0001-0001-000000000001');
+DELETE FROM products  WHERE organization_id = 'a1b2c3d4-0001-0001-0001-000000000001';
+DELETE FROM suppliers WHERE organization_id = 'a1b2c3d4-0001-0001-0001-000000000001';
+DELETE FROM categories WHERE organization_id = 'a1b2c3d4-0001-0001-0001-000000000001';
+
+-- ============================================================
 -- CATEGORIES
 -- ============================================================
 
 INSERT INTO categories (id, organization_id, name)
 VALUES
   ('c1000000-0000-0000-0000-000000000001','a1b2c3d4-0001-0001-0001-000000000001','Antibiotics'),
-  ('c1000000-0000-0000-0000-000000000002','a1b2c3d4-0001-0001-0001-000000000001','Analgesics'),
-  ('c1000000-0000-0000-0000-000000000003','a1b2c3d4-0001-0001-0001-000000000001','Antifungals'),
-  ('c1000000-0000-0000-0000-000000000004','a1b2c3d4-0001-0001-0001-000000000001','Vitamins'),
-  ('c1000000-0000-0000-0000-000000000005','a1b2c3d4-0001-0001-0001-000000000001','OTC General')
-ON CONFLICT (id) DO NOTHING;
+  ('c1000000-0000-0000-0000-000000000002','a1b2c3d4-0001-0001-0001-000000000001','Antimalarials'),
+  ('c1000000-0000-0000-0000-000000000003','a1b2c3d4-0001-0001-0001-000000000001','Pain & Fever'),
+  ('c1000000-0000-0000-0000-000000000004','a1b2c3d4-0001-0001-0001-000000000001','Cough, Cold & Allergy'),
+  ('c1000000-0000-0000-0000-000000000005','a1b2c3d4-0001-0001-0001-000000000001','Gastrointestinal'),
+  ('c1000000-0000-0000-0000-000000000006','a1b2c3d4-0001-0001-0001-000000000001','Antifungals'),
+  ('c1000000-0000-0000-0000-000000000007','a1b2c3d4-0001-0001-0001-000000000001','Cardiovascular & Diabetes'),
+  ('c1000000-0000-0000-0000-000000000008','a1b2c3d4-0001-0001-0001-000000000001','Respiratory'),
+  ('c1000000-0000-0000-0000-000000000009','a1b2c3d4-0001-0001-0001-000000000001','Vitamins & Supplements'),
+  ('c1000000-0000-0000-0000-00000000000a','a1b2c3d4-0001-0001-0001-000000000001','Skin & Dermatology'),
+  ('c1000000-0000-0000-0000-00000000000b','a1b2c3d4-0001-0001-0001-000000000001','Family Planning & Sexual Health'),
+  ('c1000000-0000-0000-0000-00000000000c','a1b2c3d4-0001-0001-0001-000000000001','Baby & Mother Care'),
+  ('c1000000-0000-0000-0000-00000000000d','a1b2c3d4-0001-0001-0001-000000000001','Personal & Sanitary Care'),
+  ('c1000000-0000-0000-0000-00000000000e','a1b2c3d4-0001-0001-0001-000000000001','First Aid & Medical Devices');
 
 -- ============================================================
--- SUPPLIERS  (prefix d1 = valid hex)
+-- SUPPLIERS (real Kenyan pharmaceutical distributors)
 -- ============================================================
 
 INSERT INTO suppliers (id, organization_id, name, phone, email, address)
 VALUES
   ('d1000000-0000-0000-0000-000000000001','a1b2c3d4-0001-0001-0001-000000000001','Dawa Limited','+254 720 000 001','orders@dawa.co.ke','Industrial Area, Nairobi'),
   ('d1000000-0000-0000-0000-000000000002','a1b2c3d4-0001-0001-0001-000000000001','Cosmos Limited','+254 720 000 002','supply@cosmospharma.co.ke','Athi River, Kajiado'),
-  ('d1000000-0000-0000-0000-000000000003','a1b2c3d4-0001-0001-0001-000000000001','Elys Chemical Industries','+254 720 000 003','sales@elys.co.ke','Mombasa Road, Nairobi')
-ON CONFLICT (id) DO NOTHING;
+  ('d1000000-0000-0000-0000-000000000003','a1b2c3d4-0001-0001-0001-000000000001','Elys Chemical Industries','+254 720 000 003','sales@elys.co.ke','Mombasa Road, Nairobi'),
+  ('d1000000-0000-0000-0000-000000000004','a1b2c3d4-0001-0001-0001-000000000001','Laboratory & Allied Ltd','+254 720 000 004','orders@laballied.com','Baba Dogo Road, Nairobi'),
+  ('d1000000-0000-0000-0000-000000000005','a1b2c3d4-0001-0001-0001-000000000001','Surgipharm Ltd','+254 720 000 005','info@surgipharm.co.ke','Dunga Road, Industrial Area'),
+  ('d1000000-0000-0000-0000-000000000006','a1b2c3d4-0001-0001-0001-000000000001','Beta Healthcare International','+254 720 000 006','customercare@betahealthcare.co.ke','Ruaraka, Nairobi'),
+  ('d1000000-0000-0000-0000-000000000007','a1b2c3d4-0001-0001-0001-000000000001','Universal Corporation Ltd','+254 720 000 007','sales@unicorp.co.ke','Kikuyu, Kiambu'),
+  ('d1000000-0000-0000-0000-000000000008','a1b2c3d4-0001-0001-0001-000000000001','Phillips Pharmaceuticals','+254 720 000 008','orders@phillipspharma.com','Mombasa Road, Nairobi');
 
 -- ============================================================
--- PRODUCTS (prefix e1 = valid hex)
+-- PRODUCTS  (ids auto-generated; batches reference them by SELECT)
 -- ============================================================
 
 INSERT INTO products (
-  id, organization_id, category_id,
+  organization_id, category_id,
   name, brand_name, manufacturer, gtin,
   strength, dosage_form,
   base_unit, pack_label, units_per_pack,
@@ -73,92 +99,224 @@ INSERT INTO products (
   is_controlled, requires_prescription
 )
 VALUES
-  -- 1. Amoxicillin 500mg
-  ('e1000000-0000-0000-0000-000000000001','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Amoxicillin','Amoxil','Beecham','6901028075901','500mg','Capsule','capsule','Box',28,8.00,12.00,56,280,false,true),
-  -- 2. Paracetamol 500mg
-  ('e1000000-0000-0000-0000-000000000002','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Paracetamol','Panadol','GlaxoSmithKline','6934711400027','500mg','Tablet','tablet','Box',100,1.50,3.50,100,500,false,false),
-  -- 3. Metronidazole 200mg
-  ('e1000000-0000-0000-0000-000000000003','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Metronidazole','Flagyl','Pfizer','6901028075902','200mg','Tablet','tablet','Box',30,4.00,6.00,60,300,false,true),
-  -- 4. Ibuprofen 400mg
-  ('e1000000-0000-0000-0000-000000000004','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Ibuprofen','Brufen','Abbott','6901028075903','400mg','Tablet','tablet','Box',30,3.00,5.00,60,300,false,false),
-  -- 5. Cotrimoxazole 480mg
-  ('e1000000-0000-0000-0000-000000000005','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Cotrimoxazole','Septrin','GlaxoSmithKline','6901028075904','480mg','Tablet','tablet','Box',28,5.00,7.00,56,280,false,false),
-  -- 6. Fluconazole 150mg
-  ('e1000000-0000-0000-0000-000000000006','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Fluconazole','Diflucan','Pfizer','6901028075905','150mg','Capsule','capsule','Capsule',1,55.00,85.00,10,50,false,true),
-  -- 7. ORS Sachet
-  ('e1000000-0000-0000-0000-000000000007','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','ORS Sachet','Oral Rehydration Salts','UNICEF','6901028075906','20.5g','Sachet','unit','Sachet',1,15.00,25.00,20,100,false,false),
-  -- 8. Omeprazole 20mg
-  ('e1000000-0000-0000-0000-000000000008','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Omeprazole','Losec','AstraZeneca','6901028075907','20mg','Capsule','capsule','Box',30,12.00,18.00,30,150,false,false),
-  -- 9. Albendazole 400mg
-  ('e1000000-0000-0000-0000-000000000009','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Albendazole','Zentel','GlaxoSmithKline','6901028075908','400mg','Tablet','tablet','Tablet',1,25.00,40.00,10,50,false,false),
-  -- 10. Vitamin C 500mg
-  ('e1000000-0000-0000-0000-00000000000a','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Vitamin C','Celin','GlaxoSmithKline','6901028075909','500mg','Tablet','tablet','Box',30,3.00,5.00,30,150,false,false),
-  -- 11. Diazepam 5mg - CONTROLLED
-  ('e1000000-0000-0000-0000-00000000000b','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Diazepam','Valium','Roche','6901028075910','5mg','Tablet','tablet','Box',30,8.00,15.00,30,90,true,true),
-  -- 12. Tramadol 50mg - CONTROLLED
-  ('e1000000-0000-0000-0000-00000000000c','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Tramadol','Ultram','Janssen','6901028075911','50mg','Capsule','capsule','Box',30,18.00,30.00,30,90,true,true),
-  -- 13. Chloramphenicol Eye Drops
-  ('e1000000-0000-0000-0000-00000000000d','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Chloramphenicol Eye Drops','Optrex','Boots','6901028075912','0.5%','Drops','unit','Bottle',1,120.00,180.00,5,20,false,true),
-  -- 14. Salbutamol Inhaler 100mcg
-  ('e1000000-0000-0000-0000-00000000000e','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Salbutamol Inhaler','Ventolin','GlaxoSmithKline','6901028075913','100mcg','Inhaler','unit','Inhaler',1,350.00,550.00,5,20,false,true),
-  -- 15. Zinc Sulfate 20mg
-  ('e1000000-0000-0000-0000-00000000000f','a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Zinc Sulfate','Zincomed','Cosmos','6901028075914','20mg','Tablet','tablet','Box',60,2.00,4.00,60,300,false,false)
-ON CONFLICT (id) DO NOTHING;
+-- ---------- Antibiotics ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Amoxicillin 250mg','Amoxil','GlaxoSmithKline','6160000000011','250mg','Capsule','capsule','Box',100,5.00,10.00,100,500,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Amoxicillin 500mg','Amoxil','GlaxoSmithKline','6160000000028','500mg','Capsule','capsule','Box',100,8.00,15.00,100,500,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Amoxicillin/Clavulanic Acid 625mg','Augmentin','GlaxoSmithKline','6160000000035','625mg','Tablet','tablet','Box',14,60.00,100.00,28,140,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Azithromycin 500mg','Zithromax','Pfizer','6160000000042','500mg','Tablet','tablet','Box',3,45.00,80.00,15,90,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Ciprofloxacin 500mg','Ciprodar','Dawa','6160000000059','500mg','Tablet','tablet','Box',10,8.00,15.00,50,250,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Metronidazole 400mg','Flagyl','Sanofi','6160000000066','400mg','Tablet','tablet','Box',30,3.00,6.00,90,450,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Doxycycline 100mg','Doxal','Laboratory & Allied','6160000000073','100mg','Capsule','capsule','Box',100,4.00,8.00,100,500,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Cefuroxime 250mg','Zinnat','GlaxoSmithKline','6160000000080','250mg','Tablet','tablet','Box',10,80.00,130.00,20,100,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Cotrimoxazole 480mg','Septrin','Aspen','6160000000097','480mg','Tablet','tablet','Box',100,4.00,7.00,100,500,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Erythromycin 250mg','Erythrocin','Abbott','6160000000103','250mg','Tablet','tablet','Box',100,5.00,9.00,80,400,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000001','Ceftriaxone 1g Injection','Rocephin','Roche','6160000000110','1g','Injection','vial','Vial',1,80.00,150.00,20,80,false,true),
+-- ---------- Antimalarials ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Artemether/Lumefantrine 20/120','Coartem','Novartis','6160000000127','20/120mg','Tablet','pack','Pack',1,350.00,600.00,30,150,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Artemether/Lumefantrine DS','Lonart DS','Bliss GVS','6160000000134','80/480mg','Tablet','pack','Pack',1,300.00,550.00,30,150,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Dihydroartemisinin/Piperaquine','P-Alaxin','Bliss GVS','6160000000141','40/320mg','Tablet','pack','Pack',1,400.00,700.00,20,100,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Sulfadoxine/Pyrimethamine','Fansidar','Roche','6160000000158','500/25mg','Tablet','tablet','Box',3,20.00,40.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Quinine Sulphate 300mg','Quinine','Dawa','6160000000165','300mg','Tablet','tablet','Box',100,4.00,8.00,50,250,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000002','Malaria Rapid Test Kit','Accurate mRDT','SD Biosensor','6160000000172','1 test','Test Kit','unit','Box',1,120.00,250.00,30,120,false,false),
+-- ---------- Pain & Fever ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Paracetamol 500mg','Panadol','GlaxoSmithKline','6160000000189','500mg','Tablet','tablet','Box',100,2.00,5.00,200,1000,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Paracetamol 500mg (Generic)','Paracetamol','Cosmos','6160000000196','500mg','Tablet','tablet','Tin',1000,0.80,2.00,300,2000,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Ibuprofen 400mg','Brufen','Abbott','6160000000202','400mg','Tablet','tablet','Box',100,3.00,6.00,100,500,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Diclofenac 50mg','Voltaren','Novartis','6160000000219','50mg','Tablet','tablet','Box',100,3.00,6.00,100,500,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Aspirin 300mg','Disprin','Reckitt','6160000000226','300mg','Tablet','tablet','Box',100,1.50,4.00,80,400,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Paracetamol Syrup 120mg/5ml 60ml','Calpol','GlaxoSmithKline','6160000000233','120mg/5ml','Syrup','bottle','Bottle',1,60.00,120.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Diclofenac Gel 1% 30g','Voltaren Emulgel','Novartis','6160000000240','1%','Gel','tube','Tube',1,250.00,450.00,15,60,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Ibuprofen + Paracetamol','Brustan','Ranbaxy','6160000000257','400/325mg','Tablet','tablet','Box',100,4.00,8.00,80,400,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Tramadol 50mg','Tramal','Grunenthal','6160000000264','50mg','Capsule','capsule','Box',100,18.00,30.00,30,90,true,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Diazepam 5mg','Valium','Roche','6160000000950','5mg','Tablet','tablet','Box',100,8.00,15.00,30,90,true,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000003','Codeine Phosphate 30mg','Codeine','Dawa','6160000000967','30mg','Tablet','tablet','Box',100,10.00,20.00,30,90,true,true),
+-- ---------- Cough, Cold & Allergy ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Cetirizine 10mg','Zyrtec','UCB','6160000000271','10mg','Tablet','tablet','Box',10,5.00,12.00,60,300,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Chlorpheniramine 4mg','Piriton','GlaxoSmithKline','6160000000288','4mg','Tablet','tablet','Tin',1000,1.00,3.00,200,1000,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Loratadine 10mg','Clarityne','Bayer','6160000000295','10mg','Tablet','tablet','Box',10,8.00,15.00,50,250,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Piriton Syrup 100ml','Piriton','GlaxoSmithKline','6160000000301','2mg/5ml','Syrup','bottle','Bottle',1,350.00,550.00,20,80,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Cough Syrup 100ml','Benylin','Johnson & Johnson','6160000000318','100ml','Syrup','bottle','Bottle',1,350.00,600.00,20,80,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Throat Lozenges','Strepsils','Reckitt','6160000000325','24s','Lozenge','pack','Pack',1,150.00,250.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000004','Chest Rub 50g','Vicks VapoRub','Procter & Gamble','6160000000332','50g','Ointment','jar','Jar',1,200.00,350.00,20,80,false,false),
+-- ---------- Gastrointestinal ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Omeprazole 20mg','Losec','AstraZeneca','6160000000349','20mg','Capsule','capsule','Box',30,10.00,18.00,60,300,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Esomeprazole 40mg','Nexium','AstraZeneca','6160000000356','40mg','Tablet','tablet','Box',14,40.00,70.00,28,140,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Antacid Sachet','ENO','GlaxoSmithKline','6160000000363','5g','Sachet','sachet','Box',1,15.00,30.00,60,300,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Gaviscon Suspension 200ml','Gaviscon','Reckitt','6160000000370','200ml','Suspension','bottle','Bottle',1,300.00,500.00,20,80,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Loperamide 2mg','Imodium','Johnson & Johnson','6160000000387','2mg','Capsule','capsule','Box',10,6.00,12.00,50,250,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Oral Rehydration Salts','Restors','Cosmos','6160000000394','20.5g','Sachet','sachet','Box',1,15.00,25.00,60,300,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Zinc Sulphate 20mg','Zincomed','Cosmos','6160000000400','20mg','Tablet','tablet','Box',100,2.00,4.00,80,400,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Albendazole 400mg','Zentel','GlaxoSmithKline','6160000000417','400mg','Tablet','tablet','Box',1,25.00,40.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Mebendazole 100mg','Vermox','Johnson & Johnson','6160000000424','100mg','Tablet','tablet','Box',6,8.00,15.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000005','Hyoscine Butylbromide 10mg','Buscopan','Sanofi','6160000000431','10mg','Tablet','tablet','Box',10,10.00,18.00,40,200,false,false),
+-- ---------- Antifungals ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000006','Fluconazole 150mg','Diflucan','Pfizer','6160000000448','150mg','Capsule','capsule','Box',1,55.00,100.00,30,120,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000006','Clotrimazole Cream 1% 20g','Canesten','Bayer','6160000000455','1%','Cream','tube','Tube',1,200.00,350.00,20,80,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000006','Ketoconazole Shampoo 100ml','Nizoral','Johnson & Johnson','6160000000462','2%','Shampoo','bottle','Bottle',1,400.00,650.00,15,60,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000006','Griseofulvin 500mg','Grisovin','GlaxoSmithKline','6160000000479','500mg','Tablet','tablet','Box',100,8.00,15.00,40,200,false,true),
+-- ---------- Cardiovascular & Diabetes ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000007','Amlodipine 5mg','Norvasc','Pfizer','6160000000486','5mg','Tablet','tablet','Box',30,3.00,6.00,90,450,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000007','Losartan 50mg','Cozaar','MSD','6160000000493','50mg','Tablet','tablet','Box',30,8.00,15.00,60,300,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000007','Atenolol 50mg','Tenormin','AstraZeneca','6160000000509','50mg','Tablet','tablet','Box',28,3.00,6.00,60,300,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000007','Metformin 500mg','Glucophage','Merck','6160000000516','500mg','Tablet','tablet','Box',100,2.00,4.00,120,600,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000007','Glibenclamide 5mg','Daonil','Sanofi','6160000000523','5mg','Tablet','tablet','Box',100,2.00,4.00,80,400,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000007','Atorvastatin 20mg','Lipitor','Pfizer','6160000000530','20mg','Tablet','tablet','Box',30,10.00,20.00,60,300,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000007','Hydrochlorothiazide 25mg','Hydrochlorothiazide','Dawa','6160000000547','25mg','Tablet','tablet','Box',100,2.00,5.00,60,300,false,true),
+-- ---------- Respiratory ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000008','Salbutamol Inhaler 100mcg','Ventolin','GlaxoSmithKline','6160000000554','100mcg','Inhaler','unit','Inhaler',1,350.00,600.00,20,80,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000008','Salbutamol 4mg','Salbutamol','Cosmos','6160000000561','4mg','Tablet','tablet','Box',100,2.00,5.00,60,300,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000008','Beclomethasone Inhaler','Beclate','Cipla','6160000000578','100mcg','Inhaler','unit','Inhaler',1,450.00,750.00,15,60,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000008','Montelukast 10mg','Singulair','MSD','6160000000585','10mg','Tablet','tablet','Box',30,25.00,45.00,30,150,false,true),
+-- ---------- Vitamins & Supplements ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000009','Vitamin C 500mg','Redoxon','Bayer','6160000000592','500mg','Tablet','tablet','Box',100,3.00,6.00,100,500,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000009','Multivitamin Syrup 200ml','Seven Seas','Merck','6160000000608','200ml','Syrup','bottle','Bottle',1,180.00,320.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000009','Ferrous Sulphate + Folic Acid','Ranferon','Ranbaxy','6160000000615','200mg','Tablet','tablet','Box',100,3.00,6.00,80,400,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000009','Folic Acid 5mg','Folic Acid','Dawa','6160000000622','5mg','Tablet','tablet','Box',100,1.00,3.00,80,400,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000009','Calcium + Vitamin D3','Caltrate','Pfizer','6160000000639','600mg/400IU','Tablet','tablet','Box',30,10.00,20.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000009','Cod Liver Oil Capsules','Seven Seas','Merck','6160000000646','1000mg','Capsule','capsule','Box',60,5.00,10.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-000000000009','Zinc + Multivitamin Syrup 200ml','Zincovit','Apex','6160000000653','200ml','Syrup','bottle','Bottle',1,200.00,350.00,30,120,false,false),
+-- ---------- Skin & Dermatology ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000a','Hydrocortisone Cream 1% 15g','Hydrocortisone','Beta Healthcare','6160000000660','1%','Cream','tube','Tube',1,80.00,150.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000a','Betamethasone Cream 0.1% 15g','Betnovate','GlaxoSmithKline','6160000000677','0.1%','Cream','tube','Tube',1,120.00,220.00,20,80,false,true),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000a','Whitfield Ointment 25g','Whitfield','Cosmos','6160000000684','25g','Ointment','tube','Tube',1,50.00,100.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000a','Calamine Lotion 100ml','Calamine','Beta Healthcare','6160000000691','100ml','Lotion','bottle','Bottle',1,80.00,150.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000a','Povidone Iodine 10% 100ml','Betadine','Mundipharma','6160000000707','10%','Solution','bottle','Bottle',1,150.00,280.00,20,80,false,false),
+-- ---------- Family Planning & Sexual Health ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000b','Levonorgestrel Emergency Pill','Postinor-2','Gedeon Richter','6160000000714','1.5mg','Tablet','pack','Pack',1,100.00,200.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000b','Combined Oral Contraceptive','Microgynon','Bayer','6160000000721','30mcg','Tablet','pack','Pack',1,40.00,80.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000b','Condoms 3-pack','Trust','PSI Kenya','6160000000738','3s','Condom','pack','Pack',1,20.00,50.00,100,500,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000b','Condoms Premium 3-pack','Durex','Reckitt','6160000000745','3s','Condom','pack','Pack',1,200.00,350.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000b','Pregnancy Test Strip','Quickcheck','SD Biosensor','6160000000752','1 test','Test Kit','unit','Box',1,25.00,60.00,60,300,false,false),
+-- ---------- Baby & Mother Care ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000c','Baby Diapers Medium 44s','Pampers','Procter & Gamble','6160000000769','Medium','Diapers','pack','Pack',1,900.00,1300.00,20,80,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000c','Baby Diapers Large 38s','Huggies','Kimberly-Clark','6160000000776','Large','Diapers','pack','Pack',1,700.00,1100.00,20,80,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000c','Infant Cereal Wheat 400g','Cerelac','Nestle','6160000000783','400g','Cereal','tin','Tin',1,500.00,750.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000c','Infant Formula 400g','NAN','Nestle','6160000000790','400g','Formula','tin','Tin',1,900.00,1250.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000c','Baby Jelly 250ml','Johnsons','Johnson & Johnson','6160000000806','250ml','Jelly','jar','Jar',1,200.00,350.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000c','Baby Wipes 64s','Pampers','Procter & Gamble','6160000000813','64s','Wipes','pack','Pack',1,150.00,280.00,40,200,false,false),
+-- ---------- Personal & Sanitary Care ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000d','Sanitary Pads Maxi 8s','Always','Procter & Gamble','6160000000820','8s','Pads','pack','Pack',1,80.00,150.00,80,400,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000d','Surgical Spirit 100ml','Surgical Spirit','Beta Healthcare','6160000000837','100ml','Solution','bottle','Bottle',1,50.00,100.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000d','Hand Sanitizer 100ml','Dettol','Reckitt','6160000000844','100ml','Gel','bottle','Bottle',1,80.00,150.00,60,300,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000d','Antiseptic Liquid 250ml','Dettol','Reckitt','6160000000851','250ml','Liquid','bottle','Bottle',1,250.00,420.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000d','Cotton Wool 100g','Cotton Wool','Beta Healthcare','6160000000868','100g','Cotton','roll','Roll',1,60.00,120.00,40,200,false,false),
+-- ---------- First Aid & Medical Devices ----------
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000e','Digital Thermometer','Microlife','Microlife','6160000000875','1 unit','Device','unit','Box',1,250.00,450.00,15,60,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000e','Blood Pressure Monitor','Omron M2','Omron','6160000000882','1 unit','Device','unit','Box',1,4500.00,6500.00,5,20,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000e','Glucometer Kit','Accu-Chek Active','Roche','6160000000899','1 unit','Device','unit','Box',1,2800.00,4000.00,5,20,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000e','Glucose Test Strips 50s','Accu-Chek Active','Roche','6160000000905','50s','Strips','pack','Pack',1,1500.00,2200.00,15,60,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000e','Adhesive Bandages 20s','Elastoplast','Beiersdorf','6160000000912','20s','Plasters','pack','Pack',1,80.00,150.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000e','Face Masks 50s','Surgical Mask','Surgipharm','6160000000929','50s','Masks','box','Box',1,200.00,350.00,40,200,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000e','Examination Gloves 100s','Latex Gloves','Surgipharm','6160000000936','100s','Gloves','box','Box',1,400.00,650.00,30,120,false,false),
+('a1b2c3d4-0001-0001-0001-000000000001','c1000000-0000-0000-0000-00000000000e','Crepe Bandage 7.5cm','Crepe Bandage','Beta Healthcare','6160000000943','7.5cm','Bandage','unit','Box',1,80.00,150.00,40,200,false,false);
 
 -- ============================================================
--- PRODUCT BATCHES  (prefix ab = valid hex, 2 per product)
+-- PRODUCT BATCHES (generated per product at the CBD branch)
+-- ------------------------------------------------------------
+-- Two batches per product (older + newer) with a deterministic mix of
+-- conditions keyed off the product's row number, so the inventory and
+-- dashboard alerts show a realistic spread:
+--   rn % 12 = 0  -> OUT OF STOCK   (both batches depleted)
+--   rn % 8  = 0  -> LOW STOCK      (below reorder level)
+--   rn % 9  = 0  -> NEAR EXPIRY    (older batch expires in ~18 days, in stock)
+--   rn % 15 = 0  -> EXPIRED LOT    (older batch already expired, still on shelf)
+--   else         -> HEALTHY        (partial older + full newer)
 -- ============================================================
 
+WITH p AS (
+  SELECT id, reorder_level, reorder_quantity, cost_price,
+         row_number() OVER (ORDER BY created_at, name) AS rn
+  FROM products
+  WHERE organization_id = 'a1b2c3d4-0001-0001-0001-000000000001'
+),
+classified AS (
+  SELECT *,
+    CASE
+      WHEN rn % 12 = 0 THEN 'out'
+      WHEN rn % 8  = 0 THEN 'low'
+      WHEN rn % 9  = 0 THEN 'nearexp'
+      WHEN rn % 15 = 0 THEN 'expired'
+      ELSE 'ok'
+    END AS cond,
+    GREATEST(reorder_quantity, 12) AS qty_recv
+  FROM p
+),
+seq AS (SELECT generate_series(1,2) AS n)
 INSERT INTO product_batches (
-  id, product_id, branch_id, supplier_id,
-  batch_number, expiry_date,
+  product_id, branch_id, supplier_id,
+  batch_number, expiry_date, manufactured_date,
   quantity_received, quantity_remaining,
   cost_price, received_at
 )
-VALUES
-  -- Amoxicillin 500mg
-  ('ab000001-0001-0001-0001-000000000001','e1000000-0000-0000-0000-000000000001','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240312','2026-06-12',280,220,8.00,'2024-03-15 09:00:00+03'),
-  ('ab000001-0001-0001-0001-000000000002','e1000000-0000-0000-0000-000000000001','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240801','2027-08-01',280,280,8.00,'2024-08-05 10:00:00+03'),
-  -- Paracetamol 500mg (partially used)
-  ('ab000002-0002-0002-0002-000000000001','e1000000-0000-0000-0000-000000000002','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240501','2027-09-30',500,48,1.50,'2024-05-10 08:00:00+03'),
-  ('ab000002-0002-0002-0002-000000000002','e1000000-0000-0000-0000-000000000002','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240815','2027-09-30',500,500,1.50,'2024-08-20 08:00:00+03'),
-  -- Metronidazole 200mg (out of stock)
-  ('ab000003-0003-0003-0003-000000000001','e1000000-0000-0000-0000-000000000003','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240101','2026-12-31',300,0,4.00,'2024-01-15 09:00:00+03'),
-  ('ab000003-0003-0003-0003-000000000002','e1000000-0000-0000-0000-000000000003','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240401','2027-04-01',300,0,4.00,'2024-04-05 09:00:00+03'),
-  -- Ibuprofen 400mg
-  ('ab000004-0004-0004-0004-000000000001','e1000000-0000-0000-0000-000000000004','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240215','2027-02-28',300,174,3.00,'2024-02-20 09:00:00+03'),
-  ('ab000004-0004-0004-0004-000000000002','e1000000-0000-0000-0000-000000000004','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240901','2027-09-01',300,300,3.00,'2024-09-05 09:00:00+03'),
-  -- Cotrimoxazole 480mg
-  ('ab000005-0005-0005-0005-000000000001','e1000000-0000-0000-0000-000000000005','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240301','2027-03-31',280,200,5.00,'2024-03-05 09:00:00+03'),
-  ('ab000005-0005-0005-0005-000000000002','e1000000-0000-0000-0000-000000000005','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240901','2027-09-30',280,280,5.00,'2024-09-10 09:00:00+03'),
-  -- Fluconazole 150mg (expiring ~41 days)
-  ('ab000006-0006-0006-0006-000000000001','e1000000-0000-0000-0000-000000000006','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000003','BN240501','2026-06-17',50,30,55.00,'2024-05-15 09:00:00+03'),
-  ('ab000006-0006-0006-0006-000000000002','e1000000-0000-0000-0000-000000000006','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000003','BN241001','2027-10-01',50,30,55.00,'2024-10-05 09:00:00+03'),
-  -- ORS Sachet
-  ('ab000007-0007-0007-0007-000000000001','e1000000-0000-0000-0000-000000000007','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240401','2027-08-08',100,72,15.00,'2024-04-10 09:00:00+03'),
-  ('ab000007-0007-0007-0007-000000000002','e1000000-0000-0000-0000-000000000007','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN241101','2027-08-08',100,70,15.00,'2024-11-05 09:00:00+03'),
-  -- Omeprazole 20mg
-  ('ab000008-0008-0008-0008-000000000001','e1000000-0000-0000-0000-000000000008','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240601','2027-06-30',150,90,12.00,'2024-06-10 09:00:00+03'),
-  ('ab000008-0008-0008-0008-000000000002','e1000000-0000-0000-0000-000000000008','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN241201','2027-12-31',150,150,12.00,'2024-12-05 09:00:00+03'),
-  -- Albendazole 400mg
-  ('ab000009-0009-0009-0009-000000000001','e1000000-0000-0000-0000-000000000009','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240701','2027-07-31',50,30,25.00,'2024-07-05 09:00:00+03'),
-  ('ab000009-0009-0009-0009-000000000002','e1000000-0000-0000-0000-000000000009','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN241001','2027-10-31',50,50,25.00,'2024-10-10 09:00:00+03'),
-  -- Vitamin C 500mg
-  ('ab00000a-000a-000a-000a-000000000001','e1000000-0000-0000-0000-00000000000a','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240801','2027-08-31',150,112,3.00,'2024-08-15 09:00:00+03'),
-  ('ab00000a-000a-000a-000a-000000000002','e1000000-0000-0000-0000-00000000000a','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN241201','2027-12-31',150,150,3.00,'2024-12-10 09:00:00+03'),
-  -- Diazepam 5mg (CONTROLLED)
-  ('ab00000b-000b-000b-000b-000000000001','e1000000-0000-0000-0000-00000000000b','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240201','2027-03-15',90,38,8.00,'2024-02-20 09:00:00+03'),
-  ('ab00000b-000b-000b-000b-000000000002','e1000000-0000-0000-0000-00000000000b','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN241001','2027-10-31',90,90,8.00,'2024-10-15 09:00:00+03'),
-  -- Tramadol 50mg (CONTROLLED)
-  ('ab00000c-000c-000c-000c-000000000001','e1000000-0000-0000-0000-00000000000c','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN240301','2027-04-30',90,55,18.00,'2024-03-25 09:00:00+03'),
-  ('ab00000c-000c-000c-000c-000000000002','e1000000-0000-0000-0000-00000000000c','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000001','BN241101','2027-11-30',90,90,18.00,'2024-11-15 09:00:00+03'),
-  -- Chloramphenicol Eye Drops
-  ('ab00000d-000d-000d-000d-000000000001','e1000000-0000-0000-0000-00000000000d','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000003','BN240601','2026-12-31',20,12,120.00,'2024-06-20 09:00:00+03'),
-  ('ab00000d-000d-000d-000d-000000000002','e1000000-0000-0000-0000-00000000000d','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000003','BN241001','2027-10-31',20,20,120.00,'2024-10-20 09:00:00+03'),
-  -- Salbutamol Inhaler
-  ('ab00000e-000e-000e-000e-000000000001','e1000000-0000-0000-0000-00000000000e','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240701','2026-07-31',20,8,350.00,'2024-07-10 09:00:00+03'),
-  ('ab00000e-000e-000e-000e-000000000002','e1000000-0000-0000-0000-00000000000e','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN241201','2027-12-31',20,20,350.00,'2024-12-15 09:00:00+03'),
-  -- Zinc Sulfate 20mg
-  ('ab00000f-000f-000f-000f-000000000001','e1000000-0000-0000-0000-00000000000f','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN240501','2027-05-31',300,180,2.00,'2024-05-20 09:00:00+03'),
-  ('ab00000f-000f-000f-000f-000000000002','e1000000-0000-0000-0000-00000000000f','b1b2c3d4-0002-0002-0002-000000000001','d1000000-0000-0000-0000-000000000002','BN241001','2027-10-31',300,300,2.00,'2024-10-25 09:00:00+03')
-ON CONFLICT (id) DO NOTHING;
+SELECT
+  c.id,
+  'b1b2c3d4-0002-0002-0002-000000000001',
+  (ARRAY[
+    'd1000000-0000-0000-0000-000000000001',
+    'd1000000-0000-0000-0000-000000000002',
+    'd1000000-0000-0000-0000-000000000003',
+    'd1000000-0000-0000-0000-000000000004',
+    'd1000000-0000-0000-0000-000000000005',
+    'd1000000-0000-0000-0000-000000000006',
+    'd1000000-0000-0000-0000-000000000007',
+    'd1000000-0000-0000-0000-000000000008'
+  ])[1 + ((c.rn + s.n) % 8)]::uuid,
+  'BN' || to_char(
+      now() - (interval '1 day' * (CASE WHEN s.n = 1 THEN 220 + (c.rn % 90) ELSE 40 + (c.rn % 60) END)::int),
+      'YYMMDD') || lpad(c.rn::text, 3, '0') || s.n::text,
+  -- expiry date
+  CASE
+    WHEN s.n = 1 AND c.cond = 'nearexp' THEN current_date + 18
+    WHEN s.n = 1 AND c.cond = 'expired' THEN current_date - 20
+    WHEN s.n = 1 THEN current_date + (270 + ((c.rn * 7) % 200))::int
+    ELSE current_date + (500 + ((c.rn * 11) % 400))::int
+  END,
+  -- manufactured date
+  (now() - (interval '1 day' * (CASE WHEN s.n = 1 THEN 280 + (c.rn % 90) ELSE 100 + (c.rn % 60) END)::int))::date,
+  c.qty_recv,
+  -- quantity remaining
+  CASE
+    WHEN c.cond = 'out' THEN 0
+    WHEN c.cond = 'low'  AND s.n = 1 THEN 0
+    WHEN c.cond = 'low'  AND s.n = 2 THEN GREATEST((c.reorder_level * 0.4)::int, 1)
+    WHEN s.n = 1 AND c.cond = 'expired' THEN (c.qty_recv * 0.30)::int
+    WHEN s.n = 1 THEN (c.qty_recv * (0.35 + ((c.rn % 5) * 0.05)))::int
+    ELSE c.qty_recv
+  END,
+  c.cost_price,
+  now() - (interval '1 day' * (CASE WHEN s.n = 1 THEN 220 + (c.rn % 90) ELSE 40 + (c.rn % 60) END)::int)
+FROM classified c CROSS JOIN seq s;
+
+-- ============================================================
+-- PRODUCT IMAGES
+-- ------------------------------------------------------------
+-- Each product is mapped to a shared, freely-licensed category photo
+-- stored under apps/web/public/products/. Mapping is by name keyword,
+-- dosage form, then category (most specific first).
+-- ============================================================
+
+UPDATE products SET image_url = '/products/' || (CASE
+  WHEN name ILIKE '%Blood Pressure%' THEN 'bp'
+  WHEN name ILIKE '%Glucometer%' OR name ILIKE '%Glucose Test Strips%' THEN 'glucometer'
+  WHEN name ILIKE '%Thermometer%' THEN 'thermometer'
+  WHEN name ILIKE '%Malaria Rapid Test%' OR name ILIKE '%Pregnancy Test%' THEN 'testkit'
+  WHEN name ILIKE '%Face Masks%' THEN 'masks'
+  WHEN name ILIKE '%Gloves%' THEN 'gloves'
+  WHEN name ILIKE '%Bandage%' OR name ILIKE '%Cotton Wool%' THEN 'firstaid'
+  WHEN name ILIKE '%Surgical Spirit%' OR name ILIKE '%Hand Sanitizer%' OR name ILIKE '%Antiseptic%' OR name ILIKE '%Povidone%' THEN 'antiseptic'
+  WHEN name ILIKE '%Sanitary Pads%' THEN 'sanitary'
+  WHEN name ILIKE '%Diapers%' THEN 'diapers'
+  WHEN name ILIKE '%Infant Formula%' OR name ILIKE '%Infant Cereal%' THEN 'babyformula'
+  WHEN name ILIKE '%Baby Wipes%' OR name ILIKE '%Baby Jelly%' THEN 'babycare'
+  WHEN dosage_form = 'Inhaler' THEN 'inhaler'
+  WHEN dosage_form = 'Injection' THEN 'vial'
+  WHEN dosage_form = 'Sachet' THEN 'sachet'
+  WHEN dosage_form IN ('Cream','Ointment','Gel','Lotion') OR name ILIKE '%Shampoo%' THEN 'cream'
+  WHEN dosage_form IN ('Syrup','Suspension') THEN 'syrup'
+  WHEN category_id = 'c1000000-0000-0000-0000-00000000000b' THEN 'contraceptive'
+  WHEN category_id = 'c1000000-0000-0000-0000-000000000009' THEN 'supplement'
+  WHEN pack_label = 'Tin' AND dosage_form = 'Tablet' THEN 'pillsbottle'
+  WHEN dosage_form = 'Capsule' THEN 'capsules'
+  ELSE 'tablets'
+END) || '.jpg'
+WHERE organization_id = 'a1b2c3d4-0001-0001-0001-000000000001';

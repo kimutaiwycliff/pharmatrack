@@ -10,11 +10,6 @@ import { formatKES } from "@/lib/store/cartStore"
 import { cacheProduct } from "@/lib/offline/db"
 import type { ProductWithStock } from "@pharmatrack/types"
 
-const PILL_COLORS = [
-  "#16a34a", "#d97706", "#2563eb", "#7c3aed",
-  "#db2777", "#0891b2", "#ea580c", "#65a30d",
-]
-
 interface Props {
   branchId: string
   onBarcodeNotFound?: (barcode: string) => void
@@ -146,11 +141,18 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
               }}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left border-b border-[var(--pt-border)] last:border-b-0 transition-colors"
             >
-              <div className="min-w-0">
-                <p className="text-sm font-semibold truncate">{p.name}</p>
-                <p className="text-xs text-[var(--pt-text-secondary)]">
-                  {[p.strength, p.dosage_form].filter(Boolean).join(" · ")} · {p.stock_on_hand ?? 0} in stock
-                </p>
+              <div className="flex items-center gap-3 min-w-0">
+                {p.image_url ? (
+                  <img src={p.image_url} alt={p.name ?? ""} className="w-9 h-9 rounded-lg object-cover shrink-0 border border-[var(--pt-border)] bg-gray-50" />
+                ) : (
+                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 text-sm">💊</div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{p.name}</p>
+                  <p className="text-xs text-[var(--pt-text-secondary)]">
+                    {[p.strength, p.dosage_form].filter(Boolean).join(" · ")} · {p.stock_on_hand ?? 0} in stock
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-3">
                 <span className="text-sm font-bold tabular-nums">{formatKES(p.selling_price ?? 0)}</span>
@@ -195,23 +197,21 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
             Quick add
           </p>
           <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-3 gap-2.5 content-start">
-            {quickAdd.map((p, i) => (
+            {quickAdd.map((p) => (
               <button
                 key={p.product_id}
                 onClick={() => handleProductAdd(p)}
-                className="bg-white border border-[var(--pt-border)] rounded-xl p-3 text-left flex flex-col justify-between hover:border-[var(--pt-green)] hover:shadow-sm transition-all min-h-[100px]"
+                className="bg-white border border-[var(--pt-border)] rounded-xl p-2.5 text-left flex flex-col hover:border-[var(--pt-green)] hover:shadow-sm transition-all min-h-[140px]"
               >
-                <div
-                  className="w-7 h-7 rounded-md flex items-center justify-center mb-2 text-sm"
-                  style={{
-                    background: (PILL_COLORS[i % PILL_COLORS.length] ?? "#16a34a") + "20",
-                    color: PILL_COLORS[i % PILL_COLORS.length] ?? "#16a34a",
-                  }}
-                >
-                  💊
+                <div className="w-full aspect-square rounded-lg bg-gray-50 mb-2 overflow-hidden flex items-center justify-center border border-[var(--pt-border)]">
+                  {p.image_url ? (
+                    <img src={p.image_url} alt={p.name ?? ""} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-2xl">💊</span>
+                  )}
                 </div>
                 <p className="text-xs font-semibold leading-tight line-clamp-2">{p.name}</p>
-                <div className="flex justify-between items-center mt-1.5">
+                <div className="flex justify-between items-center mt-auto pt-1.5">
                   <span className="text-[10px] text-[var(--pt-text-secondary)]">
                     {p.stock_on_hand ?? 0} stk
                   </span>
