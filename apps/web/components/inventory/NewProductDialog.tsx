@@ -174,6 +174,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
             strength: strength || undefined,
             dosage_form: dosageForm,
             category_id: categoryId || undefined,
+            supplier_id: supplierId || undefined,
             requires_prescription: requiresPrescription,
             is_controlled: isControlled,
             base_unit: baseUnit,
@@ -348,6 +349,17 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
                 <FieldError msg={errors["max_discount_percent"]} />
               </div>
             </div>
+
+            {suppliers.length > 0 && (
+              <div>
+                <Label className="text-sm font-medium">Default supplier</Label>
+                <Select value={supplierId} onValueChange={(v) => { if (v !== null) setSupplierId(v) }}>
+                  <SelectTrigger className="mt-1.5 h-10"><SelectValue placeholder="Select supplier…" /></SelectTrigger>
+                  <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                </Select>
+                <p className="text-xs text-[var(--pt-text-tertiary)] mt-1">Who you usually order this from. Also used for any opening stock below.</p>
+              </div>
+            )}
           </div>
 
           {/* Opening stock (optional) */}
@@ -378,15 +390,6 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
                       )}
                       <FieldError msg={errors["quantity_received"]} />
                     </div>
-                    {suppliers.length > 0 && (
-                      <div>
-                        <Label className="text-sm font-medium">Supplier</Label>
-                        <Select value={supplierId} onValueChange={(v) => { if (v !== null) setSupplierId(v) }}>
-                          <SelectTrigger className="mt-1.5 h-10"><SelectValue placeholder="Select supplier…" /></SelectTrigger>
-                          <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                    )}
                   </div>
                 )}
               </>

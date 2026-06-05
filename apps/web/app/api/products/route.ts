@@ -25,6 +25,7 @@ const createProductSchema = z.object({
   strength: z.string().optional(),
   dosage_form: z.string().optional(),
   category_id: z.string().uuid().optional(),
+  supplier_id: z.string().uuid().nullable().optional(),
   base_unit: z.string().min(1),
   pack_label: z.string().optional(),
   units_per_pack: z.number().int().positive().default(1),

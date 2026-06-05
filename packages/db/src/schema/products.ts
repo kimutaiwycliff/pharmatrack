@@ -2,11 +2,13 @@ import { pgTable, uuid, text, numeric, integer, boolean, timestamp } from "drizz
 import { organizations } from "./organizations"
 import { categories } from "./categories"
 import { profiles } from "./profiles"
+import { suppliers } from "./suppliers"
 
 export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
   organization_id: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   category_id: uuid("category_id").references(() => categories.id),
+  supplier_id: uuid("supplier_id").references(() => suppliers.id),
 
   // Identity
   name: text("name").notNull(),

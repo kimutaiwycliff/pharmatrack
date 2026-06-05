@@ -252,6 +252,17 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
 
   const product = data?.product
 
+  const { data: suppliersData } = useQuery<{ suppliers: Array<{ id: string; name: string }> }>({
+    queryKey: ["suppliers"],
+    queryFn: async () => {
+      const res = await fetch("/api/suppliers")
+      if (!res.ok) return { suppliers: [] }
+      return res.json() as Promise<{ suppliers: Array<{ id: string; name: string }> }>
+    },
+    staleTime: 5 * 60_000,
+  })
+  const suppliers = suppliersData?.suppliers ?? []
+
   // Form state — initialised from product once loaded
   const [form, setForm] = useState<Partial<Product>>({})
   const initialised = useRef(false)
@@ -365,6 +376,17 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
               {/* Category */}
               <Section title="Category">
                 <CategorySelect value={form.category_id ?? null} onChange={(id) => setF("category_id", id)} />
+              </Section>
+
+              {/* Supplier */}
+              <Section title="Supplier">
+                <Field label="Default supplier" hint="Who you usually reorder this from">
+                  <select value={form.supplier_id ?? ""} onChange={(e) => setF("supplier_id", e.target.value || null)}
+                    className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
+                    <option value="">— None —</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </Field>
               </Section>
 
               {/* Units & Pricing */}

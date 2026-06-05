@@ -19,6 +19,7 @@ const updateSchema = z.object({
   strength: z.string().nullable().optional(),
   dosage_form: z.string().optional(),
   category_id: z.string().uuid().nullable().optional(),
+  supplier_id: z.string().uuid().nullable().optional(),
   base_unit: z.string().min(1).optional(),
   pack_label: z.string().nullable().optional(),
   units_per_pack: z.number().int().positive().optional(),

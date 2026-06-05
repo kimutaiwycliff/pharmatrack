@@ -374,6 +374,7 @@ export type Database = {
           requires_prescription: boolean
           selling_price: number
           strength: string | null
+          supplier_id: string | null
           units_per_pack: number
           updated_at: string
         }
@@ -401,6 +402,7 @@ export type Database = {
           requires_prescription?: boolean
           selling_price: number
           strength?: string | null
+          supplier_id?: string | null
           units_per_pack?: number
           updated_at?: string
         }
@@ -428,6 +430,7 @@ export type Database = {
           requires_prescription?: boolean
           selling_price?: number
           strength?: string | null
+          supplier_id?: string | null
           units_per_pack?: number
           updated_at?: string
         }
@@ -451,6 +454,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -735,6 +745,7 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          is_active: boolean
           name: string
           organization_id: string
           phone: string | null
@@ -744,6 +755,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          is_active?: boolean
           name: string
           organization_id: string
           phone?: string | null
@@ -753,6 +765,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          is_active?: boolean
           name?: string
           organization_id?: string
           phone?: string | null

@@ -62,6 +62,7 @@ export interface Supplier {
   phone: string | null
   email: string | null
   address: string | null
+  is_active: boolean
   created_at: string
 }
 
@@ -69,6 +70,7 @@ export interface Product {
   id: string
   organization_id: string
   category_id: string | null
+  supplier_id: string | null
   name: string
   brand_name: string | null
   manufacturer: string | null
