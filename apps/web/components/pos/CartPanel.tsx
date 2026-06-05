@@ -21,14 +21,14 @@ function QtyControl({ item }: { item: CartItem }) {
     <div className="flex items-center gap-1">
       <button
         onClick={() => updateQty(item.product_id, -1)}
-        className="w-7 h-7 rounded-md border border-[var(--pt-border)] flex items-center justify-center hover:bg-gray-50 text-[var(--pt-text-secondary)] transition-colors"
+        className="w-7 h-7 rounded-md border border-[var(--pt-border)] flex items-center justify-center hover:bg-[var(--pt-muted)] text-[var(--pt-text-secondary)] transition-colors"
       >
         <Minus size={13} />
       </button>
       <span className="w-8 text-center font-semibold text-sm tabular-nums">{item.quantity}</span>
       <button
         onClick={() => updateQty(item.product_id, 1)}
-        className="w-7 h-7 rounded-md border border-[var(--pt-border)] flex items-center justify-center hover:bg-gray-50 text-[var(--pt-text-secondary)] transition-colors"
+        className="w-7 h-7 rounded-md border border-[var(--pt-border)] flex items-center justify-center hover:bg-[var(--pt-muted)] text-[var(--pt-text-secondary)] transition-colors"
       >
         <Plus size={13} />
       </button>
@@ -82,9 +82,9 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
       </div>
 
       {/* Cart table */}
-      <div className="flex-1 min-h-0 overflow-hidden bg-white rounded-xl border border-[var(--pt-border)] mx-6 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] mx-6 flex flex-col">
         {/* Column headers */}
-        <div className="grid grid-cols-[1fr_130px_100px_36px] px-5 py-3 text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider border-b border-[var(--pt-border)] bg-gray-50 shrink-0">
+        <div className="grid grid-cols-[1fr_130px_100px_36px] px-5 py-3 text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider border-b border-[var(--pt-border)] bg-[var(--pt-muted)] shrink-0">
           <span>Item</span>
           <span className="text-center">Qty</span>
           <span className="text-right">Subtotal</span>
@@ -110,7 +110,7 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
                   {formatKES(item.unit_price)}/{item.base_unit}
                   {item.product_strength ? ` · ${item.product_strength}` : ""}
                   {item.is_controlled && (
-                    <span className="ml-1.5 text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
+                    <span className="ml-1.5 text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/15 px-1.5 py-0.5 rounded">
                       CONTROLLED
                     </span>
                   )}
@@ -126,7 +126,7 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
         </div>
 
         {/* Totals footer */}
-        <div className="px-5 py-4 bg-gray-50 border-t border-[var(--pt-border)] shrink-0 space-y-2">
+        <div className="px-5 py-4 bg-[var(--pt-muted)] border-t border-[var(--pt-border)] shrink-0 space-y-2">
           <div className="flex justify-between text-sm text-[var(--pt-text-secondary)]">
             <span>Subtotal</span>
             <span className="tabular-nums">{formatKES(subtotal)}</span>
@@ -158,7 +158,7 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
             </div>
           </div>
           {discountExceedsLimit && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-50 dark:bg-red-500/15 border border-red-200 rounded-lg text-[11px] text-red-700 dark:text-red-300">
               <AlertTriangle size={12} className="shrink-0" />
               Discount exceeds product limit — manager approval required
             </div>

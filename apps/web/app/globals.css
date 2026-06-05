@@ -56,6 +56,8 @@
   --pt-green-100: #dcfce7;
   --pt-bg: #f9fafb;
   --pt-surface: #ffffff;
+  --pt-muted: #f9fafb;          /* was bg-gray-50 */
+  --pt-muted-strong: #f3f4f6;   /* was bg-gray-100 */
   --pt-border: #e5e7eb;
   --pt-border-strong: #d1d5db;
   --pt-text: #111827;
@@ -99,6 +101,62 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.528 0.154 150.7);
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* PharmaTrack brand tokens — dark */
+  --pt-green: #22c55e;
+  --pt-green-600: #16a34a;
+  --pt-green-50: #0f2a1b;
+  --pt-green-100: #173a26;
+  --pt-bg: #0e1116;
+  --pt-surface: #171b21;
+  --pt-muted: #1c212a;          /* was bg-gray-50 */
+  --pt-muted-strong: #232a34;   /* was bg-gray-100 */
+  --pt-border: #2a313b;
+  --pt-border-strong: #3a424d;
+  --pt-text: #e6e8eb;
+  --pt-text-secondary: #9ba3af;
+  --pt-text-tertiary: #6b7480;
+  --pt-red: #f87171;
+  --pt-red-50: #2a1517;
+  --pt-amber: #fbbf24;
+  --pt-yellow: #facc15;
+
+  /* shadcn tokens — dark */
+  --background: oklch(0.16 0.012 250);
+  --foreground: oklch(0.93 0.005 250);
+  --card: oklch(0.2 0.012 250);
+  --card-foreground: oklch(0.93 0.005 250);
+  --popover: oklch(0.2 0.012 250);
+  --popover-foreground: oklch(0.93 0.005 250);
+  --primary: oklch(0.62 0.16 150.7);
+  --primary-foreground: oklch(0.16 0.012 250);
+  --secondary: oklch(0.26 0.012 250);
+  --secondary-foreground: oklch(0.93 0.005 250);
+  --muted: oklch(0.26 0.012 250);
+  --muted-foreground: oklch(0.7 0.01 250);
+  --accent: oklch(0.28 0.014 250);
+  --accent-foreground: oklch(0.93 0.005 250);
+  --destructive: oklch(0.62 0.2 25);
+  --border: oklch(0.3 0.012 250);
+  --input: oklch(0.3 0.012 250);
+  --ring: oklch(0.62 0.16 150.7);
+  --chart-1: oklch(0.62 0.16 150.7);
+  --chart-2: oklch(0.52 0.13 150.7);
+  --chart-3: oklch(0.7 0.12 150.7);
+  --chart-4: oklch(0.45 0.1 150.7);
+  --chart-5: oklch(0.8 0.08 150.7);
+  --sidebar: oklch(0.2 0.012 250);
+  --sidebar-foreground: oklch(0.93 0.005 250);
+  --sidebar-primary: oklch(0.62 0.16 150.7);
+  --sidebar-primary-foreground: oklch(0.16 0.012 250);
+  --sidebar-accent: oklch(0.28 0.014 250);
+  --sidebar-accent-foreground: oklch(0.93 0.005 250);
+  --sidebar-border: oklch(0.3 0.012 250);
+  --sidebar-ring: oklch(0.62 0.16 150.7);
 }
 
 @layer base {

@@ -36,11 +36,11 @@ export default function SuppliersPage() {
       </div>
 
       {isLoading ? (
-        <div className="max-w-2xl bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
+        <div className="max-w-2xl bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">
-              <div className="h-3.5 bg-gray-100 rounded w-40 mb-2" />
-              <div className="h-2.5 bg-gray-100 rounded w-56" />
+              <div className="h-3.5 bg-[var(--pt-muted-strong)] rounded w-40 mb-2" />
+              <div className="h-2.5 bg-[var(--pt-muted-strong)] rounded w-56" />
             </div>
           ))}
         </div>

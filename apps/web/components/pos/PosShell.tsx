@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ClockInDialog } from "./ClockInDialog"
 import { ClockOutDialog } from "./ClockOutDialog"
+import { ThemeToggle } from "@/components/theme/ThemeToggle"
 import { useActiveShift } from "@/lib/hooks/useActiveShift"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
@@ -40,7 +41,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--pt-bg)]">
       {/* POS Top Bar */}
-      <header className="h-14 border-b border-[var(--pt-border)] bg-white flex items-center px-3 sm:px-4 gap-2 sm:gap-4 shrink-0">
+      <header className="h-14 border-b border-[var(--pt-border)] bg-[var(--pt-surface)] flex items-center px-3 sm:px-4 gap-2 sm:gap-4 shrink-0">
         {/* Logo */}
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-[var(--pt-green)] flex items-center justify-center">
@@ -105,6 +106,9 @@ export function PosShell({ userId, children }: { userId: string; children: React
             <span className="hidden sm:inline">End Shift</span>
           </Button>
         )}
+
+        {/* Theme */}
+        <ThemeToggle className="!w-8 !h-8" />
 
         {/* Sign out */}
         <form action={signOut}>

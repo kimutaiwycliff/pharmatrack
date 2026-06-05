@@ -46,7 +46,7 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--pt-border)] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-[var(--pt-text-secondary)]">
+            <div className="w-9 h-9 rounded-lg bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-secondary)]">
               <Layers size={17} />
             </div>
             <div>
@@ -58,7 +58,7 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 text-[var(--pt-text-secondary)]"
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]"
           >
             <X size={16} />
           </button>
@@ -72,7 +72,7 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
               { label: "Batches", value: String(product.batch_count ?? 0) },
               { label: "Sell price", value: product.selling_price != null ? formatKES(product.selling_price) : "—" },
             ].map(({ label, value }) => (
-              <div key={label} className="bg-gray-50 px-4 py-3">
+              <div key={label} className="bg-[var(--pt-muted)] px-4 py-3">
                 <p className="text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide">
                   {label}
                 </p>
@@ -87,7 +87,7 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
           {isLoading && (
             <div className="p-6 space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
+                <div key={i} className="h-20 bg-[var(--pt-muted-strong)] rounded-xl animate-pulse" />
               ))}
             </div>
           )}
@@ -108,7 +108,7 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
                   <div key={b.id} className="px-6 py-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-bold text-[var(--pt-text-secondary)]">
+                        <span className="w-6 h-6 rounded-full bg-[var(--pt-muted-strong)] flex items-center justify-center text-[10px] font-bold text-[var(--pt-text-secondary)]">
                           {i + 1}
                         </span>
                         <div>
@@ -161,7 +161,7 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
                         <p className="text-[var(--pt-text-tertiary)] uppercase tracking-wide text-[10px] font-semibold">
                           Progress
                         </p>
-                        <div className="mt-1.5 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                        <div className="mt-1.5 h-1.5 rounded-full bg-[var(--pt-border)] overflow-hidden">
                           <div
                             className="h-full rounded-full bg-[var(--pt-green)]"
                             style={{

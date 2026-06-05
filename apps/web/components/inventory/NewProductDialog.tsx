@@ -82,14 +82,14 @@ function FieldError({ msg }: { msg?: string }) {
 
 function Toggle({ label, description, checked, onChange }: { label: string; description?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[var(--pt-border)] cursor-pointer hover:bg-gray-50 transition-colors">
+    <label className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[var(--pt-border)] cursor-pointer hover:bg-[var(--pt-muted)] transition-colors">
       <div>
         <p className="text-sm font-medium">{label}</p>
         {description && <p className="text-xs text-[var(--pt-text-secondary)]">{description}</p>}
       </div>
       <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
-        className={`w-11 h-6 rounded-full transition-colors shrink-0 ${checked ? "bg-[var(--pt-green)]" : "bg-gray-200"}`}>
-        <span className={`block w-4 h-4 rounded-full bg-white shadow transition-transform mx-1 ${checked ? "translate-x-5" : "translate-x-0"}`} />
+        className={`w-11 h-6 rounded-full transition-colors shrink-0 ${checked ? "bg-[var(--pt-green)]" : "bg-[var(--pt-border)]"}`}>
+        <span className={`block w-4 h-4 rounded-full bg-[var(--pt-surface)] shadow transition-transform mx-1 ${checked ? "translate-x-5" : "translate-x-0"}`} />
       </button>
     </label>
   )
@@ -230,7 +230,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add product</DialogTitle>
         </DialogHeader>
@@ -256,7 +256,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
             </div>
             <div>
               <Label htmlFor="gtin" className="text-sm font-medium">GTIN / Barcode{prefill?.gtin && " (from scan)"}</Label>
-              <Input id="gtin" value={gtin} onChange={(e) => setGtin(e.target.value)} placeholder="EAN-13 or barcode" readOnly={!!prefill?.gtin} className={`mt-1.5 h-10 ${prefill?.gtin ? "bg-gray-50" : ""}`} />
+              <Input id="gtin" value={gtin} onChange={(e) => setGtin(e.target.value)} placeholder="EAN-13 or barcode" readOnly={!!prefill?.gtin} className={`mt-1.5 h-10 ${prefill?.gtin ? "bg-[var(--pt-muted)]" : ""}`} />
             </div>
           </div>
 
@@ -282,7 +282,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
               <Toggle label="Requires prescription" description="Patient must present a valid Rx" checked={requiresPrescription} onChange={setRequiresPrescription} />
               <Toggle label="Controlled substance" description="Narcotic or psychotropic — narcotics register required" checked={isControlled} onChange={setIsControlled} />
               {isControlled && (
-                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-500/15 border border-amber-200 rounded-lg text-sm text-amber-800">
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <span>This product will be tracked in the controlled substances narcotics register as required by PPB.</span>
                 </div>
@@ -311,7 +311,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
               <Input id="units_per_pack" type="number" min={1} value={unitsPerPack} onChange={(e) => setUnitsPerPack(parseInt(e.target.value) || 1)} className="mt-1.5 h-10" />
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-3 space-y-3 border border-[var(--pt-border)]">
+            <div className="bg-[var(--pt-muted)] rounded-lg p-3 space-y-3 border border-[var(--pt-border)]">
               <p className="text-xs font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide">Cost price</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -331,7 +331,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
               <div className="flex justify-between items-baseline">
                 <Label htmlFor="selling_price" className="text-sm font-medium">Selling price per {baseUnit} (KES) *</Label>
                 {margin !== null && (
-                  <span className={`text-xs font-semibold ${parseFloat(margin) >= 20 ? "text-[var(--pt-green)]" : parseFloat(margin) >= 0 ? "text-amber-600" : "text-[var(--pt-red)]"}`}>{margin}% margin</span>
+                  <span className={`text-xs font-semibold ${parseFloat(margin) >= 20 ? "text-[var(--pt-green)]" : parseFloat(margin) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-[var(--pt-red)]"}`}>{margin}% margin</span>
                 )}
               </div>
               <Input id="selling_price" type="number" min={0} step="0.01" placeholder="0.00" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} className="mt-1.5 h-10" />

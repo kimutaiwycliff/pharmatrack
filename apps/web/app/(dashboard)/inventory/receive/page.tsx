@@ -44,7 +44,7 @@ export default function ReceiveStockPage() {
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => router.push("/inventory")}
-          className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-100 transition-colors"
+          className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
           aria-label="Back to inventory"
         >
           <ArrowLeft size={16} />

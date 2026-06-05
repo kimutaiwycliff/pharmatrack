@@ -71,7 +71,7 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
         className="max-w-[500px] p-0 gap-0 overflow-hidden rounded-2xl max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--pt-border)] sticky top-0 bg-white z-10">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--pt-border)] sticky top-0 bg-[var(--pt-surface)] z-10">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-[var(--pt-green-50)] flex items-center justify-center font-black text-[var(--pt-green-600)] text-sm tracking-tight">
               M·P
@@ -80,7 +80,7 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 text-[var(--pt-text-secondary)] text-lg"
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)] text-lg"
           >
             ✕
           </button>
@@ -89,7 +89,7 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
         {/* Body */}
         <div className="p-6 space-y-4">
           {/* Amount */}
-          <div className="flex justify-between items-baseline bg-gray-50 border border-[var(--pt-border)] rounded-xl px-4 py-3">
+          <div className="flex justify-between items-baseline bg-[var(--pt-muted)] border border-[var(--pt-border)] rounded-xl px-4 py-3">
             <span className="text-sm font-medium text-[var(--pt-text-secondary)]">Amount</span>
             <span className="text-2xl font-bold tabular-nums">{formatKES(total)}</span>
           </div>
@@ -108,7 +108,7 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
                 className={`text-left p-3 rounded-xl border transition-colors ${
                   mode === opt.id
                     ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]"
-                    : "border-[var(--pt-border)] bg-white hover:bg-gray-50"
+                    : "border-[var(--pt-border)] bg-[var(--pt-surface)] hover:bg-[var(--pt-muted)]"
                 }`}
               >
                 <p
@@ -131,7 +131,7 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
                   Customer phone
                 </label>
                 <div className="flex gap-2">
-                  <div className="flex items-center gap-1.5 h-11 px-3 border border-[var(--pt-border)] rounded-xl bg-white text-sm font-medium shrink-0">
+                  <div className="flex items-center gap-1.5 h-11 px-3 border border-[var(--pt-border)] rounded-xl bg-[var(--pt-surface)] text-sm font-medium shrink-0">
                     🇰🇪 +254
                   </div>
                   <input
@@ -166,7 +166,7 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
                   Ask customer to enter their M-Pesa PIN
                 </p>
               </div>
-              <div className="inline-flex items-center gap-2 bg-white rounded-full px-4 py-2 text-sm font-semibold tabular-nums">
+              <div className="inline-flex items-center gap-2 bg-[var(--pt-surface)] rounded-full px-4 py-2 text-sm font-semibold tabular-nums">
                 <span className="w-2 h-2 rounded-full bg-[var(--pt-green)] animate-pulse" />
                 Waiting · 0:{String(timer).padStart(2, "0")} remaining
               </div>
@@ -200,8 +200,8 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
           {/* MANUAL */}
           {mode === "manual" && (
             <div className="space-y-3">
-              <div className="flex gap-2.5 bg-blue-50 border border-blue-100 rounded-xl p-3">
-                <Info size={14} className="text-blue-600 mt-0.5 shrink-0" />
+              <div className="flex gap-2.5 bg-blue-50 dark:bg-blue-500/15 border border-blue-100 rounded-xl p-3">
+                <Info size={14} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
                 <p className="text-xs text-blue-800 leading-relaxed">
                   Use when the customer paid via <strong>Pay Bill</strong> or{" "}
                   <strong>Send Money</strong> on their own. Read the M-Pesa SMS code aloud —

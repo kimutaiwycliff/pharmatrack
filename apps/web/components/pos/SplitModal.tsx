@@ -57,7 +57,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
         className="max-w-[520px] p-0 gap-0 overflow-hidden rounded-2xl max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--pt-border)] sticky top-0 bg-white z-10">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--pt-border)] sticky top-0 bg-[var(--pt-surface)] z-10">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-[var(--pt-green-50)] flex items-center justify-center text-[var(--pt-green-600)]">
               <Banknote size={17} />
@@ -71,7 +71,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 text-[var(--pt-text-secondary)] text-lg"
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)] text-lg"
           >
             ✕
           </button>
@@ -80,7 +80,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
         {/* Body */}
         <div className="p-6 space-y-4">
           {/* Total + allocation bar */}
-          <div className="bg-gray-50 border border-[var(--pt-border)] rounded-xl p-4">
+          <div className="bg-[var(--pt-muted)] border border-[var(--pt-border)] rounded-xl p-4">
             <div className="flex justify-between items-baseline mb-3">
               <span className="text-sm font-medium text-[var(--pt-text-secondary)]">Order total</span>
               <span className="text-2xl font-bold tabular-nums">{formatKES(total)}</span>
@@ -88,7 +88,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
             <div className="h-2 rounded-full bg-[var(--pt-border)] overflow-hidden flex">
               <div
                 style={{ width: `${cashPct}%` }}
-                className="bg-gray-400 transition-all duration-150"
+                className="bg-[var(--pt-text-tertiary)] transition-all duration-150"
               />
               <div
                 style={{ width: `${mpesaPct}%` }}
@@ -97,7 +97,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
             </div>
             <div className="flex justify-between mt-2 text-xs text-[var(--pt-text-secondary)]">
               <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-sm bg-gray-400" />
+                <span className="w-2 h-2 rounded-sm bg-[var(--pt-text-tertiary)]" />
                 Cash · {cashPct.toFixed(0)}%
               </span>
               <span className="flex items-center gap-1.5">
@@ -110,7 +110,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
           {/* Cash portion */}
           <div className="border border-[var(--pt-border)] rounded-xl p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center text-[var(--pt-text-secondary)]">
+              <div className="w-7 h-7 rounded-md bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-secondary)]">
                 <Banknote size={14} />
               </div>
               <span className="text-sm font-semibold">Cash portion</span>
@@ -131,7 +131,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
                 <button
                   key={p}
                   onClick={() => setCashSafe(Math.round((total * p) / 100))}
-                  className="flex-1 h-7 border border-[var(--pt-border)] rounded-md bg-white text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors"
+                  className="flex-1 h-7 border border-[var(--pt-border)] rounded-md bg-[var(--pt-surface)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
                 >
                   {p}%
                 </button>
@@ -153,7 +153,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
               </span>
             </div>
 
-            <div className="flex gap-1.5 bg-white rounded-lg p-1">
+            <div className="flex gap-1.5 bg-[var(--pt-surface)] rounded-lg p-1">
               {(["prompt", "manual"] as const).map((m) => (
                 <button
                   key={m}
@@ -161,7 +161,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
                   className={`flex-1 h-7 rounded-md text-xs font-semibold transition-colors ${
                     mpesaMode === m
                       ? "bg-[var(--pt-green)] text-white"
-                      : "text-[var(--pt-text-secondary)] hover:bg-gray-50"
+                      : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"
                   }`}
                 >
                   {m === "prompt" ? "STK Push" : "Manual Confirm"}
@@ -171,7 +171,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
 
             {mpesaMode === "prompt" ? (
               <div className="flex gap-2">
-                <div className="flex items-center gap-1 h-10 px-3 border border-[var(--pt-border)] rounded-lg bg-white text-sm font-medium shrink-0">
+                <div className="flex items-center gap-1 h-10 px-3 border border-[var(--pt-border)] rounded-lg bg-[var(--pt-surface)] text-sm font-medium shrink-0">
                   🇰🇪 +254
                 </div>
                 <input
@@ -179,7 +179,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="7__ ___ ___"
-                  className="flex-1 h-10 px-3 border border-[var(--pt-border)] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent text-sm"
+                  className="flex-1 h-10 px-3 border border-[var(--pt-border)] rounded-lg bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent text-sm"
                 />
               </div>
             ) : (
@@ -189,7 +189,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 10))}
                   placeholder="M-Pesa code (e.g. RGQ45HTYS8)"
-                  className="w-full h-10 px-3 border border-[var(--pt-border)] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent font-mono font-semibold tracking-widest uppercase text-sm"
+                  className="w-full h-10 px-3 border border-[var(--pt-border)] rounded-lg bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent font-mono font-semibold tracking-widest uppercase text-sm"
                 />
                 <div className="flex justify-between mt-1 text-xs text-[var(--pt-text-secondary)]">
                   <span>Customer paid {formatKES(mpesa)} via Pay Bill / Send Money</span>
@@ -202,7 +202,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
           </div>
 
           {/* Balance summary */}
-          <div className="flex justify-between items-center rounded-xl bg-gray-50 px-4 py-3">
+          <div className="flex justify-between items-center rounded-xl bg-[var(--pt-muted)] px-4 py-3">
             <span
               className={`text-xs font-semibold ${
                 balanced ? "text-[var(--pt-green-600)]" : "text-[var(--pt-text-secondary)]"

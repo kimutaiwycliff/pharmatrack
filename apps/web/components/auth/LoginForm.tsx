@@ -18,12 +18,12 @@ export function LoginForm() {
 
   return (
     <div className="w-full">
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] shadow-sm p-8">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] shadow-sm p-8">
         <h1 className="text-xl font-bold tracking-tight text-[var(--pt-text)] mb-1">Welcome back</h1>
         <p className="text-sm text-[var(--pt-text-secondary)] mb-6">Sign in to start your shift</p>
 
         {/* Tab switcher */}
-        <div className="grid grid-cols-2 bg-gray-100 rounded-lg p-1 mb-5">
+        <div className="grid grid-cols-2 bg-[var(--pt-muted-strong)] rounded-lg p-1 mb-5">
           {(["email", "pin"] as const).map((t) => (
             <button
               key={t}
@@ -32,7 +32,7 @@ export function LoginForm() {
               className={[
                 "h-9 rounded-md text-sm font-semibold transition-all",
                 tab === t
-                  ? "bg-white text-[var(--pt-text)] shadow-sm"
+                  ? "bg-[var(--pt-surface)] text-[var(--pt-text)] shadow-sm"
                   : "text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)]",
               ].join(" ")}
             >

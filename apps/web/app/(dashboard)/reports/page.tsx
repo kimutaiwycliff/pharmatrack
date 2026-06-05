@@ -72,12 +72,12 @@ function KpiCard({ icon: Icon, label, value, sub, color = "green" }: {
 }) {
   const colors = {
     green: "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]",
-    amber: "bg-amber-50 text-amber-600",
-    red: "bg-red-50 text-red-600",
-    blue: "bg-blue-50 text-blue-600",
+    amber: "bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400",
+    red: "bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400",
+    blue: "bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400",
   }
   return (
-    <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5 flex items-start gap-4">
+    <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 flex items-start gap-4">
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${colors[color]}`}>
         <Icon size={18} />
       </div>
@@ -93,7 +93,7 @@ function KpiCard({ icon: Icon, label, value, sub, color = "green" }: {
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white border border-[var(--pt-border)] rounded-lg p-3 shadow-lg text-[12px]">
+    <div className="bg-[var(--pt-surface)] border border-[var(--pt-border)] rounded-lg p-3 shadow-lg text-[12px]">
       <p className="font-semibold text-[var(--pt-text)] mb-1">{label}</p>
       {payload.map(p => (
         <div key={p.name} className="flex items-center gap-2">
@@ -140,7 +140,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
 
       {/* Daily chart */}
       {dailyChart.length > 0 && (
-        <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5">
+        <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[14px] font-bold">Daily Revenue</h3>
             <button onClick={() => refetch()} className="text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] transition-colors">
@@ -162,7 +162,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Top products */}
-        <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5">
+        <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[14px] font-bold">Top Products by Revenue</h3>
             <button
@@ -177,12 +177,12 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
               <div key={p.name}>
                 <div className="flex items-center justify-between text-[13px] mb-1">
                   <span className="flex items-center gap-2 min-w-0">
-                    <span className="w-5 h-5 rounded-full bg-gray-100 text-[10px] font-bold flex items-center justify-center shrink-0 text-[var(--pt-text-secondary)]">{i + 1}</span>
+                    <span className="w-5 h-5 rounded-full bg-[var(--pt-muted-strong)] text-[10px] font-bold flex items-center justify-center shrink-0 text-[var(--pt-text-secondary)]">{i + 1}</span>
                     <span className="truncate font-medium">{p.name}</span>
                   </span>
                   <span className="tabular-nums font-semibold shrink-0 ml-2">{formatKES(p.revenue)}</span>
                 </div>
-                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-[var(--pt-muted-strong)] rounded-full overflow-hidden">
                   <div
                     className="h-full bg-[var(--pt-green)] rounded-full"
                     style={{ width: `${(p.revenue / maxRevenue) * 100}%` }}
@@ -196,7 +196,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
         </div>
 
         {/* By cashier */}
-        <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5">
+        <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
           <h3 className="text-[14px] font-bold mb-4">Sales by Cashier</h3>
           <div className="space-y-2">
             {byCashier.map(c => (
@@ -219,7 +219,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
       </div>
 
       {/* Transactions table */}
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[14px] font-bold">Transactions <span className="font-normal text-[var(--pt-text-tertiary)] text-[12px]">(latest 100)</span></h3>
           <button
@@ -240,7 +240,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
             </thead>
             <tbody>
               {transactions.map(t => (
-                <tr key={t.id} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-gray-50/60">
+                <tr key={t.id} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-[var(--pt-muted)]/60">
                   <td className="px-3 py-2.5 font-mono text-[12px]">{t.receipt_number}</td>
                   <td className="px-3 py-2.5 text-[12px] whitespace-nowrap text-[var(--pt-text-secondary)]">
                     {new Date(t.created_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Nairobi" })}
@@ -248,15 +248,15 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
                   <td className="px-3 py-2.5 text-[12px]">{t.cashier}</td>
                   <td className="px-3 py-2.5">
                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                      t.payment_method === "mpesa" ? "bg-green-50 text-green-700"
-                        : t.payment_method === "cash" ? "bg-blue-50 text-blue-700"
+                      t.payment_method === "mpesa" ? "bg-green-50 text-green-700 dark:text-green-300"
+                        : t.payment_method === "cash" ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300"
                         : "bg-purple-50 text-purple-700"
                     }`}>
                       {t.payment_method.toUpperCase()}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-center text-[12px]">{t.item_count}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-[12px] text-amber-700">{t.discount_amount > 0 ? formatKES(t.discount_amount) : "—"}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-[12px] text-amber-700 dark:text-amber-300">{t.discount_amount > 0 ? formatKES(t.discount_amount) : "—"}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[13px]">{formatKES(t.total_amount)}</td>
                 </tr>
               ))}
@@ -299,11 +299,11 @@ function InventoryTab({ branchId }: { branchId: string }) {
   })
 
   const STATUS_CHIP = {
-    all:          { label: "All",         count: summary.totalSKUs, className: "bg-gray-100 text-gray-700" },
-    out_of_stock: { label: "Out of stock", count: summary.outOfStock, className: "bg-red-50 text-red-700 border border-red-200" },
-    low_stock:    { label: "Low stock",   count: summary.lowStock,  className: "bg-amber-50 text-amber-700 border border-amber-200" },
-    expiring:     { label: "Expiring",    count: summary.expiring,  className: "bg-yellow-50 text-yellow-700 border border-yellow-200" },
-    controlled:   { label: "Controlled",  count: summary.controlled, className: "bg-blue-50 text-blue-700 border border-blue-200" },
+    all:          { label: "All",         count: summary.totalSKUs, className: "bg-[var(--pt-muted-strong)] text-[var(--pt-text)]" },
+    out_of_stock: { label: "Out of stock", count: summary.outOfStock, className: "bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border border-red-200" },
+    low_stock:    { label: "Low stock",   count: summary.lowStock,  className: "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-200" },
+    expiring:     { label: "Expiring",    count: summary.expiring,  className: "bg-yellow-50 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border border-yellow-200" },
+    controlled:   { label: "Controlled",  count: summary.controlled, className: "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-200" },
   }
 
   return (
@@ -323,7 +323,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
             key={key}
             onClick={() => setFilter(key)}
             className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors ${
-              filter === key ? cfg.className : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              filter === key ? cfg.className : "bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)] hover:bg-[var(--pt-border)]"
             }`}
           >
             {cfg.label} <span className="opacity-70">({cfg.count})</span>
@@ -331,8 +331,8 @@ function InventoryTab({ branchId }: { branchId: string }) {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--pt-border)] bg-gray-50">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--pt-border)] bg-[var(--pt-muted)]">
           <span className="text-[12px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">
             {filtered.length} items
           </span>
@@ -345,7 +345,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
         </div>
         <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-white border-b border-[var(--pt-border)]">
+            <thead className="sticky top-0 bg-[var(--pt-surface)] border-b border-[var(--pt-border)]">
               <tr>
                 {["Product", "Strength", "Form", "Stock", "Reorder", "Expiry", "Status"].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider whitespace-nowrap">{h}</th>
@@ -354,7 +354,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
             </thead>
             <tbody>
               {filtered.map(p => (
-                <tr key={p.product_id} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-gray-50/60">
+                <tr key={p.product_id} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-[var(--pt-muted)]/60">
                   <td className="px-4 py-3">
                     <p className="font-semibold text-[13px]">{p.name}</p>
                     {p.brand_name && <p className="text-[11px] text-[var(--pt-text-tertiary)]">{p.brand_name}</p>}
@@ -364,7 +364,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
                   <td className="px-4 py-3 text-right font-bold tabular-nums text-[13px]">
                     <span className={
                       (p.stock_on_hand ?? 0) === 0 ? "text-[var(--pt-red)]"
-                        : (p.stock_on_hand ?? 0) <= (p.reorder_level ?? 10) ? "text-amber-600"
+                        : (p.stock_on_hand ?? 0) <= (p.reorder_level ?? 10) ? "text-amber-600 dark:text-amber-400"
                         : "text-[var(--pt-text)]"
                     }>
                       {p.stock_on_hand ?? 0}
@@ -377,7 +377,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
                       <div>
                         <p>{new Date(p.earliest_expiry).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}</p>
                         {p.expiry_days !== null && p.expiry_days <= 90 && (
-                          <p className={`text-[11px] font-medium ${p.expiry_days <= 30 ? "text-[var(--pt-red)]" : "text-amber-600"}`}>
+                          <p className={`text-[11px] font-medium ${p.expiry_days <= 30 ? "text-[var(--pt-red)]" : "text-amber-600 dark:text-amber-400"}`}>
                             {p.expiry_days < 0 ? "EXPIRED" : `in ${p.expiry_days}d`}
                           </p>
                         )}
@@ -386,15 +386,15 @@ function InventoryTab({ branchId }: { branchId: string }) {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
-                      p.status === "out_of_stock" ? "bg-red-50 text-red-700 border-red-100"
-                        : p.status === "low_stock" ? "bg-amber-50 text-amber-700 border-amber-100"
-                        : p.status === "expiring" ? "bg-yellow-50 text-yellow-700 border-yellow-100"
+                      p.status === "out_of_stock" ? "bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border-red-100"
+                        : p.status === "low_stock" ? "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-100"
+                        : p.status === "expiring" ? "bg-yellow-50 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-100"
                         : "bg-[var(--pt-green-50)] text-[var(--pt-green-600)] border-[var(--pt-green-100)]"
                     }`}>
                       {p.status.replace("_", " ")}
                     </span>
                     {p.is_controlled && (
-                      <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-blue-50 text-blue-700 border-blue-100">
+                      <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-100">
                         controlled
                       </span>
                     )}
@@ -443,7 +443,7 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
       </div>
 
       {monthlyChart.length > 0 && (
-        <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5">
+        <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
           <h3 className="text-[14px] font-bold mb-4">Monthly Revenue Trend</h3>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={monthlyChart}>
@@ -459,8 +459,8 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
       )}
 
       {monthlyChart.length > 0 && (
-        <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--pt-border)] bg-gray-50">
+        <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--pt-border)] bg-[var(--pt-muted)]">
             <h3 className="text-[14px] font-bold">Monthly Breakdown</h3>
             <button
               onClick={() => exportCSV(monthlyChart as unknown as Record<string, unknown>[], `financial-${from}-${to}.csv`)}
@@ -479,13 +479,13 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
             </thead>
             <tbody>
               {[...monthlyChart].reverse().map(m => (
-                <tr key={m.month} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-gray-50/60">
+                <tr key={m.month} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-[var(--pt-muted)]/60">
                   <td className="px-5 py-3 font-medium text-[13px]">
                     {new Date(m.month + "-01").toLocaleDateString("en-KE", { month: "long", year: "numeric" })}
                   </td>
                   <td className="px-5 py-3 text-center tabular-nums text-[13px]">{m.count}</td>
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-[13px]">{formatKES(m.revenue)}</td>
-                  <td className="px-5 py-3 text-right tabular-nums text-amber-700 text-[13px]">{formatKES(m.discounts)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums text-amber-700 dark:text-amber-300 text-[13px]">{formatKES(m.discounts)}</td>
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-[13px] text-[var(--pt-green-600)]">{formatKES(m.revenue - m.discounts)}</td>
                 </tr>
               ))}
@@ -495,7 +495,7 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
       )}
 
       {monthlyChart.length === 0 && (
-        <div className="bg-white rounded-xl border border-[var(--pt-border)] flex items-center justify-center py-16 text-[var(--pt-text-tertiary)] text-[13px]">
+        <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] flex items-center justify-center py-16 text-[var(--pt-text-tertiary)] text-[13px]">
           No financial data in selected range
         </div>
       )}
@@ -510,10 +510,10 @@ function ReportSkeleton() {
     <div className="space-y-6 animate-pulse">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-[var(--pt-border)] p-5 h-24" />
+          <div key={i} className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 h-24" />
         ))}
       </div>
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] h-64" />
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] h-64" />
     </div>
   )
 }
@@ -549,7 +549,7 @@ export default function ReportsPage() {
   return (
     <div className="flex flex-col h-full bg-[var(--pt-bg)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-[var(--pt-border)] shrink-0 flex-wrap gap-3">
+      <div className="flex items-center justify-between px-6 py-4 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] shrink-0 flex-wrap gap-3">
         <div>
           <h1 className="text-[17px] font-bold text-[var(--pt-text)]">Reports</h1>
           <p className="text-[13px] text-[var(--pt-text-secondary)] mt-0.5">Analytics and performance data</p>
@@ -559,7 +559,7 @@ export default function ReportsPage() {
             <select
               value={branchId}
               onChange={e => setBranchId(e.target.value)}
-              className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+              className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
             >
               <option value="">All branches</option>
               {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -569,14 +569,14 @@ export default function ReportsPage() {
             type="date"
             value={from}
             onChange={e => setFrom(e.target.value)}
-            className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+            className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
           />
           <span className="text-[var(--pt-text-tertiary)] text-sm">to</span>
           <input
             type="date"
             value={to}
             onChange={e => setTo(e.target.value)}
-            className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+            className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
           />
         </div>
       </div>

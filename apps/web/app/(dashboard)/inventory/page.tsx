@@ -123,12 +123,12 @@ export default function InventoryPage() {
           {[
             { label: "Out of stock", value: summary.outOfStock, color: "text-[var(--pt-red)]" },
             { label: "Low stock",    value: summary.lowStock,    color: "text-[var(--pt-amber)]" },
-            { label: "Expiring",     value: summary.expiring,    color: "text-yellow-600" },
-            { label: "Controlled",   value: summary.controlled,  color: "text-blue-600" },
+            { label: "Expiring",     value: summary.expiring,    color: "text-yellow-600 dark:text-yellow-400" },
+            { label: "Controlled",   value: summary.controlled,  color: "text-blue-600 dark:text-blue-400" },
           ].map(({ label, value, color }) => (
             <div
               key={label}
-              className="bg-white rounded-xl border border-[var(--pt-border)] px-4 py-3"
+              className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] px-4 py-3"
             >
               <p className="text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide">
                 {label}
@@ -162,7 +162,7 @@ export default function InventoryPage() {
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                 status === key
                   ? "bg-[var(--pt-green)] text-white border-[var(--pt-green)]"
-                  : "bg-white text-[var(--pt-text-secondary)] border-[var(--pt-border)] hover:bg-gray-50"
+                  : "bg-[var(--pt-surface)] text-[var(--pt-text-secondary)] border-[var(--pt-border)] hover:bg-[var(--pt-muted)]"
               }`}
             >
               {label}
@@ -191,7 +191,7 @@ export default function InventoryPage() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="w-8 h-8 rounded-md border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-md border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <ChevronLeft size={15} />
             </button>
@@ -201,7 +201,7 @@ export default function InventoryPage() {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="w-8 h-8 rounded-md border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-md border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <ChevronRight size={15} />
             </button>

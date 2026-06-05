@@ -32,7 +32,7 @@ function StatCard({ icon: Icon, label, value, color }: {
   color?: string
 }) {
   return (
-    <div className="bg-gray-50 rounded-xl px-4 py-3">
+    <div className="bg-[var(--pt-muted)] rounded-xl px-4 py-3">
       <div className="flex items-center gap-2 mb-1">
         <Icon size={13} className={color ?? "text-[var(--pt-text-secondary)]"} />
         <p className="text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide">{label}</p>
@@ -84,7 +84,7 @@ export function ShiftSummarySheet({ shiftId, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--pt-border)] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-[var(--pt-text-secondary)]">
+            <div className="w-9 h-9 rounded-lg bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-secondary)]">
               <Clock size={17} />
             </div>
             <div>
@@ -98,7 +98,7 @@ export function ShiftSummarySheet({ shiftId, onClose }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 text-[var(--pt-text-secondary)]"
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]"
           >
             <X size={16} />
           </button>
@@ -108,7 +108,7 @@ export function ShiftSummarySheet({ shiftId, onClose }: Props) {
           {isLoading && (
             <div className="space-y-3">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
+                <div key={i} className="h-16 bg-[var(--pt-muted-strong)] rounded-xl animate-pulse" />
               ))}
             </div>
           )}
@@ -118,7 +118,7 @@ export function ShiftSummarySheet({ shiftId, onClose }: Props) {
               {/* Timing */}
               <div className="space-y-2">
                 <p className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wide">Timing</p>
-                <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-2">
+                <div className="bg-[var(--pt-muted)] rounded-xl px-4 py-3 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--pt-text-secondary)]">Opened</span>
                     <span className="font-semibold">{fmt(shift.clocked_in_at)}</span>
@@ -150,7 +150,7 @@ export function ShiftSummarySheet({ shiftId, onClose }: Props) {
               {/* Float & Variance */}
               <div className="space-y-2">
                 <p className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wide">Cash Reconciliation</p>
-                <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-2">
+                <div className="bg-[var(--pt-muted)] rounded-xl px-4 py-3 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--pt-text-secondary)]">Opening Float</span>
                     <span className="font-semibold tabular-nums">{formatKES(shift.opening_float)}</span>
@@ -193,7 +193,7 @@ export function ShiftSummarySheet({ shiftId, onClose }: Props) {
               {shift.notes && (
                 <div className="space-y-2">
                   <p className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wide">Notes</p>
-                  <p className="text-sm bg-gray-50 rounded-xl px-4 py-3 text-[var(--pt-text)]">{shift.notes}</p>
+                  <p className="text-sm bg-[var(--pt-muted)] rounded-xl px-4 py-3 text-[var(--pt-text)]">{shift.notes}</p>
                 </div>
               )}
             </>

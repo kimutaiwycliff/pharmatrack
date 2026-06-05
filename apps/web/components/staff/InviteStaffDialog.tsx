@@ -66,12 +66,12 @@ export function InviteStaffDialog({ branches, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div className="bg-[var(--pt-surface)] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold">Invite Staff Member</h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 text-[var(--pt-text-secondary)]"
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]"
           >
             <X size={16} />
           </button>
@@ -125,7 +125,7 @@ export function InviteStaffDialog({ branches, onClose }: Props) {
               <select
                 value={form.role}
                 onChange={(e) => set("role", e.target.value)}
-                className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+                className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
               >
                 {ROLES.map((r) => (
                   <option key={r.value} value={r.value}>{r.label}</option>
@@ -140,7 +140,7 @@ export function InviteStaffDialog({ branches, onClose }: Props) {
               <select
                 value={form.branch_id}
                 onChange={(e) => set("branch_id", e.target.value)}
-                className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+                className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
               >
                 <option value="">All branches</option>
                 {branches.map((b) => (

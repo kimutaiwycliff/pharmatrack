@@ -99,7 +99,7 @@ export function ReceiptModal({ open, data, onNewSale }: Props) {
                   )}
                 </div>
 
-                <hr className="border-dashed border-gray-300" />
+                <hr className="border-dashed border-[var(--pt-border-strong)]" />
 
                 <div className="space-y-0.5">
                   <div className="flex justify-between">
@@ -112,7 +112,7 @@ export function ReceiptModal({ open, data, onNewSale }: Props) {
                   </div>
                 </div>
 
-                <hr className="border-dashed border-gray-300" />
+                <hr className="border-dashed border-[var(--pt-border-strong)]" />
 
                 <div className="space-y-0.5">
                   {data.items.map((item) => (
@@ -125,7 +125,7 @@ export function ReceiptModal({ open, data, onNewSale }: Props) {
                   ))}
                 </div>
 
-                <hr className="border-dashed border-gray-300" />
+                <hr className="border-dashed border-[var(--pt-border-strong)]" />
 
                 {data.sale.discount_amount > 0 && (
                   <div className="flex justify-between text-[var(--pt-text-secondary)]">
@@ -158,7 +158,7 @@ export function ReceiptModal({ open, data, onNewSale }: Props) {
                   )}
                 </div>
 
-                <hr className="border-dashed border-gray-300" />
+                <hr className="border-dashed border-[var(--pt-border-strong)]" />
                 <p className="text-center text-[var(--pt-text-secondary)]">
                   Thank you for your business
                 </p>

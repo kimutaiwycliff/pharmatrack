@@ -71,7 +71,7 @@ export function ClockOutDialog({ open, onOpenChange, shift, onSuccess }: ClockOu
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+          <div className="bg-[var(--pt-muted)] rounded-lg p-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-[var(--pt-text-secondary)]">Duration</span>
               <span className="font-semibold">{duration}</span>
@@ -106,7 +106,7 @@ export function ClockOutDialog({ open, onOpenChange, shift, onSuccess }: ClockOu
                 variance === 0
                   ? "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
                   : variance > 0
-                    ? "bg-blue-50 text-blue-700"
+                    ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300"
                     : "bg-[var(--pt-red-50)] text-[var(--pt-red)]",
               ].join(" ")}
             >

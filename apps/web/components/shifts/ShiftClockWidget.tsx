@@ -53,7 +53,7 @@ function OpenShiftModal({ branchId, onClose, onOpened }: OpenModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+      <div className="bg-[var(--pt-surface)] rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
         <h2 className="text-lg font-bold mb-1">Open Shift</h2>
         <p className="text-sm text-[var(--pt-text-secondary)] mb-5">
           Enter the opening cash float for this shift.
@@ -122,7 +122,7 @@ function CloseShiftModal({ shiftId, openingFloat, onClose, onClosed }: CloseModa
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+      <div className="bg-[var(--pt-surface)] rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
         <h2 className="text-lg font-bold mb-1">Close Shift</h2>
         <p className="text-sm text-[var(--pt-text-secondary)] mb-5">
           Opening float was KES {openingFloat.toLocaleString("en-KE")}. Count the cash drawer and enter the closing amount.
@@ -188,7 +188,7 @@ export function ShiftClockWidget() {
       {shift ? (
         <button
           onClick={() => setModal("close")}
-          className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors"
+          className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
           title="End shift"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--pt-green)] animate-pulse" />
@@ -199,7 +199,7 @@ export function ShiftClockWidget() {
       ) : (
         <button
           onClick={() => setModal("open")}
-          className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors"
+          className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
           title="Open shift"
         >
           <LogIn size={12} />

@@ -30,7 +30,7 @@ async function createCategory(name: string, parentId: string | null): Promise<Ca
 }
 
 const selectClass =
-  "w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] disabled:bg-gray-50 disabled:text-[var(--pt-text-tertiary)]"
+  "w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] disabled:bg-[var(--pt-muted)] disabled:text-[var(--pt-text-tertiary)]"
 
 /**
  * Two-level category picker with inline "create new" for both the category and
@@ -120,7 +120,7 @@ export function CategorySelect({
         <button
           type="button"
           onClick={() => { setCreating(null); setDraft("") }}
-          className="h-10 w-10 shrink-0 rounded-lg border border-[var(--pt-border)] text-[var(--pt-text-secondary)] flex items-center justify-center hover:bg-gray-50"
+          className="h-10 w-10 shrink-0 rounded-lg border border-[var(--pt-border)] text-[var(--pt-text-secondary)] flex items-center justify-center hover:bg-[var(--pt-muted)]"
         >
           <X size={15} />
         </button>

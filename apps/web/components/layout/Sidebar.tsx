@@ -75,10 +75,11 @@ export function Sidebar() {
 
       <aside
         className={[
-          "flex flex-col shrink-0 border-r border-[var(--pt-border)] bg-white transition-all duration-200",
+          "flex flex-col shrink-0 border-r border-[var(--pt-border)] bg-[var(--pt-surface)] transition-all duration-200",
           // Mobile: fixed off-canvas drawer (always full width when shown)
-          "fixed inset-y-0 left-0 z-50 w-60 lg:static lg:z-auto",
-          mobileNavOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 w-60 lg:static lg:z-auto lg:translate-x-0",
+          // Off-screen only below lg; desktop sidebar never gets a transform
+          mobileNavOpen ? "translate-x-0" : "max-lg:-translate-x-full",
           // Desktop: collapsible rail
           collapsed ? "lg:w-16" : "lg:w-60",
         ].join(" ")}
@@ -109,7 +110,7 @@ export function Sidebar() {
                   "flex items-center gap-3 rounded-lg px-3 h-9 text-[13.5px] font-medium transition-colors",
                   active
                     ? "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
-                    : "text-[var(--pt-text-secondary)] hover:bg-gray-50 hover:text-[var(--pt-text)]",
+                    : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] hover:text-[var(--pt-text)]",
                   collapsed ? "lg:justify-center lg:px-0" : "",
                 ].join(" ")}
               >
@@ -123,7 +124,7 @@ export function Sidebar() {
         {/* Collapse toggle (desktop only) */}
         <button
           onClick={toggle}
-          className="hidden lg:flex mx-auto mb-2 w-7 h-7 rounded-full border border-[var(--pt-border)] bg-white items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors"
+          className="hidden lg:flex mx-auto mb-2 w-7 h-7 rounded-full border border-[var(--pt-border)] bg-[var(--pt-surface)] items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -146,7 +147,7 @@ export function Sidebar() {
               <button
                 type="submit"
                 title="Sign out"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-gray-100 transition-colors"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)] transition-colors"
               >
                 <LogOut size={15} />
               </button>

@@ -53,7 +53,7 @@ export function ClockInDialog({ onSuccess }: ClockInDialogProps) {
   return (
     /* Full-screen mandatory gate — not dismissible */
     <div className="fixed inset-0 z-50 bg-[var(--pt-bg)] flex items-center justify-center px-4">
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] shadow-sm p-8 w-full max-w-sm">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] shadow-sm p-8 w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
           <div className="w-12 h-12 rounded-full bg-[var(--pt-green-50)] flex items-center justify-center mb-3">
             <Clock size={22} className="text-[var(--pt-green)]" />

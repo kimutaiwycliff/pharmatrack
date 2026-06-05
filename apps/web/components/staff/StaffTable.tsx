@@ -26,9 +26,9 @@ interface Props {
 
 const ROLE_COLORS: Record<string, string> = {
   owner:       "bg-purple-50 text-purple-700 border-purple-100",
-  manager:     "bg-blue-50 text-blue-700 border-blue-100",
+  manager:     "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-100",
   pharmacist:  "bg-[var(--pt-green-50)] text-[var(--pt-green-600)] border-[var(--pt-green-100)]",
-  cashier:     "bg-gray-100 text-gray-700 border-gray-200",
+  cashier:     "bg-[var(--pt-muted-strong)] text-[var(--pt-text)] border-[var(--pt-border)]",
 }
 
 function ActionMenu({
@@ -70,7 +70,7 @@ function ActionMenu({
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-gray-100 transition-colors"
+        className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
         disabled={loading}
       >
         {loading ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={15} />}
@@ -79,14 +79,14 @@ function ActionMenu({
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl border border-[var(--pt-border)] shadow-lg py-1 min-w-[180px]">
+          <div className="absolute right-0 top-full mt-1 z-40 bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] shadow-lg py-1 min-w-[180px]">
             {(["manager", "pharmacist", "cashier"] as const)
               .filter((r) => r !== member.role)
               .map((r) => (
                 <button
                   key={r}
                   onClick={() => patch({ role: r })}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
                 >
                   <Pencil size={13} className="text-[var(--pt-text-tertiary)]" />
                   Change to {r.charAt(0).toUpperCase() + r.slice(1)}
@@ -95,7 +95,7 @@ function ActionMenu({
             <div className="border-t border-[var(--pt-border)] my-1" />
             <button
               onClick={() => patch({ is_active: !member.is_active })}
-              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
             >
               {member.is_active ? (
                 <>
@@ -119,13 +119,13 @@ function ActionMenu({
 export function StaffTable({ staff, branches, isLoading, currentUserId }: Props) {
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="flex gap-4 px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">
-            <div className="w-9 h-9 rounded-full bg-gray-100 shrink-0" />
+            <div className="w-9 h-9 rounded-full bg-[var(--pt-muted-strong)] shrink-0" />
             <div className="flex-1 space-y-2">
-              <div className="h-3 bg-gray-100 rounded w-36" />
-              <div className="h-2.5 bg-gray-100 rounded w-24" />
+              <div className="h-3 bg-[var(--pt-muted-strong)] rounded w-36" />
+              <div className="h-2.5 bg-[var(--pt-muted-strong)] rounded w-24" />
             </div>
           </div>
         ))}
@@ -135,17 +135,17 @@ export function StaffTable({ staff, branches, isLoading, currentUserId }: Props)
 
   if (staff.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] flex items-center justify-center py-20 text-[var(--pt-text-tertiary)] text-sm">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] flex items-center justify-center py-20 text-[var(--pt-text-tertiary)] text-sm">
         No staff found
       </div>
     )
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
+    <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-[var(--pt-border)] bg-gray-50">
+          <tr className="border-b border-[var(--pt-border)] bg-[var(--pt-muted)]">
             <th className="px-5 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">
               Name
             </th>
@@ -171,7 +171,7 @@ export function StaffTable({ staff, branches, isLoading, currentUserId }: Props)
               <tr
                 key={m.id}
                 className={`border-b border-[var(--pt-border)] last:border-b-0 transition-colors ${
-                  m.is_active ? "hover:bg-gray-50/60" : "opacity-50"
+                  m.is_active ? "hover:bg-[var(--pt-muted)]/60" : "opacity-50"
                 }`}
               >
                 <td className="px-5 py-3.5">
@@ -197,7 +197,7 @@ export function StaffTable({ staff, branches, isLoading, currentUserId }: Props)
                 </td>
 
                 <td className="px-4 py-3.5">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border capitalize ${ROLE_COLORS[m.role] ?? "bg-gray-100 text-gray-700"}`}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border capitalize ${ROLE_COLORS[m.role] ?? "bg-[var(--pt-muted-strong)] text-[var(--pt-text)]"}`}>
                     {m.role}
                   </span>
                 </td>
@@ -212,7 +212,7 @@ export function StaffTable({ staff, branches, isLoading, currentUserId }: Props)
 
                 <td className="px-4 py-3.5">
                   <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${m.is_active ? "text-[var(--pt-green)]" : "text-[var(--pt-text-tertiary)]"}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${m.is_active ? "bg-[var(--pt-green)]" : "bg-gray-300"}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${m.is_active ? "bg-[var(--pt-green)]" : "bg-[var(--pt-border-strong)]"}`} />
                     {m.is_active ? "Active" : "Inactive"}
                   </span>
                 </td>

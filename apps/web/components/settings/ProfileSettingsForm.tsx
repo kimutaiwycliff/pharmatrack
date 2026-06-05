@@ -107,7 +107,7 @@ export function ProfileSettingsForm({ profile }: Props) {
           <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
             Role
           </label>
-          <div className="h-10 px-3 flex items-center rounded-lg border border-[var(--pt-border)] bg-gray-50 text-sm capitalize text-[var(--pt-text-secondary)]">
+          <div className="h-10 px-3 flex items-center rounded-lg border border-[var(--pt-border)] bg-[var(--pt-muted)] text-sm capitalize text-[var(--pt-text-secondary)]">
             {profile.role}
           </div>
           <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-1">Role is managed by your organization owner</p>

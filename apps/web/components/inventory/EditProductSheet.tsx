@@ -45,7 +45,7 @@ function ImageUploader({ value, onChange }: { value: string | null; onChange: (u
 
   return (
     <div className="flex items-center gap-4">
-      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-[var(--pt-border)] flex items-center justify-center bg-gray-50 shrink-0 overflow-hidden">
+      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-[var(--pt-border)] flex items-center justify-center bg-[var(--pt-muted)] shrink-0 overflow-hidden">
         {value ? (
           <img src={value} alt="Product" className="w-full h-full object-cover" />
         ) : (
@@ -57,7 +57,7 @@ function ImageUploader({ value, onChange }: { value: string | null; onChange: (u
           type="button"
           onClick={() => ref.current?.click()}
           disabled={uploading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors disabled:opacity-50"
         >
           {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
           {uploading ? "Uploading…" : "Upload image"}
@@ -66,7 +66,7 @@ function ImageUploader({ value, onChange }: { value: string | null; onChange: (u
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--pt-red)] hover:bg-red-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--pt-red)] hover:bg-red-50 dark:hover:bg-red-500/15 transition-colors"
           >
             <Trash2 size={13} /> Remove
           </button>
@@ -156,7 +156,7 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
         )}
       </div>
 
-      {isLoading && <div className="h-12 bg-gray-100 rounded-lg animate-pulse" />}
+      {isLoading && <div className="h-12 bg-[var(--pt-muted-strong)] rounded-lg animate-pulse" />}
 
       {!isLoading && sizes.length === 0 && !adding && (
         <p className="text-xs text-[var(--pt-text-tertiary)] italic">No pack sizes yet — the base {baseUnit} is the default</p>
@@ -164,7 +164,7 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
 
       <div className="space-y-2">
         {sizes.map((s) => (
-          <div key={s.id} className={`flex items-center justify-between px-3 py-2 rounded-lg border text-sm ${s.is_active ? "border-[var(--pt-border)] bg-white" : "border-dashed border-gray-200 bg-gray-50 opacity-60"}`}>
+          <div key={s.id} className={`flex items-center justify-between px-3 py-2 rounded-lg border text-sm ${s.is_active ? "border-[var(--pt-border)] bg-[var(--pt-surface)]" : "border-dashed border-[var(--pt-border)] bg-[var(--pt-muted)] opacity-60"}`}>
             <div>
               <span className="font-semibold">{s.pack_label}</span>
               <span className="text-[var(--pt-text-tertiary)] ml-2 text-xs">{s.units_per_pack} {baseUnit}s</span>
@@ -175,7 +175,7 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
               <button onClick={() => toggleActive(s)} className="text-[10px] font-semibold text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text-secondary)]">
                 {s.is_active ? "Deactivate" : "Activate"}
               </button>
-              <button onClick={() => deleteSize(s.id)} className="text-[var(--pt-red)] hover:bg-red-50 p-1 rounded">
+              <button onClick={() => deleteSize(s.id)} className="text-[var(--pt-red)] hover:bg-red-50 dark:hover:bg-red-500/15 p-1 rounded">
                 <Trash2 size={12} />
               </button>
             </div>
@@ -184,7 +184,7 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
       </div>
 
       {adding && (
-        <div className="border border-[var(--pt-border)] rounded-xl p-4 space-y-3 bg-gray-50">
+        <div className="border border-[var(--pt-border)] rounded-xl p-4 space-y-3 bg-[var(--pt-muted)]">
           <div className="grid grid-cols-2 gap-2">
             <Input placeholder="Label (e.g. Strip of 10)" value={newForm.pack_label} onChange={(e) => setNewForm(f => ({ ...f, pack_label: e.target.value }))} className="h-9 text-sm" autoFocus />
             <Input type="number" placeholder={`${baseUnit}s per pack`} value={newForm.units_per_pack} onChange={(e) => setNewForm(f => ({ ...f, units_per_pack: e.target.value }))} className="h-9 text-sm" min={1} />
@@ -225,11 +225,11 @@ function Field({ label, children, hint }: { label: string; children: React.React
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <label className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[var(--pt-border)] cursor-pointer hover:bg-gray-50">
+    <label className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[var(--pt-border)] cursor-pointer hover:bg-[var(--pt-muted)]">
       <span className="text-sm font-medium">{label}</span>
       <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
-        className={`w-10 h-5 rounded-full transition-colors shrink-0 ${checked ? "bg-[var(--pt-green)]" : "bg-gray-200"}`}>
-        <span className={`block w-3.5 h-3.5 rounded-full bg-white shadow mx-0.5 transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
+        className={`w-10 h-5 rounded-full transition-colors shrink-0 ${checked ? "bg-[var(--pt-green)]" : "bg-[var(--pt-border)]"}`}>
+        <span className={`block w-3.5 h-3.5 rounded-full bg-[var(--pt-surface)] shadow mx-0.5 transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
       </button>
     </label>
   )
@@ -315,7 +315,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--pt-border)] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-[var(--pt-text-secondary)]">
+            <div className="w-9 h-9 rounded-lg bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-secondary)]">
               <PackageOpen size={17} />
             </div>
             <div>
@@ -323,7 +323,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
               {product && <p className="text-xs text-[var(--pt-text-secondary)]">{product.dosage_form} · {product.strength}</p>}
             </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 text-[var(--pt-text-secondary)]">
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]">
             <X size={16} />
           </button>
         </div>
@@ -332,7 +332,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
         <div className="flex-1 overflow-y-auto p-6 space-y-7">
           {isLoading && (
             <div className="space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)}
+              {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-12 bg-[var(--pt-muted-strong)] rounded-xl animate-pulse" />)}
             </div>
           )}
 
@@ -366,7 +366,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                 </div>
                 <Field label="Dosage Form">
                   <select value={form.dosage_form ?? ""} onChange={(e) => setF("dosage_form", e.target.value)}
-                    className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
+                    className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
                     <option value="">Select…</option>
                     {DOSAGE_FORMS.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
@@ -382,7 +382,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
               <Section title="Supplier">
                 <Field label="Default supplier" hint="Who you usually reorder this from">
                   <select value={form.supplier_id ?? ""} onChange={(e) => setF("supplier_id", e.target.value || null)}
-                    className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
+                    className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
                     <option value="">— None —</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
@@ -394,7 +394,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Base unit">
                     <select value={form.base_unit ?? "unit"} onChange={(e) => setF("base_unit", e.target.value)}
-                      className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
+                      className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
                       {BASE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
                   </Field>
@@ -415,7 +415,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                   </Field>
                 </div>
                 {margin !== null && (
-                  <p className={`text-xs font-semibold ${parseFloat(margin) >= 20 ? "text-[var(--pt-green)]" : parseFloat(margin) >= 0 ? "text-amber-600" : "text-[var(--pt-red)]"}`}>
+                  <p className={`text-xs font-semibold ${parseFloat(margin) >= 20 ? "text-[var(--pt-green)]" : parseFloat(margin) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-[var(--pt-red)]"}`}>
                     Margin: {margin}%
                   </p>
                 )}

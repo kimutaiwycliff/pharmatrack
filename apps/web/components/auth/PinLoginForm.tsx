@@ -36,7 +36,7 @@ export function PinLoginForm({ action, pending, error }: PinLoginFormProps) {
       <div>
         <Label className="text-sm font-medium">Phone number</Label>
         <div className="flex items-center gap-2 mt-1.5">
-          <div className="h-11 px-3 rounded-lg border border-[var(--pt-border-strong)] flex items-center gap-1.5 text-sm font-medium bg-white shrink-0 select-none">
+          <div className="h-11 px-3 rounded-lg border border-[var(--pt-border-strong)] flex items-center gap-1.5 text-sm font-medium bg-[var(--pt-surface)] shrink-0 select-none">
             🇰🇪 +254
           </div>
           <Input
@@ -65,7 +65,7 @@ export function PinLoginForm({ action, pending, error }: PinLoginFormProps) {
                 pin.length === i
                   ? "border-[1.5px] border-[var(--pt-green)]"
                   : "border border-[var(--pt-border-strong)]",
-                pin[i] ? "bg-[var(--pt-green-50)]" : "bg-white",
+                pin[i] ? "bg-[var(--pt-green-50)]" : "bg-[var(--pt-surface)]",
               ].join(" ")}
             >
               {pin[i] ? "•" : ""}
@@ -83,8 +83,8 @@ export function PinLoginForm({ action, pending, error }: PinLoginFormProps) {
                 type="button"
                 onClick={() => onKey(k)}
                 className={[
-                  "h-12 rounded-lg border border-[var(--pt-border)] bg-white font-semibold text-[var(--pt-text)]",
-                  "hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center justify-center",
+                  "h-12 rounded-lg border border-[var(--pt-border)] bg-[var(--pt-surface)] font-semibold text-[var(--pt-text)]",
+                  "hover:bg-[var(--pt-muted)] active:bg-[var(--pt-muted-strong)] transition-colors flex items-center justify-center",
                   k === "del" ? "text-[var(--pt-text-secondary)]" : "text-base",
                 ].join(" ")}
               >

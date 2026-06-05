@@ -2,10 +2,11 @@
 
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Building2, GitBranch, User } from "lucide-react"
+import { Building2, GitBranch, User, Palette } from "lucide-react"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
 import { ProfileSettingsForm } from "@/components/settings/ProfileSettingsForm"
+import { ThemeSegmented } from "@/components/theme/ThemeToggle"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import type { Organization, Branch, Profile } from "@pharmatrack/types"
 
@@ -27,12 +28,13 @@ function useSettings() {
   })
 }
 
-type Tab = "org" | "branches" | "profile"
+type Tab = "org" | "branches" | "profile" | "appearance"
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
-  { key: "org",      label: "Organization", icon: Building2 },
-  { key: "branches", label: "Branches",     icon: GitBranch },
-  { key: "profile",  label: "My Profile",   icon: User },
+  { key: "org",        label: "Organization", icon: Building2 },
+  { key: "branches",   label: "Branches",     icon: GitBranch },
+  { key: "profile",    label: "My Profile",   icon: User },
+  { key: "appearance", label: "Appearance",   icon: Palette },
 ]
 
 export default function SettingsPage() {
@@ -70,10 +72,18 @@ export default function SettingsPage() {
       </div>
 
       {/* Content */}
-      {isLoading ? (
+      {tab === "appearance" ? (
+        <div className="max-w-xl">
+          <p className="text-sm font-semibold mb-1">Theme</p>
+          <p className="text-xs text-[var(--pt-text-secondary)] mb-3">
+            Choose how PharmaTrack looks. <span className="font-medium">System</span> follows your device setting.
+          </p>
+          <ThemeSegmented />
+        </div>
+      ) : isLoading ? (
         <div className="max-w-xl space-y-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+            <div key={i} className="h-14 bg-[var(--pt-muted-strong)] rounded-xl animate-pulse" />
           ))}
         </div>
       ) : data ? (

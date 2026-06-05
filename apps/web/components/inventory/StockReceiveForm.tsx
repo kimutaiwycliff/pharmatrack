@@ -33,7 +33,7 @@ function ReceiveItemCard({ item, index, onRemove }: { item: ReceiveItem; index: 
   const totalCost = item.costPrice != null ? item.costPrice * item.qty : null
   return (
     <div className="flex gap-3 py-4 border-b border-[var(--pt-border)] last:border-b-0">
-      <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-bold text-[var(--pt-text-secondary)] shrink-0 mt-0.5">
+      <span className="w-6 h-6 rounded-full bg-[var(--pt-muted-strong)] flex items-center justify-center text-[10px] font-bold text-[var(--pt-text-secondary)] shrink-0 mt-0.5">
         {index + 1}
       </span>
       <div className="flex-1 min-w-0">
@@ -182,7 +182,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
       {/* LEFT — scan + details */}
       <div className="space-y-4">
         {/* Supplier + scan input */}
-        <div className="bg-white rounded-xl border border-[var(--pt-border)] p-6 space-y-4">
+        <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-6 space-y-4">
           {/* Supplier */}
           <div>
             <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1.5">
@@ -191,7 +191,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
             <select
               value={selectedSupplierId}
               onChange={(e) => setSelectedSupplierId(e.target.value)}
-              className="w-full h-10 px-3 border border-[var(--pt-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent bg-white"
+              className="w-full h-10 px-3 border border-[var(--pt-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent bg-[var(--pt-surface)]"
             >
               <option value="">— Select supplier (optional)</option>
               {suppliers.map((s) => (
@@ -230,14 +230,14 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
 
         {/* Scanned product card */}
         {pendingProduct && (
-          <div className="bg-white rounded-xl border-2 border-[var(--pt-green)] overflow-hidden">
+          <div className="bg-[var(--pt-surface)] rounded-xl border-2 border-[var(--pt-green)] overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--pt-green-50)] text-[var(--pt-green-600)] text-xs font-semibold">
               <CheckCircle2 size={13} />
               Product found · Auto-detected
             </div>
             <div className="p-5 space-y-4">
               <div className="flex items-start gap-4">
-                <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center text-[var(--pt-text-tertiary)] shrink-0 text-2xl">
+                <div className="w-14 h-14 rounded-xl bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-tertiary)] shrink-0 text-2xl">
                   💊
                 </div>
                 <div>
@@ -316,8 +316,8 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
         )}
 
         {/* Tip */}
-        <div className="flex gap-2.5 bg-blue-50 border border-blue-100 rounded-xl p-4">
-          <Info size={14} className="text-blue-600 mt-0.5 shrink-0" />
+        <div className="flex gap-2.5 bg-blue-50 dark:bg-blue-500/15 border border-blue-100 rounded-xl p-4">
+          <Info size={14} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
           <p className="text-xs text-blue-800 leading-relaxed">
             <strong>Tip</strong> — Scan GS1-DataMatrix (small square barcode) to auto-fill batch
             number and expiry date. Linear EAN barcodes only capture the product GTIN.
@@ -326,7 +326,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
       </div>
 
       {/* RIGHT — receive list */}
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] flex flex-col overflow-hidden">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--pt-border)] shrink-0">
           <div>
             <p className="text-[15px] font-bold">Receiving list</p>
@@ -355,7 +355,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           )}
         </div>
 
-        <div className="px-5 py-4 bg-gray-50 border-t border-[var(--pt-border)] space-y-2 shrink-0">
+        <div className="px-5 py-4 bg-[var(--pt-muted)] border-t border-[var(--pt-border)] space-y-2 shrink-0">
           {totalCost > 0 && (
             <div className="flex justify-between text-sm text-[var(--pt-text-secondary)]">
               <span>Total value</span>

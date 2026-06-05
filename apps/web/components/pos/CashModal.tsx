@@ -40,7 +40,7 @@ export function CashModal({ open, total, onClose, onConfirm }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 text-[var(--pt-text-secondary)] text-lg"
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)] text-lg"
           >
             ✕
           </button>
@@ -49,7 +49,7 @@ export function CashModal({ open, total, onClose, onConfirm }: Props) {
         {/* Body */}
         <div className="p-6 space-y-4">
           {/* Order total */}
-          <div className="flex justify-between items-baseline bg-gray-50 border border-[var(--pt-border)] rounded-xl px-4 py-3">
+          <div className="flex justify-between items-baseline bg-[var(--pt-muted)] border border-[var(--pt-border)] rounded-xl px-4 py-3">
             <span className="text-sm font-medium text-[var(--pt-text-secondary)]">Order total</span>
             <span className="text-2xl font-bold tabular-nums">{formatKES(total)}</span>
           </div>
@@ -79,7 +79,7 @@ export function CashModal({ open, total, onClose, onConfirm }: Props) {
               className={`h-11 rounded-lg border font-semibold text-xs transition-colors ${
                 tendered === total
                   ? "border-[var(--pt-green)] bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
-                  : "border-[var(--pt-border)] bg-white text-[var(--pt-text)] hover:bg-gray-50"
+                  : "border-[var(--pt-border)] bg-[var(--pt-surface)] text-[var(--pt-text)] hover:bg-[var(--pt-muted)]"
               }`}
             >
               Exact
@@ -91,7 +91,7 @@ export function CashModal({ open, total, onClose, onConfirm }: Props) {
                 className={`h-11 rounded-lg border font-semibold text-xs transition-colors ${
                   tendered === amt
                     ? "border-[var(--pt-green)] bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
-                    : "border-[var(--pt-border)] bg-white text-[var(--pt-text)] hover:bg-gray-50"
+                    : "border-[var(--pt-border)] bg-[var(--pt-surface)] text-[var(--pt-text)] hover:bg-[var(--pt-muted)]"
                 }`}
               >
                 {amt >= 1000 ? `${amt / 1000}k` : amt}
@@ -104,7 +104,7 @@ export function CashModal({ open, total, onClose, onConfirm }: Props) {
             className={`flex justify-between items-baseline rounded-xl px-4 py-3 border ${
               change > 0
                 ? "bg-[var(--pt-green-50)] border-[var(--pt-green-100)]"
-                : "bg-gray-50 border-[var(--pt-border)]"
+                : "bg-[var(--pt-muted)] border-[var(--pt-border)]"
             }`}
           >
             <span

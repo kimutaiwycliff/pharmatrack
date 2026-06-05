@@ -117,28 +117,28 @@ export default function ShiftsPage() {
 
       <div className={`${isFetching && !isLoading ? "opacity-70 transition-opacity" : ""}`}>
         {isLoading ? (
-          <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
+          <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex gap-4 px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">
-                <div className="w-8 h-8 rounded-lg bg-gray-100 shrink-0" />
+                <div className="w-8 h-8 rounded-lg bg-[var(--pt-muted-strong)] shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-gray-100 rounded w-40" />
-                  <div className="h-2.5 bg-gray-100 rounded w-28" />
+                  <div className="h-3 bg-[var(--pt-muted-strong)] rounded w-40" />
+                  <div className="h-2.5 bg-[var(--pt-muted-strong)] rounded w-28" />
                 </div>
-                <div className="h-3 bg-gray-100 rounded w-20" />
+                <div className="h-3 bg-[var(--pt-muted-strong)] rounded w-20" />
               </div>
             ))}
           </div>
         ) : !data?.shifts.length ? (
-          <div className="bg-white rounded-xl border border-[var(--pt-border)] flex flex-col items-center justify-center py-20 text-[var(--pt-text-tertiary)]">
+          <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] flex flex-col items-center justify-center py-20 text-[var(--pt-text-tertiary)]">
             <Clock size={36} strokeWidth={1.5} className="mb-3" />
             <p className="text-sm">No shifts in this period</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
+          <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--pt-border)] bg-gray-50">
+                <tr className="border-b border-[var(--pt-border)] bg-[var(--pt-muted)]">
                   <th className="px-5 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">Staff</th>
                   <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden sm:table-cell">Opened</th>
                   <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden md:table-cell">Closed</th>
@@ -153,7 +153,7 @@ export default function ShiftsPage() {
                   <tr
                     key={s.id}
                     onClick={() => setSelectedShiftId(s.id)}
-                    className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-gray-50/60 cursor-pointer transition-colors"
+                    className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-[var(--pt-muted)]/60 cursor-pointer transition-colors"
                   >
                     <td className="px-5 py-3.5">
                       <p className="font-semibold text-[13px]">{s.profiles.full_name}</p>
@@ -203,7 +203,7 @@ export default function ShiftsPage() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="w-8 h-8 rounded-md border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-50 disabled:opacity-40"
+              className="w-8 h-8 rounded-md border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] disabled:opacity-40"
             >
               <ChevronLeft size={15} />
             </button>
@@ -211,7 +211,7 @@ export default function ShiftsPage() {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="w-8 h-8 rounded-md border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-50 disabled:opacity-40"
+              className="w-8 h-8 rounded-md border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] disabled:opacity-40"
             >
               <ChevronRight size={15} />
             </button>

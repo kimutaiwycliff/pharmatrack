@@ -19,10 +19,10 @@ interface Props {
 }
 
 const BADGE_MAP: Record<string, { label: string; className: string }> = {
-  out_of_stock: { label: "Out of stock", className: "bg-red-50 text-red-700 border-red-100" },
-  low_stock:    { label: "Low stock",    className: "bg-amber-50 text-amber-700 border-amber-100" },
-  expiring:     { label: "Expiring",     className: "bg-yellow-50 text-yellow-700 border-yellow-100" },
-  controlled:   { label: "Controlled",   className: "bg-blue-50 text-blue-700 border-blue-100" },
+  out_of_stock: { label: "Out of stock", className: "bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border-red-100" },
+  low_stock:    { label: "Low stock",    className: "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-100" },
+  expiring:     { label: "Expiring",     className: "bg-yellow-50 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-100" },
+  controlled:   { label: "Controlled",   className: "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-100" },
   ok:           { label: "OK",           className: "bg-[var(--pt-green-50)] text-[var(--pt-green-600)] border-[var(--pt-green-100)]" },
 }
 
@@ -41,7 +41,7 @@ function ExpiryCell({ expiry, days }: { expiry: string | null; days: number | nu
     <div>
       <p className="text-sm">{fmt}</p>
       {days !== null && days <= 90 && (
-        <p className={`text-[11px] mt-0.5 font-medium ${days <= 30 ? "text-[var(--pt-amber)]" : "text-yellow-600"}`}>
+        <p className={`text-[11px] mt-0.5 font-medium ${days <= 30 ? "text-[var(--pt-amber)]" : "text-yellow-600 dark:text-yellow-400"}`}>
           in {days}d
         </p>
       )}
@@ -70,22 +70,22 @@ function ActionMenu({ product, onBatches, onEdit }: {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-gray-100 hover:text-[var(--pt-text-secondary)] transition-colors"
+        className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] hover:text-[var(--pt-text-secondary)] transition-colors"
       >
         <MoreHorizontal size={16} />
       </button>
       {open && (
-        <div className="absolute right-0 top-8 z-20 bg-white border border-[var(--pt-border)] rounded-lg shadow-lg py-1 min-w-[152px]">
+        <div className="absolute right-0 top-8 z-20 bg-[var(--pt-surface)] border border-[var(--pt-border)] rounded-lg shadow-lg py-1 min-w-[152px]">
           <button
             onClick={() => { onBatches(); setOpen(false) }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--pt-text)] hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--pt-text)] hover:bg-[var(--pt-muted)] transition-colors"
           >
             <Layers size={14} />
             View Batches
           </button>
           <button
             onClick={() => { onEdit(); setOpen(false) }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--pt-text)] hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--pt-text)] hover:bg-[var(--pt-muted)] transition-colors"
           >
             <Pencil size={14} />
             Edit Product
@@ -102,13 +102,13 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-4 px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">
-            <div className="w-8 h-8 rounded-md bg-gray-100 shrink-0" />
+            <div className="w-8 h-8 rounded-md bg-[var(--pt-muted-strong)] shrink-0" />
             <div className="flex-1 space-y-2">
-              <div className="h-3 bg-gray-100 rounded w-40" />
-              <div className="h-2.5 bg-gray-100 rounded w-24" />
+              <div className="h-3 bg-[var(--pt-muted-strong)] rounded w-40" />
+              <div className="h-2.5 bg-[var(--pt-muted-strong)] rounded w-24" />
             </div>
           </div>
         ))}
@@ -118,7 +118,7 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
 
   if (products.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] flex flex-col items-center justify-center py-20 text-[var(--pt-text-tertiary)]">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] flex flex-col items-center justify-center py-20 text-[var(--pt-text-tertiary)]">
         <Pill size={36} strokeWidth={1.5} className="mb-3" />
         <p className="text-sm">No products match your filters</p>
       </div>
@@ -127,10 +127,10 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
 
   return (
     <>
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--pt-border)] bg-gray-50">
+            <tr className="border-b border-[var(--pt-border)] bg-[var(--pt-muted)]">
               <th className="px-5 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">
                 Product
               </th>
@@ -162,12 +162,12 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
             {products.map((p) => (
               <tr
                 key={p.product_id}
-                className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-gray-50/60 transition-colors"
+                className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-[var(--pt-muted)]/60 transition-colors"
               >
                 {/* Product */}
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-md bg-gray-100 flex items-center justify-center text-[var(--pt-text-tertiary)] shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-tertiary)] shrink-0">
                       <Pill size={14} />
                     </div>
                     <div>
@@ -207,7 +207,7 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
                 <td className="px-4 py-3.5 text-center hidden md:table-cell">
                   <button
                     onClick={() => setBatchesProduct(p)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-[var(--pt-text-secondary)] text-xs font-semibold hover:bg-gray-200 transition-colors"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)] text-xs font-semibold hover:bg-[var(--pt-border)] transition-colors"
                     title="View batches"
                   >
                     <Layers size={11} />

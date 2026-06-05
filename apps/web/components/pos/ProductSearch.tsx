@@ -101,7 +101,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
             setScannedBarcode(null)
           }}
           placeholder="Scan barcode or search product…"
-          className="w-full h-14 pl-12 pr-14 text-[15px] border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent bg-white"
+          className="w-full h-14 pl-12 pr-14 text-[15px] border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent bg-[var(--pt-surface)]"
         />
         <ScanBarcode
           size={18}
@@ -114,7 +114,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
         <div
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${
             isLoading
-              ? "bg-amber-50 text-amber-600"
+              ? "bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400"
               : "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
           }`}
         >
@@ -125,7 +125,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
 
       {/* Inline search results */}
       {searchText.length >= 2 && (
-        <div className="shrink-0 max-h-52 overflow-y-auto rounded-xl border border-[var(--pt-border)] bg-white">
+        <div className="shrink-0 max-h-52 overflow-y-auto rounded-xl border border-[var(--pt-border)] bg-[var(--pt-surface)]">
           {displayProducts.length === 0 && !searchFetching && (
             <div className="flex items-center gap-2 px-4 py-3 text-sm text-[var(--pt-text-secondary)]">
               <AlertCircle size={15} />
@@ -139,13 +139,13 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
                 handleProductAdd(p)
                 setSearchText("")
               }}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left border-b border-[var(--pt-border)] last:border-b-0 transition-colors"
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--pt-muted)] text-left border-b border-[var(--pt-border)] last:border-b-0 transition-colors"
             >
               <div className="flex items-center gap-3 min-w-0">
                 {p.image_url ? (
-                  <img src={p.image_url} alt={p.name ?? ""} className="w-9 h-9 rounded-lg object-cover shrink-0 border border-[var(--pt-border)] bg-gray-50" />
+                  <img src={p.image_url} alt={p.name ?? ""} className="w-9 h-9 rounded-lg object-cover shrink-0 border border-[var(--pt-border)] bg-[var(--pt-muted)]" />
                 ) : (
-                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 text-sm">💊</div>
+                  <div className="w-9 h-9 rounded-lg bg-[var(--pt-muted-strong)] flex items-center justify-center shrink-0 text-sm">💊</div>
                 )}
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate">{p.name}</p>
@@ -179,7 +179,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
                   key={name}
                   onClick={() => product && handleProductAdd(product)}
                   disabled={!product}
-                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-[var(--pt-border)] bg-white text-xs font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-[var(--pt-border)] bg-[var(--pt-surface)] text-xs font-medium hover:bg-[var(--pt-muted)] transition-colors disabled:opacity-50"
                 >
                   <Plus size={11} className="text-[var(--pt-green)]" />
                   {name}
@@ -201,9 +201,9 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
               <button
                 key={p.product_id}
                 onClick={() => handleProductAdd(p)}
-                className="bg-white border border-[var(--pt-border)] rounded-xl p-2.5 text-left flex flex-col hover:border-[var(--pt-green)] hover:shadow-sm transition-all min-h-[140px]"
+                className="bg-[var(--pt-surface)] border border-[var(--pt-border)] rounded-xl p-2.5 text-left flex flex-col hover:border-[var(--pt-green)] hover:shadow-sm transition-all min-h-[140px]"
               >
-                <div className="w-full aspect-square rounded-lg bg-gray-50 mb-2 overflow-hidden flex items-center justify-center border border-[var(--pt-border)]">
+                <div className="w-full aspect-square rounded-lg bg-[var(--pt-muted)] mb-2 overflow-hidden flex items-center justify-center border border-[var(--pt-border)]">
                   {p.image_url ? (
                     <img src={p.image_url} alt={p.name ?? ""} className="w-full h-full object-cover" />
                   ) : (

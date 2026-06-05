@@ -2,6 +2,7 @@
 
 import { Bell, Menu, ChevronRight } from "lucide-react"
 import { BranchSelector } from "./BranchSelector"
+import { ThemeToggle } from "@/components/theme/ThemeToggle"
 import { ShiftClockWidget } from "@/components/shifts/ShiftClockWidget"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
@@ -19,7 +20,7 @@ export function AppTopBar() {
   const activeBranch = branches.find((b) => b.id === activeBranchId) ?? branches[0]
 
   return (
-    <header className="h-14 border-b border-[var(--pt-border)] bg-white flex items-center px-3 sm:px-4 gap-2 sm:gap-4 shrink-0">
+    <header className="h-14 border-b border-[var(--pt-border)] bg-[var(--pt-surface)] flex items-center px-3 sm:px-4 gap-2 sm:gap-4 shrink-0">
       {/* Mobile hamburger */}
       <Button
         variant="ghost"
@@ -47,8 +48,11 @@ export function AppTopBar() {
 
       <ShiftClockWidget />
 
+      {/* Theme */}
+      <ThemeToggle />
+
       {/* Notifications */}
-      <button className="relative w-9 h-9 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors">
+      <button className="relative w-9 h-9 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors">
         <Bell size={16} />
       </button>
 

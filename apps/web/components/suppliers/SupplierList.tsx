@@ -84,7 +84,7 @@ function SupplierRow({ supplier, canManage }: { supplier: Supplier; canManage: b
           </button>
           <button
             onClick={() => { setEditing(false); setForm({ name: supplier.name, phone: supplier.phone ?? "", email: supplier.email ?? "", address: supplier.address ?? "" }) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
           >
             <X size={12} />
             Cancel
@@ -107,7 +107,7 @@ function SupplierRow({ supplier, canManage }: { supplier: Supplier; canManage: b
           {supplier.is_active && (
             <button
               onClick={() => setEditing(true)}
-              className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-gray-100 transition-colors"
+              className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
               title="Edit supplier"
             >
               <Pencil size={13} />
@@ -118,7 +118,7 @@ function SupplierRow({ supplier, canManage }: { supplier: Supplier; canManage: b
             disabled={loading}
             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
               supplier.is_active
-                ? "border-[var(--pt-border)] text-[var(--pt-text-secondary)] hover:bg-gray-50"
+                ? "border-[var(--pt-border)] text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"
                 : "border-[var(--pt-green-100)] text-[var(--pt-green-600)] bg-[var(--pt-green-50)] hover:bg-[var(--pt-green-100)]"
             }`}
           >
@@ -192,7 +192,7 @@ export function SupplierList({ suppliers, canManage, canCreate }: Props) {
         )}
       </div>
 
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] overflow-hidden">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
         {suppliers.length === 0 && !adding && (
           <div className="px-5 py-10 flex flex-col items-center text-center text-sm text-[var(--pt-text-tertiary)]">
             <Truck size={32} strokeWidth={1.5} className="mb-3" />

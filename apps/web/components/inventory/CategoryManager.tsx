@@ -98,10 +98,10 @@ export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenC
         </span>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {!isSub && (
-            <button onClick={() => { setAddingSubFor(node.id); setNewSub("") }} title="Add subcategory" className="h-7 w-7 rounded-md hover:bg-gray-100 flex items-center justify-center text-[var(--pt-green-600)]"><Plus size={14} /></button>
+            <button onClick={() => { setAddingSubFor(node.id); setNewSub("") }} title="Add subcategory" className="h-7 w-7 rounded-md hover:bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-green-600)]"><Plus size={14} /></button>
           )}
-          <button onClick={() => { setEditing(node.id); setEditName(node.name) }} title="Rename" className="h-7 w-7 rounded-md hover:bg-gray-100 flex items-center justify-center text-[var(--pt-text-secondary)]"><Pencil size={13} /></button>
-          <button onClick={() => remove(node.id, node.name)} title="Delete" className="h-7 w-7 rounded-md hover:bg-red-50 flex items-center justify-center text-[var(--pt-red)]"><Trash2 size={13} /></button>
+          <button onClick={() => { setEditing(node.id); setEditName(node.name) }} title="Rename" className="h-7 w-7 rounded-md hover:bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-secondary)]"><Pencil size={13} /></button>
+          <button onClick={() => remove(node.id, node.name)} title="Delete" className="h-7 w-7 rounded-md hover:bg-red-50 dark:hover:bg-red-500/15 flex items-center justify-center text-[var(--pt-red)]"><Trash2 size={13} /></button>
         </div>
       </div>
     )
@@ -134,10 +134,10 @@ export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenC
           )}
           {topLevel.map((cat) => (
             <div key={cat.id} className="py-2.5">
-              <div className="flex items-center px-2 py-1 rounded-lg hover:bg-gray-50"><NameRow node={cat} /></div>
+              <div className="flex items-center px-2 py-1 rounded-lg hover:bg-[var(--pt-muted)]"><NameRow node={cat} /></div>
               <div className="ml-3 mt-1 space-y-0.5">
                 {(childrenOf.get(cat.id) ?? []).map((sub) => (
-                  <div key={sub.id} className="flex items-center px-2 py-1 rounded-lg hover:bg-gray-50"><NameRow node={sub} isSub /></div>
+                  <div key={sub.id} className="flex items-center px-2 py-1 rounded-lg hover:bg-[var(--pt-muted)]"><NameRow node={sub} isSub /></div>
                 ))}
                 {addingSubFor === cat.id && (
                   <div className="flex items-center gap-2 px-2 py-1">

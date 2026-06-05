@@ -67,10 +67,10 @@ function KpiCard({
   iconClass?: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5">
+    <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide">{label}</p>
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconClass ?? "bg-gray-100 text-[var(--pt-text-secondary)]"}`}>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconClass ?? "bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]"}`}>
           <Icon size={16} />
         </div>
       </div>
@@ -81,7 +81,7 @@ function KpiCard({
 }
 
 function KpiSkeleton() {
-  return <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5 animate-pulse h-28" />
+  return <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 animate-pulse h-28" />
 }
 
 function shortDate(dateStr: string) {
@@ -107,7 +107,7 @@ const PAYMENT_ICON: Record<string, string> = {
 function ChartTooltipContent({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white rounded-xl border border-[var(--pt-border)] shadow-lg p-3 text-xs">
+    <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] shadow-lg p-3 text-xs">
       <p className="font-bold mb-2">{label}</p>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {payload.map((p: any) => (
@@ -158,7 +158,7 @@ export default function DashboardPage() {
               label="Transactions"
               value={String(data?.kpis.todayTransactions ?? 0)}
               sub="today"
-              iconClass="bg-blue-50 text-blue-600"
+              iconClass="bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400"
             />
             <KpiCard
               icon={CreditCard}
@@ -182,19 +182,19 @@ export default function DashboardPage() {
       {data && (data.alerts.outOfStock > 0 || data.alerts.lowStock > 0 || data.alerts.expiring > 0) && (
         <div className="flex flex-wrap gap-3 mb-5">
           {data.alerts.outOfStock > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-100 rounded-lg text-sm text-red-700 font-medium">
+            <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-500/15 border border-red-100 rounded-lg text-sm text-red-700 dark:text-red-300 font-medium">
               <PackageX size={14} />
               {data.alerts.outOfStock} out of stock
             </div>
           )}
           {data.alerts.lowStock > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-700 font-medium">
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-500/15 border border-amber-100 rounded-lg text-sm text-amber-700 dark:text-amber-300 font-medium">
               <AlertTriangle size={14} />
               {data.alerts.lowStock} low stock
             </div>
           )}
           {data.alerts.expiring > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-100 rounded-lg text-sm text-yellow-700 font-medium">
+            <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-500/15 border border-yellow-100 rounded-lg text-sm text-yellow-700 dark:text-yellow-300 font-medium">
               <Clock size={14} />
               {data.alerts.expiring} expiring within 90 days
             </div>
@@ -205,10 +205,10 @@ export default function DashboardPage() {
       {/* Chart + Top Products */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* Revenue Chart */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-[var(--pt-border)] p-5">
+        <div className="lg:col-span-2 bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
           <p className="text-sm font-bold mb-4">Revenue — Last 7 Days</p>
           {isLoading ? (
-            <div className="h-52 bg-gray-50 rounded-xl animate-pulse" />
+            <div className="h-52 bg-[var(--pt-muted)] rounded-xl animate-pulse" />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={data?.chartData ?? []} barSize={20} barGap={4}>
@@ -241,12 +241,12 @@ export default function DashboardPage() {
         </div>
 
         {/* Top Products */}
-        <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5">
+        <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
           <p className="text-sm font-bold mb-4">Top Products · 30 Days</p>
           {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-9 bg-gray-100 rounded-lg animate-pulse" />
+                <div key={i} className="h-9 bg-[var(--pt-muted-strong)] rounded-lg animate-pulse" />
               ))}
             </div>
           ) : !data?.topProducts.length ? (
@@ -269,7 +269,7 @@ export default function DashboardPage() {
                         {formatKES(p.revenue)}
                       </span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-[var(--pt-muted-strong)] overflow-hidden">
                       <div
                         className="h-full rounded-full bg-[var(--pt-green)]"
                         style={{ width: `${pct}%` }}
@@ -284,12 +284,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent Transactions */}
-      <div className="bg-white rounded-xl border border-[var(--pt-border)] p-5">
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
         <p className="text-sm font-bold mb-4">Recent Transactions</p>
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+              <div key={i} className="h-10 bg-[var(--pt-muted-strong)] rounded-lg animate-pulse" />
             ))}
           </div>
         ) : !data?.recentTransactions.length ? (
