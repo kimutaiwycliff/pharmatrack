@@ -238,6 +238,63 @@ export interface CartItem {
   max_discount_percent: number | null
 }
 
+// ─── Appointments / booking ──────────────────────────────────
+export interface Customer {
+  id: string
+  organization_id: string
+  full_name: string
+  phone: string | null
+  email: string | null
+  notes: string | null
+  reminders_opt_in: boolean
+  created_by: string | null
+  created_at: string
+}
+
+export type AppointmentStatus =
+  | "scheduled"
+  | "confirmed"
+  | "completed"
+  | "cancelled"
+  | "no_show"
+
+export interface Appointment {
+  id: string
+  organization_id: string
+  branch_id: string
+  customer_id: string
+  service: string
+  scheduled_at: string
+  duration_minutes: number
+  assigned_to: string | null
+  status: AppointmentStatus
+  notes: string | null
+  next_due_date: string | null
+  parent_appointment_id: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Appointment joined with related rows for list/agenda views
+export interface AppointmentWithRelations extends Appointment {
+  customer: Pick<Customer, "id" | "full_name" | "phone" | "email"> | null
+  assignee: Pick<Profile, "id" | "full_name"> | null
+}
+
+export interface AppointmentReminder {
+  id: string
+  appointment_id: string
+  organization_id: string
+  channel: "sms" | "email"
+  recipient: "customer" | "pharmacist"
+  send_at: string
+  status: "pending" | "sent" | "failed" | "skipped"
+  sent_at: string | null
+  error: string | null
+  created_at: string
+}
+
 // Shift summary for the shift report screen
 export interface ShiftSummary {
   shift: Shift

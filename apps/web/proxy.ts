@@ -1,7 +1,9 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-const PUBLIC_ROUTES = ["/login", "/auth/callback"]
+// /api/cron is exempt from the session check — those routes authenticate
+// themselves via CRON_SECRET (called by Vercel Cron, which has no session).
+const PUBLIC_ROUTES = ["/login", "/auth/callback", "/api/cron"]
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
