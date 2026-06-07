@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 export default async function RootPage() {
   const supabase = await createClient()
@@ -8,6 +8,15 @@ export default async function RootPage() {
   } = await supabase.auth.getUser()
 
   if (!user) redirect("/login")
+
+  // Platform operators have no pharmacy profile — route them to the console.
+  const admin = createAdminClient()
+  const { data: platformAdmin } = await admin
+    .from("platform_admins")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle()
+  if (platformAdmin) redirect("/platform")
 
   const { data: profile } = await supabase
     .from("profiles")

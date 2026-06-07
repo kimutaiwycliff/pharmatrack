@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
         role: parsed.data.role,
         organization_id: profile.organization_id,
       },
+      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/callback`,
     },
   )
 

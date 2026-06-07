@@ -126,8 +126,10 @@ export async function POST(request: NextRequest) {
   )
 
   // 5. Invite the owner and create their profile
+  const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/callback`
   const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(d.owner_email, {
     data: { full_name: d.owner_name, role: "owner", organization_id: org.id },
+    redirectTo,
   })
   if (inviteErr || !invited.user) {
     // Roll back the org so a failed invite doesn't leave an orphan tenant.
