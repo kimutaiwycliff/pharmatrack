@@ -1,6 +1,7 @@
 "use client"
 
 import { useActionState, useState } from "react"
+import Link from "next/link"
 import { signInWithEmail, signInWithPin, type ActionState } from "@/app/(auth)/login/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -76,6 +77,11 @@ export function LoginForm() {
                 >
                   {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
+              </div>
+              <div className="mt-1.5 text-right">
+                <Link href="/auth/reset" className="text-xs font-medium text-[var(--pt-green-600)] hover:underline">
+                  Forgot password?
+                </Link>
               </div>
             </div>
 
