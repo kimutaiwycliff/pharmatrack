@@ -30,6 +30,8 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
 
   useEffect(() => {
     if (phase !== "waiting") return
+    // Reset the countdown when the waiting phase begins.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimer(60)
     const id = setInterval(() => setTimer((t) => Math.max(0, t - 1)), 1000)
     return () => clearInterval(id)

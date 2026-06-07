@@ -23,6 +23,8 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScanner)
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastScanTimeRef = useRef<number>(0)
   const onScanRef = useRef(onScan)
+  // Keep the latest callback without re-subscribing listeners.
+  // eslint-disable-next-line react-hooks/refs
   onScanRef.current = onScan
 
   const processBuffer = useCallback(() => {

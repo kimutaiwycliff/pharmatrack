@@ -42,6 +42,31 @@ export async function cacheProduct(product: ProductWithStock) {
   await posDB.products.put({ ...product, cachedAt: Date.now() })
 }
 
+export async function cacheProducts(products: ProductWithStock[]) {
+  if (products.length === 0) return
+  const now = Date.now()
+  await posDB.products.bulkPut(products.map((p) => ({ ...p, cachedAt: now })))
+}
+
+/** Offline product search over the local cache (name / brand / GTIN). */
+export async function searchCachedProducts(
+  query: string,
+  branchId: string,
+  limit = 20,
+): Promise<CachedProduct[]> {
+  const q = query.trim().toLowerCase()
+  const all = await posDB.products.where("branch_id").equals(branchId).toArray()
+  const matched = !q
+    ? all
+    : all.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.brand_name?.toLowerCase().includes(q) ||
+          p.gtin?.includes(q),
+      )
+  return matched.slice(0, limit)
+}
+
 export async function getCachedProduct(
   barcode: string,
   branchId: string,

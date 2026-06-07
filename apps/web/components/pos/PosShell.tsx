@@ -6,7 +6,10 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ClockInDialog } from "./ClockInDialog"
 import { ClockOutDialog } from "./ClockOutDialog"
+import { OfflineSync } from "./OfflineSync"
 import { ThemeToggle } from "@/components/theme/ThemeToggle"
+import { useOnline } from "@/lib/offline/useOnline"
+import { WifiOff } from "lucide-react"
 import { useActiveShift } from "@/lib/hooks/useActiveShift"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
@@ -30,6 +33,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
   const branches = useSessionStore((s) => s.branches)
   const activeBranchId = useUIStore((s) => s.activeBranchId)
   const activeBranch = branches.find((b) => b.id === activeBranchId) ?? branches[0]
+  const online = useOnline()
 
   const isLoading = shift === undefined
 
@@ -61,6 +65,13 @@ export function PosShell({ userId, children }: { userId: string; children: React
         </div>
 
         <div className="flex-1" />
+
+        {/* Offline indicator */}
+        {!online && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-semibold">
+            <WifiOff size={13} /> Offline
+          </div>
+        )}
 
         {/* Shift indicator */}
         {shift && (
@@ -117,6 +128,9 @@ export function PosShell({ userId, children }: { userId: string; children: React
           </Button>
         </form>
       </header>
+
+      {/* Background sync of any offline sales */}
+      <OfflineSync />
 
       {/* POS content */}
       <main className="flex-1 overflow-hidden">{children}</main>

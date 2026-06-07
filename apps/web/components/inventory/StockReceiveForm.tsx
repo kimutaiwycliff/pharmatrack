@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { ScanLine, Trash2, CheckCircle2, Info, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -84,16 +84,20 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
 
   const { data: lookupData, isFetching } = useProductLookup(scannedBarcode, branchId)
 
-  // When lookup resolves
-  const prevBarcode = useState<string | null>(null)
-  if (lookupData?.found && lookupData.product && scannedBarcode && scannedBarcode !== prevBarcode[0]) {
-    prevBarcode[0] = scannedBarcode
-    setPendingProduct(lookupData.product)
-    setPendingBatch(lookupData.product.gtin ? `BN-${Date.now().toString().slice(-6)}` : "")
-    setPendingExpiry("")
-    setPendingQty(1)
-    setPendingCost("")
-  }
+  // When a scanned product resolves, prefill the receive form once per barcode.
+  const prevBarcode = useRef<string | null>(null)
+  useEffect(() => {
+    if (lookupData?.found && lookupData.product && scannedBarcode && scannedBarcode !== prevBarcode.current) {
+      prevBarcode.current = scannedBarcode
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setPendingProduct(lookupData.product)
+      setPendingBatch(lookupData.product.gtin ? `BN-${Date.now().toString().slice(-6)}` : "")
+      setPendingExpiry("")
+      setPendingQty(1)
+      setPendingCost("")
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [lookupData, scannedBarcode])
 
   useBarcodeScanner({
     enabled: !posting,

@@ -7,7 +7,7 @@ import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
 import { useProductLookup } from "@/lib/hooks/useProductLookup"
 import { useQuery } from "@tanstack/react-query"
 import { formatKES } from "@/lib/store/cartStore"
-import { cacheProduct } from "@/lib/offline/db"
+import { cacheProduct, cacheProducts, searchCachedProducts } from "@/lib/offline/db"
 import type { ProductWithStock } from "@pharmatrack/types"
 
 interface Props {
@@ -20,11 +20,19 @@ function useProductSearch(q: string, branchId: string) {
   return useQuery<{ products: ProductWithStock[] }>({
     queryKey: ["productSearch", q, branchId],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/products/search?q=${encodeURIComponent(q)}&branch_id=${branchId}`,
-      )
-      if (!res.ok) throw new Error("Search failed")
-      return res.json() as Promise<{ products: ProductWithStock[] }>
+      try {
+        const res = await fetch(
+          `/api/products/search?q=${encodeURIComponent(q)}&branch_id=${branchId}`,
+        )
+        if (!res.ok) throw new Error("Search failed")
+        const json = (await res.json()) as { products: ProductWithStock[] }
+        // Keep the local cache warm so search/scan keep working offline.
+        cacheProducts(json.products).catch(() => {})
+        return json
+      } catch {
+        const cached = await searchCachedProducts(q, branchId)
+        return { products: cached }
+      }
     },
     enabled: branchId.length > 0,
     staleTime: 30_000,
@@ -61,6 +69,8 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   )
 
   const prevLookup = useRef<string | null>(null)
+  // Process each barcode lookup result exactly once.
+  /* eslint-disable react-hooks/refs */
   if (lookupData && scannedBarcode && prevLookup.current !== scannedBarcode) {
     prevLookup.current = scannedBarcode
     if (lookupData.found && lookupData.product) {
@@ -71,6 +81,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
       setScannedBarcode(null)
     }
   }
+  /* eslint-enable react-hooks/refs */
 
   useBarcodeScanner({
     enabled: scannerEnabled,

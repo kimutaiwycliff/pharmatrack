@@ -14,6 +14,8 @@ import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useActiveShift } from "@/lib/hooks/useActiveShift"
 import { useQuery } from "@tanstack/react-query"
+import { useOnline } from "@/lib/offline/useOnline"
+import { queueOfflineSale } from "@/lib/offline/db"
 import type { Sale, SaleItem } from "@pharmatrack/types"
 
 type PayModal = "cash" | "mpesa" | "split" | null
@@ -38,6 +40,7 @@ export default function PosPage() {
   const activeBranchId = useUIStore((s) => s.activeBranchId)
   const activeBranch = branches.find((b) => b.id === activeBranchId) ?? branches[0]
 
+  const online = useOnline()
   const { data: shift } = useActiveShift(profile?.id ?? "")
   const items = useCartStore((s) => s.items)
   const discount = useCartStore((s) => s.discount)
@@ -69,6 +72,35 @@ export default function PosPage() {
     customerPhone?: string | null
   }) {
     if (!activeBranch || !profile) return
+
+    // Offline: only cash can be recorded (M-Pesa/card need connectivity).
+    if (!online) {
+      if (params.paymentMethod !== "cash") {
+        toast.error("You're offline — only cash sales can be recorded until you reconnect")
+        return
+      }
+      await queueOfflineSale({
+        saleId: crypto.randomUUID(),
+        branchId: activeBranch.id,
+        cashierId: profile.id,
+        shiftId: shift?.id ?? null,
+        items,
+        discount,
+        paymentMethod: "cash",
+        amountTendered: params.amountTendered,
+        mpesaReference: null,
+        cashAmount: null,
+        mpesaAmount: null,
+        customerPhone: params.customerPhone ?? null,
+        createdAt: new Date().toISOString(),
+        synced: false,
+      })
+      toast.success("Saved offline — it will sync when you reconnect. Give the customer a manual receipt.")
+      clearCart()
+      setPayModal(null)
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await fetch("/api/sales", {

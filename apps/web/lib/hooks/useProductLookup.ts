@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import type { ProductWithStock } from "@pharmatrack/types"
+import { getCachedProduct } from "@/lib/offline/db"
 
 interface LookupResult {
   found: boolean
@@ -17,9 +18,18 @@ async function lookupProduct(barcode: string, branchId?: string): Promise<Lookup
   const params = new URLSearchParams({ barcode })
   if (branchId) params.set("branch_id", branchId)
 
-  const res = await fetch(`/api/products/lookup?${params.toString()}`)
-  if (!res.ok) throw new Error("Lookup failed")
-  return (await res.json()) as LookupResult
+  try {
+    const res = await fetch(`/api/products/lookup?${params.toString()}`)
+    if (!res.ok) throw new Error("Lookup failed")
+    return (await res.json()) as LookupResult
+  } catch (err) {
+    // Offline / network failure → try the local product cache.
+    if (branchId) {
+      const cached = await getCachedProduct(barcode, branchId)
+      if (cached) return { found: true, product: cached }
+    }
+    throw err
+  }
 }
 
 export function useProductLookup(barcode: string | null, branchId?: string) {

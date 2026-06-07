@@ -64,7 +64,8 @@ export async function GET(request: NextRequest) {
     // Aggregate by cashier
     const byCashier: Record<string, { name: string; revenue: number; count: number }> = {}
     // Aggregate by payment method
-    let totalRevenue = 0, totalCash = 0, totalMpesa = 0, totalSplit = 0, totalDiscount = 0
+    let totalRevenue = 0, totalCash = 0, totalMpesa = 0, totalDiscount = 0
+    const totalSplit = 0
     let transactionCount = 0
 
     for (const s of sales ?? []) {

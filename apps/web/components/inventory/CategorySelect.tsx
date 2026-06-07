@@ -95,7 +95,8 @@ export function CategorySelect({
     }
   }
 
-  function InlineCreate({ placeholder }: { placeholder: string }) {
+  // Render helper (not a component) — avoids remounting the input each render.
+  const renderInlineCreate = (placeholder: string) => {
     return (
       <div className="flex items-center gap-2 mt-1.5">
         <input
@@ -138,7 +139,7 @@ export function CategorySelect({
           Category
         </label>
         {creating === "category" ? (
-          <InlineCreate placeholder="New category name" />
+          renderInlineCreate("New category name")
         ) : (
           <select
             className={selectClass}
@@ -165,7 +166,7 @@ export function CategorySelect({
           Subcategory
         </label>
         {creating === "subcategory" ? (
-          <InlineCreate placeholder="New subcategory name" />
+          renderInlineCreate("New subcategory name")
         ) : (
           <select
             className={selectClass}
