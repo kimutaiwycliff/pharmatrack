@@ -32,7 +32,7 @@ PharmaTrack is a production-grade SaaS that pharmacies sign up for and run their
 - Fast product search + barcode/GS1 scanning, cart with per-line discounts (capped per product)
 - Payments: cash (with change), **M‑Pesa STK push**, card, and split payments
 - Printable / PDF receipts
-- **Offline-capable** (IndexedDB) so the till keeps working when the connection drops
+- **Offline groundwork** (IndexedDB): product caching + a sale-queue/sync layer is scaffolded; full offline selling + PWA is on the [roadmap](#roadmap)
 - Shift-based: clock in/out, opening float, closing cash & variance
 
 **Inventory**
@@ -74,7 +74,7 @@ PharmaTrack is a production-grade SaaS that pharmacies sign up for and run their
 | Data/state | TanStack Query, Zustand, Zod |
 | Backend | **Supabase** — Postgres + Auth (GoTrue) + Storage + Row-Level Security |
 | Cache | **Upstash Redis** (product lookups, rate limiting) — swappable for self-hosted Redis |
-| Offline | Dexie (IndexedDB) for the POS |
+| Offline | Dexie (IndexedDB) — product cache + sale-queue scaffolding (not yet a full offline PWA) |
 | Receipts/charts | `@react-pdf/renderer`, Recharts |
 | Observability | Sentry (optional, env-gated) |
 | Billing | Paystack (optional, env-gated) |
@@ -198,6 +198,8 @@ pnpm --filter web build       # production build
 
 **GitHub Actions** (`.github/workflows/ci.yml`) runs typecheck → lint → test → build on every push and PR.
 
+For manual release testing, use the **[QA checklist](docs/QA_CHECKLIST.md)**.
+
 ---
 
 ## Deployment
@@ -265,6 +267,7 @@ Grant operator access by adding a user's `auth.users` id to the `platform_admins
 ## Roadmap
 
 Designed-for, not yet built:
+- **Full offline POS + PWA** — finish wiring the existing sale-queue/sync layer (`lib/offline/db.ts`), add a service worker + manifest, and offline product search
 - Public self-serve signup (today pharmacies are provisioned by the operator)
 - Per-plan limits & feature gating (schema already supports `plans.limits` / `features`)
 - End-to-end (Playwright) test suite

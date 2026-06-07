@@ -91,7 +91,7 @@ Open **POS Terminal**.
 4. **Receipt** — print or save the PDF; optionally capture the customer's name/phone.
 5. **End your shift** — clock out and enter closing cash; the system shows any variance.
 
-**Works offline:** if the internet drops, the till keeps running and syncs when you're back online — so you never stop serving customers.
+**Connectivity:** the till needs an internet connection to take payments and record sales. Keep a stable connection at the point of sale. (Full offline selling is on our roadmap.)
 
 ---
 
@@ -180,7 +180,7 @@ Settings → **Billing** shows your **plan**, **status**, and **paid-until** dat
 - **M‑Pesa prompt didn't arrive?** Confirm the customer's phone number format and that they have network, then retry.
 - **Reminders not arriving?** They send the day before and require your messaging providers to be set up; confirm the customer hasn't opted out and has a phone/email on file.
 - **Wrong branch?** Switch the active branch in the top bar before selling or receiving stock.
-- **Working offline?** The POS keeps working; sales sync automatically when you're back online — avoid clearing browser data mid-shift.
+- **Lost connection at the till?** Sales need a connection to record and to take M‑Pesa/card. Restore internet and retry; avoid clearing browser data mid-shift.
 
 ---
 
