@@ -2,13 +2,14 @@
 
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Building2, GitBranch, User, Palette } from "lucide-react"
+import { Building2, GitBranch, User, Palette, Syringe } from "lucide-react"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
 import { ProfileSettingsForm } from "@/components/settings/ProfileSettingsForm"
+import { AppointmentServiceList, SERVICES_MANAGE_KEY } from "@/components/settings/AppointmentServiceList"
 import { ThemeSegmented } from "@/components/theme/ThemeToggle"
 import { useSessionStore } from "@/lib/store/sessionStore"
-import type { Organization, Branch, Profile } from "@pharmatrack/types"
+import type { Organization, Branch, Profile, AppointmentService } from "@pharmatrack/types"
 
 interface SettingsData {
   org: Organization
@@ -28,11 +29,12 @@ function useSettings() {
   })
 }
 
-type Tab = "org" | "branches" | "profile" | "appearance"
+type Tab = "org" | "branches" | "services" | "profile" | "appearance"
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: "org",        label: "Organization", icon: Building2 },
   { key: "branches",   label: "Branches",     icon: GitBranch },
+  { key: "services",   label: "Services",     icon: Syringe },
   { key: "profile",    label: "My Profile",   icon: User },
   { key: "appearance", label: "Appearance",   icon: Palette },
 ]
@@ -43,6 +45,19 @@ export default function SettingsPage() {
   const { data, isLoading } = useSettings()
 
   const isOwner = profile?.role === "owner"
+  const canManageServices = ["owner", "manager"].includes(profile?.role ?? "")
+
+  const { data: services = [], isLoading: servicesLoading } = useQuery<AppointmentService[]>({
+    queryKey: SERVICES_MANAGE_KEY,
+    queryFn: async () => {
+      const res = await fetch("/api/appointment-services?includeInactive=true")
+      if (!res.ok) throw new Error("Failed to load services")
+      const json = (await res.json()) as { services: AppointmentService[] }
+      return json.services
+    },
+    staleTime: 60_000,
+    enabled: tab === "services",
+  })
 
   return (
     <div>
@@ -80,6 +95,19 @@ export default function SettingsPage() {
           </p>
           <ThemeSegmented />
         </div>
+      ) : tab === "services" ? (
+        servicesLoading ? (
+          <div className="max-w-2xl bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">
+                <div className="h-3.5 bg-[var(--pt-muted-strong)] rounded w-48 mb-2" />
+                <div className="h-2.5 bg-[var(--pt-muted-strong)] rounded w-28" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <AppointmentServiceList services={services} canManage={canManageServices} />
+        )
       ) : isLoading ? (
         <div className="max-w-xl space-y-4">
           {Array.from({ length: 4 }).map((_, i) => (

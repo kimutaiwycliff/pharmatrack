@@ -10,10 +10,9 @@ import { Label } from "@/components/ui/label"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
-import { APPOINTMENT_SERVICES } from "@/lib/appointments/services"
-
 interface StaffMember { id: string; full_name: string; role: string }
 interface CustomerHit { id: string; full_name: string; phone: string | null; email: string | null; reminders_opt_in?: boolean }
+interface ServiceOption { id: string; slug: string; label: string; recurrence_weeks: number | null }
 
 export interface BookPrefill {
   customer_id?: string
@@ -53,7 +52,7 @@ export function BookAppointmentDialog({ open, onOpenChange, prefill, onBooked }:
   const [name, setName] = useState(prefill?.customer_name ?? "")
   const [phone, setPhone] = useState(prefill?.customer_phone ?? "")
   const [email, setEmail] = useState(prefill?.customer_email ?? "")
-  const [service, setService] = useState(prefill?.service ?? APPOINTMENT_SERVICES[0]?.value ?? "other")
+  const [service, setService] = useState(prefill?.service ?? "")
   const [branchId, setBranchId] = useState(activeBranchId ?? branches[0]?.id ?? "")
   const [when, setWhen] = useState(toLocalInput(prefill?.scheduled_at))
   const [duration, setDuration] = useState(15)
@@ -77,6 +76,20 @@ export function BookAppointmentDialog({ open, onOpenChange, prefill, onBooked }:
   const assignable = staff.length
     ? staff.filter((s) => ["owner", "manager", "pharmacist"].includes(s.role))
     : profile ? [{ id: profile.id, full_name: profile.full_name, role: profile.role }] : []
+
+  // Services the pharmacy offers (managed in Settings → Services).
+  const { data: services = [] } = useQuery<ServiceOption[]>({
+    queryKey: ["appointment-services"],
+    queryFn: async () => {
+      const res = await fetch("/api/appointment-services")
+      if (!res.ok) return []
+      const json = (await res.json()) as { services: ServiceOption[] }
+      return json.services
+    },
+    staleTime: 5 * 60_000,
+    enabled: open,
+  })
+  const selectedSlug = service || services[0]?.slug || ""
 
   // Customer autocomplete.
   const search = useDebounce(name || phone, 250)
@@ -104,6 +117,9 @@ export function BookAppointmentDialog({ open, onOpenChange, prefill, onBooked }:
     if (!name.trim()) { toast.error("Customer name is required"); return }
     if (!branchId) { toast.error("Select a branch"); return }
     if (!when) { toast.error("Pick a date and time"); return }
+    if (!selectedSlug) { toast.error("Add a service in Settings → Services first"); return }
+
+    const serviceLabel = services.find((s) => s.slug === selectedSlug)?.label
 
     startTransition(async () => {
       try {
@@ -116,7 +132,8 @@ export function BookAppointmentDialog({ open, onOpenChange, prefill, onBooked }:
             customer_phone: phone || undefined,
             customer_email: email || undefined,
             branch_id: branchId,
-            service,
+            service: selectedSlug,
+            service_label: serviceLabel,
             scheduled_at: new Date(when).toISOString(),
             duration_minutes: duration,
             assigned_to: assignee || null,
@@ -193,8 +210,9 @@ export function BookAppointmentDialog({ open, onOpenChange, prefill, onBooked }:
             <p className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">Appointment</p>
             <div>
               <Label className="text-sm font-medium">Service *</Label>
-              <select value={service} onChange={(e) => setService(e.target.value)} className={`mt-1.5 ${selectCls}`}>
-                {APPOINTMENT_SERVICES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              <select value={selectedSlug} onChange={(e) => setService(e.target.value)} className={`mt-1.5 ${selectCls}`}>
+                {services.length === 0 && <option value="">No services — add them in Settings → Services</option>}
+                {services.map((s) => <option key={s.id} value={s.slug}>{s.label}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

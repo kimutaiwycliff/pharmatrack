@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { AppTopBar } from "@/components/layout/AppTopBar"
 import { Providers } from "@/components/providers"
+import { SubscriptionGate } from "@/components/SubscriptionGate"
 import type { Profile, Branch } from "@pharmatrack/types"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   // Cashiers belong in POS, not dashboard
   if (profile.role === "cashier") redirect("/pos")
+
+  // SaaS gate: block access if the tenant's subscription isn't active/trialing.
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("status")
+    .eq("organization_id", profile.organization_id)
+    .maybeSingle()
+  if (!sub || !["trialing", "active"].includes(sub.status)) {
+    return <SubscriptionGate status={sub?.status ?? "none"} isOwner={profile.role === "owner"} />
+  }
 
   // Fetch branches for this org
   const { data: branchRows } = await supabase

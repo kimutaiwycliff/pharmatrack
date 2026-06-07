@@ -258,12 +258,24 @@ export type AppointmentStatus =
   | "cancelled"
   | "no_show"
 
+export interface AppointmentService {
+  id: string
+  organization_id: string
+  slug: string
+  label: string
+  recurrence_weeks: number | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+}
+
 export interface Appointment {
   id: string
   organization_id: string
   branch_id: string
   customer_id: string
   service: string
+  service_label: string | null
   scheduled_at: string
   duration_minutes: number
   assigned_to: string | null
@@ -293,6 +305,65 @@ export interface AppointmentReminder {
   sent_at: string | null
   error: string | null
   created_at: string
+}
+
+// ─── SaaS: plans, subscriptions, platform ────────────────────
+export interface Plan {
+  id: string
+  code: string
+  name: string
+  price_kes: number
+  interval: "monthly" | "annual"
+  limits: Record<string, unknown>
+  features: Record<string, unknown>
+  is_active: boolean
+  created_at: string
+}
+
+export type SubscriptionStatus =
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "suspended"
+  | "cancelled"
+
+export interface Subscription {
+  id: string
+  organization_id: string
+  plan_id: string | null
+  status: SubscriptionStatus
+  trial_ends_at: string | null
+  current_period_end: string | null
+  provider: string | null
+  provider_customer_id: string | null
+  provider_subscription_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SubscriptionPayment {
+  id: string
+  organization_id: string
+  amount_kes: number
+  method: string | null
+  period_start: string | null
+  period_end: string | null
+  reference: string | null
+  recorded_by: string | null
+  created_at: string
+}
+
+// Tenant row for the platform console (org + its subscription + counts)
+export interface TenantSummary {
+  id: string
+  name: string
+  email: string | null
+  phone: string | null
+  created_at: string
+  subscription: Subscription | null
+  plan_name: string | null
+  branch_count: number
+  staff_count: number
 }
 
 // Shift summary for the shift report screen

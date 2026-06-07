@@ -17,6 +17,7 @@ const createSchema = z.object({
 
   branch_id: z.string().uuid(),
   service: z.string().min(1),
+  service_label: z.string().max(120).optional(),
   scheduled_at: z.string().datetime({ offset: true }),
   duration_minutes: z.number().int().positive().max(480).default(15),
   assigned_to: z.string().uuid().nullable().optional(),
@@ -146,6 +147,7 @@ export async function POST(request: NextRequest) {
       branch_id: d.branch_id,
       customer_id: customerId,
       service: d.service,
+      service_label: d.service_label ?? null,
       scheduled_at: d.scheduled_at,
       duration_minutes: d.duration_minutes,
       assigned_to: d.assigned_to ?? null,

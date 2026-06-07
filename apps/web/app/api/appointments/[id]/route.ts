@@ -83,7 +83,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   // Suggest the next dose for recurring services when completed.
   let nextDue: string | null = null
   if (parsed.data.status === "completed") {
-    const weeks = serviceRecurrenceWeeks(existing.service)
+    const { data: svc } = await supabase
+      .from("appointment_services")
+      .select("recurrence_weeks")
+      .eq("organization_id", profile.organization_id)
+      .eq("slug", existing.service)
+      .maybeSingle()
+    const weeks = svc?.recurrence_weeks ?? serviceRecurrenceWeeks(existing.service)
     if (weeks) {
       const next = new Date(existing.scheduled_at)
       next.setDate(next.getDate() + weeks * 7)

@@ -65,7 +65,7 @@ export function AppointmentCard({ appt, onCompletedNextDose }: Props) {
       {/* Body */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="font-semibold text-sm truncate">{serviceLabel(appt.service)}</p>
+          <p className="font-semibold text-sm truncate">{appt.service_label ?? serviceLabel(appt.service)}</p>
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${STATUS_STYLES[appt.status]}`}>
             {STATUS_LABEL[appt.status]}
           </span>

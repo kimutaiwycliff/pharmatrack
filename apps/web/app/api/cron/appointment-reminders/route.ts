@@ -15,6 +15,7 @@ interface ReminderRow {
   appointment: {
     scheduled_at: string
     service: string
+    service_label: string | null
     status: string
     customer: { full_name: string; phone: string | null; email: string | null; reminders_opt_in: boolean } | null
     branch: { name: string } | null
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase
     .from("appointment_reminders")
     .select(
-      "id, channel, recipient, appointment:appointments(scheduled_at, service, status, customer:customers(full_name, phone, email, reminders_opt_in), branch:branches(name), organization:organizations(name), assignee:profiles!appointments_assigned_to_fkey(full_name, phone))",
+      "id, channel, recipient, appointment:appointments(scheduled_at, service, service_label, status, customer:customers(full_name, phone, email, reminders_opt_in), branch:branches(name), organization:organizations(name), assignee:profiles!appointments_assigned_to_fkey(full_name, phone))",
     )
     .eq("status", "pending")
     .lte("send_at", nowIso)
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     const ctx: MessageContext = {
       customerName: appt.customer?.full_name ?? "Customer",
-      service: appt.service,
+      service: appt.service_label ?? appt.service,
       scheduledAt: appt.scheduled_at,
       branchName: appt.branch?.name ?? "the pharmacy",
       orgName: appt.organization?.name ?? "PharmaTrack",

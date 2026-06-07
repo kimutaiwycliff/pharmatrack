@@ -36,6 +36,16 @@ export async function signInWithEmail(
   } = await supabase.auth.getUser()
   if (!user) return { error: "Login failed" }
 
+  // Platform (SaaS operator) admins go to the platform console — they may not
+  // belong to any pharmacy, so check before the profile lookup.
+  const admin = createAdminClient()
+  const { data: platformAdmin } = await admin
+    .from("platform_admins")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle()
+  if (platformAdmin) redirect("/platform")
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")

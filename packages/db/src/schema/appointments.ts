@@ -11,6 +11,7 @@ export const appointments = pgTable("appointments", {
   customer_id: uuid("customer_id").notNull().references(() => customers.id),
 
   service: text("service").notNull(),
+  service_label: text("service_label"),
   scheduled_at: timestamp("scheduled_at", { withTimezone: true }).notNull(),
   duration_minutes: integer("duration_minutes").notNull().default(15),
   assigned_to: uuid("assigned_to").references(() => profiles.id),

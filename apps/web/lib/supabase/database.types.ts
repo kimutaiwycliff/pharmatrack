@@ -14,6 +14,176 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointment_services: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          organization_id: string
+          recurrence_weeks: number | null
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          organization_id: string
+          recurrence_weeks?: number | null
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          organization_id?: string
+          recurrence_weeks?: number | null
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      plans: {
+        Row: {
+          code: string
+          created_at: string
+          features: Json
+          id: string
+          interval: string
+          is_active: boolean
+          limits: Json
+          name: string
+          price_kes: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          features?: Json
+          id?: string
+          interval?: string
+          is_active?: boolean
+          limits?: Json
+          name: string
+          price_kes?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          features?: Json
+          id?: string
+          interval?: string
+          is_active?: boolean
+          limits?: Json
+          name?: string
+          price_kes?: number
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          id: string
+          organization_id: string
+          plan_id: string | null
+          provider: string | null
+          provider_customer_id: string | null
+          provider_subscription_id: string | null
+          status: string
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          organization_id: string
+          plan_id?: string | null
+          provider?: string | null
+          provider_customer_id?: string | null
+          provider_subscription_id?: string | null
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          organization_id?: string
+          plan_id?: string | null
+          provider?: string | null
+          provider_customer_id?: string | null
+          provider_subscription_id?: string | null
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_payments: {
+        Row: {
+          amount_kes: number
+          created_at: string
+          id: string
+          method: string | null
+          organization_id: string
+          period_end: string | null
+          period_start: string | null
+          recorded_by: string | null
+          reference: string | null
+        }
+        Insert: {
+          amount_kes: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          organization_id: string
+          period_end?: string | null
+          period_start?: string | null
+          recorded_by?: string | null
+          reference?: string | null
+        }
+        Update: {
+          amount_kes?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          organization_id?: string
+          period_end?: string | null
+          period_start?: string | null
+          recorded_by?: string | null
+          reference?: string | null
+        }
+        Relationships: []
+      }
+      platform_admins: {
+        Row: {
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       appointment_reminders: {
         Row: {
           appointment_id: string
@@ -76,6 +246,7 @@ export type Database = {
           parent_appointment_id: string | null
           scheduled_at: string
           service: string
+          service_label: string | null
           status: string
           updated_at: string
         }
@@ -93,6 +264,7 @@ export type Database = {
           parent_appointment_id?: string | null
           scheduled_at: string
           service: string
+          service_label?: string | null
           status?: string
           updated_at?: string
         }
@@ -110,6 +282,7 @@ export type Database = {
           parent_appointment_id?: string | null
           scheduled_at?: string
           service?: string
+          service_label?: string | null
           status?: string
           updated_at?: string
         }
