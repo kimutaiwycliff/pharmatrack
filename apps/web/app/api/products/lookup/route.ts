@@ -1,23 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { Redis } from "@upstash/redis"
-
-let redis: Redis | null = null
-try {
-  if (
-    process.env.UPSTASH_REDIS_REST_URL &&
-    process.env.UPSTASH_REDIS_REST_URL !== "https://xxx.upstash.io" &&
-    process.env.UPSTASH_REDIS_REST_TOKEN &&
-    process.env.UPSTASH_REDIS_REST_TOKEN !== "xxx"
-  ) {
-    redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    })
-  }
-} catch {
-  // Redis not configured — fall through to DB
-}
+import { redis } from "@/lib/redis"
 
 const CACHE_TTL = 3600 // 1 hour
 

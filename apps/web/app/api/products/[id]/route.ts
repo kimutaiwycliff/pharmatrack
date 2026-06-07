@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { Redis } from "@upstash/redis"
 import { z } from "zod"
-
-let redis: Redis | null = null
-try {
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_URL !== "https://xxx.upstash.io") {
-    redis = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL!, token: process.env.UPSTASH_REDIS_REST_TOKEN! })
-  }
-} catch {}
+import { redis } from "@/lib/redis"
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
