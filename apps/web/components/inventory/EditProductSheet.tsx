@@ -263,18 +263,23 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
   })
   const suppliers = suppliersData?.suppliers ?? []
 
-  // Form state — initialised from product once loaded
+  // Form state — re-initialised whenever a different product loads
   const [form, setForm] = useState<Partial<Product>>({})
-  const initialised = useRef(false)
+  const [syncedId, setSyncedId] = useState<string | null>(null)
 
   const setF = useCallback((key: keyof Product, value: unknown) => {
     setForm(f => ({ ...f, [key]: value }))
   }, [])
 
-  // Sync once product loads
-  if (product && !initialised.current) {
-    initialised.current = true
+  // Sync the form when the loaded product changes (e.g. opening a different one).
+  // A background refetch of the same product won't clobber in-progress edits.
+  if (product && product.id !== syncedId) {
+    setSyncedId(product.id)
     setForm({ ...product })
+  }
+  // Reset on close so reopening (even the same product) re-syncs from the DB.
+  if (!productId && syncedId !== null) {
+    setSyncedId(null)
   }
 
   const [saving, setSaving] = useState(false)
