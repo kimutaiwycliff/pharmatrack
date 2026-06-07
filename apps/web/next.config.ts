@@ -11,6 +11,11 @@ const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "
 
 const nextConfig: NextConfig = {
   turbopack: { root: repoRoot },
+  // Self-contained build output for Docker/VM deploys (apps/web/.next/standalone).
+  output: "standalone",
+  // In a pnpm monorepo, trace files from the repo root so standalone bundles
+  // workspace deps correctly.
+  outputFileTracingRoot: repoRoot,
   // Prevent Next.js from bundling server-only heavy packages that use WASM/native bindings
   serverExternalPackages: ["@react-pdf/renderer", "@react-pdf/yoga"],
 };

@@ -6,7 +6,9 @@
     "dev": "NODE_OPTIONS=--max-old-space-size=3072 next dev --webpack --disable-source-maps",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

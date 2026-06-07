@@ -1,0 +1,63 @@
+# Single-VM deployment (also a good base for a Swarm stack).
+#
+# This runs the PharmaTrack web app + a Redis container. Postgres/Auth/Storage
+# come from either Supabase Cloud or a self-hosted Supabase stack — point the
+# env vars below at whichever you use (the app code is identical for both).
+#
+#   Managed backends:   set SUPABASE/UPSTASH/etc. to the hosted URLs (you can
+#                       drop the `redis` service and use Upstash instead).
+#   Pure VM:            run self-hosted Supabase separately
+#                       (https://supabase.com/docs/guides/self-hosting/docker)
+#                       and point NEXT_PUBLIC_SUPABASE_URL at it; use the redis
+#                       service below for REDIS_URL.
+#
+# Copy apps/web/.env.local.example values into a root .env file first.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pharmatrack-web:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  # Cron driver — replaces Vercel Cron when self-hosting; hits the reminder
+  # endpoint every 15 minutes (set CRON_SECRET in .env).
+  reminder-cron:
+    image: alpine:3
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - web
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache curl >/dev/null 2>&1
+        while true; do
+          curl -s -H "Authorization: Bearer $${CRON_SECRET}" http://web:3000/api/cron/appointment-reminders >/dev/null 2>&1 || true
+          sleep 900
+        done
+
+volumes:
+  redis-data:

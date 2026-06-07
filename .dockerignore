@@ -1,0 +1,17 @@
+**/node_modules
+**/.next
+**/.git
+**/.turbo
+**/dist
+**/.env*
+!**/.env.local.example
+**/*.log
+.vscode
+.claude
+docs
+**/__tests__
+**/*.test.*
+**/*.spec.*
+Dockerfile
+.dockerignore
+docker-compose*.yml
