@@ -2,11 +2,12 @@
 
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Building2, GitBranch, User, Palette, Syringe } from "lucide-react"
+import { Building2, GitBranch, User, Palette, Syringe, CreditCard } from "lucide-react"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
 import { ProfileSettingsForm } from "@/components/settings/ProfileSettingsForm"
 import { AppointmentServiceList, SERVICES_MANAGE_KEY } from "@/components/settings/AppointmentServiceList"
+import { BillingPanel } from "@/components/settings/BillingPanel"
 import { ThemeSegmented } from "@/components/theme/ThemeToggle"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import type { Organization, Branch, Profile, AppointmentService } from "@pharmatrack/types"
@@ -29,12 +30,13 @@ function useSettings() {
   })
 }
 
-type Tab = "org" | "branches" | "services" | "profile" | "appearance"
+type Tab = "org" | "branches" | "services" | "billing" | "profile" | "appearance"
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: "org",        label: "Organization", icon: Building2 },
   { key: "branches",   label: "Branches",     icon: GitBranch },
   { key: "services",   label: "Services",     icon: Syringe },
+  { key: "billing",    label: "Billing",      icon: CreditCard },
   { key: "profile",    label: "My Profile",   icon: User },
   { key: "appearance", label: "Appearance",   icon: Palette },
 ]
@@ -108,6 +110,8 @@ export default function SettingsPage() {
         ) : (
           <AppointmentServiceList services={services} canManage={canManageServices} />
         )
+      ) : tab === "billing" ? (
+        <BillingPanel />
       ) : isLoading ? (
         <div className="max-w-xl space-y-4">
           {Array.from({ length: 4 }).map((_, i) => (
