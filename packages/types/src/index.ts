@@ -247,8 +247,53 @@ export interface Customer {
   email: string | null
   notes: string | null
   reminders_opt_in: boolean
+  date_of_birth: string | null
+  sex: string | null
+  allergies: string | null
   created_by: string | null
   created_at: string
+}
+
+// ─── Prescriptions / DUR ─────────────────────────────────────
+export type PrescriptionStatus = "active" | "completed" | "cancelled"
+
+export interface PrescriptionItem {
+  id: string
+  prescription_id: string
+  product_id: string | null
+  drug_name: string
+  dose: string | null
+  frequency: string | null
+  duration: string | null
+  quantity: number | null
+  instructions: string | null
+  created_at: string
+}
+
+export interface Prescription {
+  id: string
+  organization_id: string
+  customer_id: string
+  prescriber_name: string | null
+  prescriber_reg_no: string | null
+  diagnosis: string | null
+  notes: string | null
+  status: PrescriptionStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PrescriptionWithRelations extends Prescription {
+  customer: Pick<Customer, "id" | "full_name" | "phone" | "allergies"> | null
+  items: PrescriptionItem[]
+}
+
+// A single Drug Utilization Review finding raised at prescribing time.
+export interface DurWarning {
+  type: "allergy" | "duplicate" | "interaction"
+  severity: "minor" | "moderate" | "severe"
+  message: string
 }
 
 export type AppointmentStatus =

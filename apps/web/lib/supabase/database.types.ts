@@ -14,6 +14,109 @@ export type Database = {
   }
   public: {
     Tables: {
+      drug_interactions: {
+        Row: { drug_a: string; drug_b: string; id: string; note: string | null; severity: string }
+        Insert: { drug_a: string; drug_b: string; id?: string; note?: string | null; severity?: string }
+        Update: { drug_a?: string; drug_b?: string; id?: string; note?: string | null; severity?: string }
+        Relationships: []
+      }
+      prescriptions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          diagnosis: string | null
+          id: string
+          notes: string | null
+          organization_id: string
+          prescriber_name: string | null
+          prescriber_reg_no: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          diagnosis?: string | null
+          id?: string
+          notes?: string | null
+          organization_id: string
+          prescriber_name?: string | null
+          prescriber_reg_no?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          diagnosis?: string | null
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          prescriber_name?: string | null
+          prescriber_reg_no?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prescriptions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prescription_items: {
+        Row: {
+          created_at: string
+          dose: string | null
+          drug_name: string
+          duration: string | null
+          frequency: string | null
+          id: string
+          instructions: string | null
+          prescription_id: string
+          product_id: string | null
+          quantity: number | null
+        }
+        Insert: {
+          created_at?: string
+          dose?: string | null
+          drug_name: string
+          duration?: string | null
+          frequency?: string | null
+          id?: string
+          instructions?: string | null
+          prescription_id: string
+          product_id?: string | null
+          quantity?: number | null
+        }
+        Update: {
+          created_at?: string
+          dose?: string | null
+          drug_name?: string
+          duration?: string | null
+          frequency?: string | null
+          id?: string
+          instructions?: string | null
+          prescription_id?: string
+          product_id?: string | null
+          quantity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prescription_items_prescription_id_fkey"
+            columns: ["prescription_id"]
+            isOneToOne: false
+            referencedRelation: "prescriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointment_services: {
         Row: {
           created_at: string
@@ -319,8 +422,10 @@ export type Database = {
       }
       customers: {
         Row: {
+          allergies: string | null
           created_at: string
           created_by: string | null
+          date_of_birth: string | null
           email: string | null
           full_name: string
           id: string
@@ -328,10 +433,13 @@ export type Database = {
           organization_id: string
           phone: string | null
           reminders_opt_in: boolean
+          sex: string | null
         }
         Insert: {
+          allergies?: string | null
           created_at?: string
           created_by?: string | null
+          date_of_birth?: string | null
           email?: string | null
           full_name: string
           id?: string
@@ -339,10 +447,13 @@ export type Database = {
           organization_id: string
           phone?: string | null
           reminders_opt_in?: boolean
+          sex?: string | null
         }
         Update: {
+          allergies?: string | null
           created_at?: string
           created_by?: string | null
+          date_of_birth?: string | null
           email?: string | null
           full_name?: string
           id?: string
@@ -350,6 +461,7 @@ export type Database = {
           organization_id?: string
           phone?: string | null
           reminders_opt_in?: boolean
+          sex?: string | null
         }
         Relationships: []
       }

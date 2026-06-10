@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, boolean, date, timestamp } from "drizzle-orm/pg-core"
 import { organizations } from "./organizations"
 import { profiles } from "./profiles"
 
@@ -10,6 +10,9 @@ export const customers = pgTable("customers", {
   email: text("email"),
   notes: text("notes"),
   reminders_opt_in: boolean("reminders_opt_in").notNull().default(true),
+  date_of_birth: date("date_of_birth"),
+  sex: text("sex"),
+  allergies: text("allergies"),
   created_by: uuid("created_by").references(() => profiles.id),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
