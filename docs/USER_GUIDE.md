@@ -130,7 +130,7 @@ For injections, family planning, vaccinations and clinical visits — open **App
 - **Book** — search an existing customer or add a new one, pick the **service**, date/time, branch and the pharmacist responsible.
 - **Track** — Today / Upcoming / Past tabs; mark each as Confirmed, Completed, No-show or Cancelled.
 - **Recurring doses** — completing a recurring service (e.g. Depo‑Provera every 13 weeks) offers to **book the next dose** automatically.
-- **Reminders** — the day before, customers get an **SMS and/or email**, and the assigned pharmacist gets an SMS. Each customer can **opt out** of messaging (SMS is charged), toggled when booking.
+- **Reminders** — the day before, customers get a **WhatsApp or SMS** message (plus email if on file), and the assigned pharmacist gets an SMS. Each customer can **opt out** of messaging (it's charged), toggled when booking.
 - **Manage your services** — owners/managers edit the bookable services and their repeat intervals in **Settings → Services**.
 
 > Reminders send automatically once your messaging providers are configured by your administrator. Booking and tracking work regardless.

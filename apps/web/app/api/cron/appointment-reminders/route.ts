@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { sendSms } from "@/lib/notifications/sms"
 import { sendEmail } from "@/lib/notifications/email"
+import { sendWhatsApp } from "@/lib/notifications/whatsapp"
 import { customerSms, pharmacistSms, customerEmail, type MessageContext } from "@/lib/appointments/reminders"
 
 // Runs on a schedule (Vercel Cron). Sends any due, pending reminders.
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic"
 
 interface ReminderRow {
   id: string
-  channel: "sms" | "email"
+  channel: "sms" | "email" | "whatsapp"
   recipient: "customer" | "pharmacist"
   appointment: {
     scheduled_at: string
@@ -72,7 +73,11 @@ export async function GET(request: NextRequest) {
     }
 
     let result: { status: "sent" | "skipped" | "failed"; error?: string }
-    if (r.recipient === "customer" && r.channel === "sms") {
+    if (r.recipient === "customer" && r.channel === "whatsapp") {
+      result = appt.customer?.phone
+        ? await sendWhatsApp(appt.customer.phone, customerSms(ctx))
+        : { status: "skipped", error: "No customer phone" }
+    } else if (r.recipient === "customer" && r.channel === "sms") {
       result = appt.customer?.phone
         ? await sendSms(appt.customer.phone, customerSms(ctx))
         : { status: "skipped", error: "No customer phone" }

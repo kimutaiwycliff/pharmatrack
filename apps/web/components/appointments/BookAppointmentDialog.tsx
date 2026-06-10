@@ -249,7 +249,7 @@ export function BookAppointmentDialog({ open, onOpenChange, prefill, onBooked }:
             <span>
               <span className="text-sm font-medium block">Send appointment reminders</span>
               <span className="text-xs text-[var(--pt-text-secondary)]">
-                A reminder goes out the day before (SMS to the customer & assigned pharmacist, plus email if available). SMS is charged — turn off to skip messaging for this customer.
+                A reminder goes out the day before — WhatsApp or SMS to the customer (plus email if available) and SMS to the assigned pharmacist. Messaging may be charged — turn off to skip for this customer.
               </span>
             </span>
             <button

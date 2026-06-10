@@ -247,6 +247,7 @@ Grant operator access by adding a user's `auth.users` id to the `platform_admins
 | **M‑Pesa (Daraja)** | STK push payments at the till | Set `MPESA_*` |
 | **Africa's Talking** | SMS appointment reminders | Set `AT_*` |
 | **Resend** | Email reminders | Set `RESEND_*` |
+| **WhatsApp (Meta Cloud API)** | WhatsApp appointment reminders (preferred over SMS when set) | Set `WHATSAPP_*` + an approved template |
 | **Paystack** | Card + M‑Pesa subscription billing | Set `PAYSTACK_SECRET_KEY`; add the webhook `{APP_URL}/api/webhooks/paystack` |
 | **Sentry** | Error tracking | Set `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` |
 | **Upstash Redis** | Faster lookups, rate limiting | Set `UPSTASH_*` (else DB fallback) |

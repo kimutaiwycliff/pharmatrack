@@ -1,11 +1,14 @@
 import { serviceLabel } from "./services"
+import { whatsappConfigured } from "@/lib/notifications/whatsapp"
 
 const EAT_OFFSET_MS = 3 * 3_600_000 // Africa/Nairobi is UTC+3 (no DST)
+
+type Channel = "sms" | "email" | "whatsapp"
 
 export interface ReminderInsert {
   appointment_id: string
   organization_id: string
-  channel: "sms" | "email"
+  channel: Channel
   recipient: "customer" | "pharmacist"
   send_at: string
   status: "pending"
@@ -60,10 +63,12 @@ export function buildReminders({
   const send_at = new Date(sendMs).toISOString()
   const rows: ReminderInsert[] = []
 
-  const add = (channel: "sms" | "email", recipient: "customer" | "pharmacist") =>
+  const add = (channel: Channel, recipient: "customer" | "pharmacist") =>
     rows.push({ appointment_id: appointmentId, organization_id: organizationId, channel, recipient, send_at, status: "pending" })
 
-  if (customer.phone) add("sms", "customer")
+  // Prefer WhatsApp for the customer when it's configured (richer + cheaper in
+  // Kenya); otherwise fall back to SMS. Pharmacists are reminded by SMS.
+  if (customer.phone) add(whatsappConfigured() ? "whatsapp" : "sms", "customer")
   if (customer.email) add("email", "customer")
   if (pharmacistPhone) add("sms", "pharmacist")
 
