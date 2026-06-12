@@ -102,10 +102,6 @@ export default function LoginPage() {
           </div>
 
           <LoginForm />
-
-          <p className="text-center text-[10px] text-[var(--pt-text-tertiary)] tracking-widest uppercase mt-6">
-            Powered by PharmaTrack
-          </p>
         </div>
       </div>
     </div>
