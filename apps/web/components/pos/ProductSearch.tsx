@@ -97,7 +97,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   const isLoading = lookupFetching || searchFetching
 
   return (
-    <div className="flex flex-col h-full p-6 gap-5 overflow-hidden">
+    <div className="flex flex-col h-full p-4 sm:p-6 gap-4 sm:gap-5 overflow-hidden">
       {/* Search input */}
       <div className="relative shrink-0">
         <Search
@@ -207,7 +207,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
           <p className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider mb-2 shrink-0">
             Quick add
           </p>
-          <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-3 gap-2.5 content-start">
+          <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 content-start">
             {quickAdd.map((p) => (
               <button
                 key={p.product_id}
@@ -231,7 +231,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
               </button>
             ))}
             {quickAdd.length === 0 && (
-              <div className="col-span-3 text-center text-sm text-[var(--pt-text-tertiary)] py-8">
+              <div className="col-span-full text-center text-sm text-[var(--pt-text-tertiary)] py-8">
                 No products in inventory yet
               </div>
             )}

@@ -1,6 +1,6 @@
 "use client"
 
-import { Minus, Plus, Trash2, ShoppingCart, AlertTriangle } from "lucide-react"
+import { Minus, Plus, Trash2, ShoppingCart, AlertTriangle, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCartStore, cartSubtotal, cartTotal, formatKES } from "@/lib/store/cartStore"
 import type { CartItem } from "@pharmatrack/types"
@@ -12,6 +12,8 @@ interface Props {
   cashierName: string
   onPay: (method: PayModal) => void
   submitting: boolean
+  /** When provided (mobile sheet), shows a collapse handle to dismiss the cart. */
+  onClose?: () => void
 }
 
 function QtyControl({ item }: { item: CartItem }) {
@@ -43,7 +45,7 @@ function QtyControl({ item }: { item: CartItem }) {
   )
 }
 
-export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Props) {
+export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClose }: Props) {
   const items = useCartStore((s) => s.items)
   const discount = useCartStore((s) => s.discount)
   const setDiscount = useCartStore((s) => s.setDiscount)
@@ -63,13 +65,25 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
   const discountExceedsLimit = maxAllowedDiscount !== null && discount > maxAllowedDiscount
 
   return (
-    <div className="flex flex-col h-full border-r border-[var(--pt-border)]">
+    <div className="flex flex-col h-full">
+      {/* Mobile grab handle / collapse (sheet only) */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="md:hidden shrink-0 flex flex-col items-center pt-2.5 pb-1.5 gap-1 text-[var(--pt-text-tertiary)]"
+          aria-label="Close cart"
+        >
+          <span className="w-10 h-1 rounded-full bg-[var(--pt-border-strong)]" />
+          <ChevronDown size={16} />
+        </button>
+      )}
+
       {/* Sale header */}
-      <div className="px-6 pt-5 pb-4 shrink-0">
+      <div className="px-4 sm:px-6 pt-3 sm:pt-5 pb-3 sm:pb-4 shrink-0">
         <div className="text-[11px] font-bold text-[var(--pt-green-600)] uppercase tracking-widest mb-1">
           {receiptNumber ? `Sale #${receiptNumber}` : "New Sale"}
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">New Sale</h1>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">New Sale</h1>
         <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5">
           {new Date().toLocaleDateString("en-KE", {
             weekday: "short",
@@ -82,13 +96,12 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
       </div>
 
       {/* Cart table */}
-      <div className="flex-1 min-h-0 overflow-hidden bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] mx-6 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] mx-4 sm:mx-6 flex flex-col">
         {/* Column headers */}
-        <div className="grid grid-cols-[1fr_130px_100px_36px] px-5 py-3 text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider border-b border-[var(--pt-border)] bg-[var(--pt-muted)] shrink-0">
+        <div className="grid grid-cols-[1fr_auto_auto] gap-2 sm:gap-3 px-3 sm:px-5 py-3 text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider border-b border-[var(--pt-border)] bg-[var(--pt-muted)] shrink-0">
           <span>Item</span>
           <span className="text-center">Qty</span>
           <span className="text-right">Subtotal</span>
-          <span />
         </div>
 
         {/* Cart items */}
@@ -102,11 +115,11 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
           {items.map((item) => (
             <div
               key={item.product_id}
-              className="grid grid-cols-[1fr_130px_100px_36px] items-center px-5 py-3.5 border-b border-[var(--pt-border)] last:border-b-0"
+              className="grid grid-cols-[1fr_auto_auto] gap-2 sm:gap-3 items-center px-3 sm:px-5 py-3.5 border-b border-[var(--pt-border)] last:border-b-0"
             >
-              <div>
-                <p className="text-sm font-semibold leading-tight">{item.product_name}</p>
-                <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-tight truncate">{item.product_name}</p>
+                <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5 truncate">
                   {formatKES(item.unit_price)}/{item.base_unit}
                   {item.product_strength ? ` · ${item.product_strength}` : ""}
                   {item.is_controlled && (
@@ -119,8 +132,7 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
               <div className="flex justify-center">
                 <QtyControl item={item} />
               </div>
-              <p className="text-right text-sm font-semibold tabular-nums">{formatKES(item.line_total)}</p>
-              <span />
+              <p className="text-right text-sm font-semibold tabular-nums w-16 sm:w-20">{formatKES(item.line_total)}</p>
             </div>
           ))}
         </div>
@@ -173,7 +185,7 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting }: Pro
       </div>
 
       {/* Payment buttons */}
-      <div className="px-6 py-4 grid grid-cols-3 gap-2.5 shrink-0">
+      <div className="px-4 sm:px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] grid grid-cols-3 gap-2.5 shrink-0">
         <Button
           variant="outline"
           onClick={() => onPay("cash")}

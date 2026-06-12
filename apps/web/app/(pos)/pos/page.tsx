@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from "react"
 import { toast } from "sonner"
+import { ShoppingCart, ChevronUp } from "lucide-react"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { CartPanel } from "@/components/pos/CartPanel"
 import { ProductSearch } from "@/components/pos/ProductSearch"
 import { CashModal } from "@/components/pos/CashModal"
@@ -9,7 +11,7 @@ import { MpesaModal } from "@/components/pos/MpesaModal"
 import { SplitModal } from "@/components/pos/SplitModal"
 import { ReceiptModal } from "@/components/pos/ReceiptModal"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
-import { useCartStore, cartTotal } from "@/lib/store/cartStore"
+import { useCartStore, cartTotal, formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useActiveShift } from "@/lib/hooks/useActiveShift"
@@ -36,6 +38,7 @@ export default function PosPage() {
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null)
   const [notFoundBarcode, setNotFoundBarcode] = useState<string | null>(null)
   const [newProductOpen, setNewProductOpen] = useState(false)
+  const [cartOpen, setCartOpen] = useState(false) // mobile cart sheet
 
   const profile = useSessionStore((s) => s.profile)
   const branches = useSessionStore((s) => s.branches)
@@ -171,25 +174,73 @@ export default function PosPage() {
     )
   }
 
+  // On mobile the cart pay buttons live in a sheet; close it before opening a
+  // payment modal so overlays don't stack.
+  const handlePay = (method: PayModal) => {
+    setCartOpen(false)
+    setPayModal(method)
+  }
+  const itemCount = items.reduce((n, i) => n + i.quantity, 0)
+
   return (
     <div className="flex flex-col md:flex-row h-full overflow-hidden bg-[var(--pt-bg)]">
-      {/* Cart — below on mobile, left on desktop */}
-      <div className="order-2 md:order-1 w-full md:w-[55%] h-2/5 md:h-full flex flex-col min-h-0 border-t md:border-t-0 md:border-r border-[var(--pt-border)]">
+      {/* Cart — desktop only (left). On mobile it's a bottom sheet. */}
+      <div className="hidden md:order-1 md:flex md:w-[55%] h-full flex-col min-h-0 md:border-r border-[var(--pt-border)]">
         <CartPanel
           cashierName={profile.full_name}
-          onPay={setPayModal}
+          onPay={handlePay}
           submitting={submitting}
         />
       </div>
 
-      {/* Product search — on top on mobile, right on desktop */}
-      <div className="order-1 md:order-2 flex-1 w-full h-3/5 md:h-full flex flex-col min-h-0 overflow-hidden">
+      {/* Product search — fills the screen on mobile, right pane on desktop */}
+      <div className="order-1 md:order-2 flex-1 w-full min-h-0 flex flex-col overflow-hidden">
         <ProductSearch
           branchId={activeBranch.id}
           onBarcodeNotFound={handleBarcodeNotFound}
           scannerEnabled={!newProductOpen}
         />
       </div>
+
+      {/* Mobile cart summary bar — tap to open the cart */}
+      <button
+        onClick={() => setCartOpen(true)}
+        className="md:hidden order-2 shrink-0 flex items-center justify-between gap-3 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-[var(--pt-border)] bg-[var(--pt-surface)] active:bg-[var(--pt-muted)] transition-colors"
+      >
+        <span className="flex items-center gap-2.5">
+          <span className="relative">
+            <ShoppingCart size={20} className="text-[var(--pt-text-secondary)]" />
+            {itemCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-[var(--pt-green)] text-white text-[10px] font-bold flex items-center justify-center tabular-nums">
+                {itemCount}
+              </span>
+            )}
+          </span>
+          <span className="text-sm font-semibold">
+            {itemCount === 0 ? "Cart empty" : `${itemCount} item${itemCount > 1 ? "s" : ""}`}
+          </span>
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="text-base font-bold tabular-nums">{formatKES(total)}</span>
+          <ChevronUp size={16} className="text-[var(--pt-text-tertiary)]" />
+        </span>
+      </button>
+
+      {/* Mobile cart sheet */}
+      <Sheet open={cartOpen} onOpenChange={setCartOpen}>
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="md:hidden h-[88vh] p-0 flex flex-col gap-0 rounded-t-2xl"
+        >
+          <CartPanel
+            cashierName={profile.full_name}
+            onPay={handlePay}
+            submitting={submitting}
+            onClose={() => setCartOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
 
       {/* Payment modals */}
       <CashModal
