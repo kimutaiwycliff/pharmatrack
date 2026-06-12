@@ -40,7 +40,11 @@ export async function GET(request: NextRequest) {
         discount_amount, status,
         cashier:profiles!cashier_id(full_name),
         branch:branches!branch_id(name),
-        sale_items(product_name, quantity, unit_price, line_total, discount_percent)
+        sale_items(
+          product_name, quantity, unit_price, line_total, discount_percent,
+          product:products!product_id(cost_price),
+          batch:product_batches!batch_id(cost_price)
+        )
       `)
       .eq("status", "completed")
       .order("created_at", { ascending: false })
@@ -91,26 +95,61 @@ export async function GET(request: NextRequest) {
       else if (s.payment_method === "split") { totalCash += s.total_amount / 2; totalMpesa += s.total_amount / 2 }
     }
 
-    // Top products from sale_items
-    const itemTotals: Record<string, { name: string; qty: number; revenue: number }> = {}
+    // Top products from sale_items — with cost & profit.
+    // Cost basis: the actual batch sold (cost_price), falling back to the
+    // product's current cost_price. Profit = revenue (post-discount) − cost.
+    type SaleItem = {
+      product_name: string; quantity: number; line_total: number; discount_percent: number
+      product: { cost_price: number | null } | { cost_price: number | null }[] | null
+      batch: { cost_price: number | null } | { cost_price: number | null }[] | null
+    }
+    const unwrap = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v)
+    const unitCost = (item: SaleItem): number | null => {
+      const batchCost = unwrap(item.batch)?.cost_price
+      if (batchCost != null) return Number(batchCost)
+      const productCost = unwrap(item.product)?.cost_price
+      return productCost != null ? Number(productCost) : null
+    }
+
+    const itemTotals: Record<string, { name: string; qty: number; revenue: number; cost: number; profit: number; costKnown: boolean }> = {}
+    let totalCost = 0, totalProfit = 0
     for (const s of sales ?? []) {
-      for (const item of (s.sale_items as Array<{ product_name: string; quantity: number; line_total: number; discount_percent: number }> | null) ?? []) {
-        if (!itemTotals[item.product_name]) itemTotals[item.product_name] = { name: item.product_name, qty: 0, revenue: 0 }
+      for (const item of (s.sale_items as SaleItem[] | null) ?? []) {
+        if (!itemTotals[item.product_name]) itemTotals[item.product_name] = { name: item.product_name, qty: 0, revenue: 0, cost: 0, profit: 0, costKnown: true }
         const entry = itemTotals[item.product_name]!
         entry.qty += item.quantity
         entry.revenue += item.line_total
+        const uc = unitCost(item)
+        if (uc == null) {
+          entry.costKnown = false
+        } else {
+          const lineCost = uc * item.quantity
+          entry.cost += lineCost
+          entry.profit += item.line_total - lineCost
+          totalCost += lineCost
+          totalProfit += item.line_total - lineCost
+        }
       }
     }
     const topProducts = Object.values(itemTotals)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
+      .map(p => ({
+        name: p.name,
+        qty: p.qty,
+        revenue: p.revenue,
+        cost: p.cost,
+        profit: p.profit,
+        // null margin signals "cost not recorded for some units"
+        margin: p.costKnown && p.revenue > 0 ? p.profit / p.revenue : null,
+      }))
 
     const dailyChart = Object.entries(byDay)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, v]) => ({ date, ...v }))
 
     return NextResponse.json({
-      summary: { totalRevenue, totalCash, totalMpesa, totalSplit, totalDiscount, transactionCount },
+      summary: { totalRevenue, totalCash, totalMpesa, totalSplit, totalDiscount, transactionCount, totalCost, totalProfit },
       dailyChart,
       byCashier: Object.values(byCashier).sort((a, b) => b.revenue - a.revenue),
       topProducts,
@@ -178,7 +217,14 @@ export async function GET(request: NextRequest) {
   if (report === "financial") {
     let q = supabase
       .from("sales")
-      .select("total_amount, discount_amount, payment_method, created_at, sale_items(line_total, unit_price, quantity, product_name)")
+      .select(`
+        total_amount, discount_amount, payment_method, created_at,
+        sale_items(
+          line_total, unit_price, quantity, product_name,
+          product:products!product_id(cost_price),
+          batch:product_batches!batch_id(cost_price)
+        )
+      `)
       .eq("status", "completed")
 
     if (branchId) q = q.eq("branch_id", branchId)
@@ -194,17 +240,32 @@ export async function GET(request: NextRequest) {
     const { data: sales, error } = await q
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    let totalRevenue = 0, totalDiscounts = 0, transactions = 0
-    const monthlyMap: Record<string, { revenue: number; discounts: number; count: number }> = {}
+    type FinItem = {
+      line_total: number; quantity: number
+      product: { cost_price: number | null } | { cost_price: number | null }[] | null
+      batch: { cost_price: number | null } | { cost_price: number | null }[] | null
+    }
+    const unwrap = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v)
+    const lineProfit = (item: FinItem): number => {
+      const cost = unwrap(item.batch)?.cost_price ?? unwrap(item.product)?.cost_price
+      if (cost == null) return 0 // unknown cost contributes no profit
+      return item.line_total - Number(cost) * item.quantity
+    }
+
+    let totalRevenue = 0, totalDiscounts = 0, transactions = 0, totalProfit = 0
+    const monthlyMap: Record<string, { revenue: number; discounts: number; count: number; profit: number }> = {}
 
     for (const s of sales ?? []) {
       totalRevenue += s.total_amount
       totalDiscounts += s.discount_amount
       transactions++
+      const saleProfit = ((s.sale_items as FinItem[] | null) ?? []).reduce((sum, it) => sum + lineProfit(it), 0)
+      totalProfit += saleProfit
       const month = toNairobiDate(s.created_at).slice(0, 7) // YYYY-MM
-      if (!monthlyMap[month]) monthlyMap[month] = { revenue: 0, discounts: 0, count: 0 }
+      if (!monthlyMap[month]) monthlyMap[month] = { revenue: 0, discounts: 0, count: 0, profit: 0 }
       monthlyMap[month].revenue += s.total_amount
       monthlyMap[month].discounts += s.discount_amount
+      monthlyMap[month].profit += saleProfit
       monthlyMap[month].count++
     }
 
@@ -214,7 +275,7 @@ export async function GET(request: NextRequest) {
       .map(([month, v]) => ({ month, ...v }))
 
     return NextResponse.json({
-      summary: { totalRevenue, totalDiscounts, transactions, avgOrderValue },
+      summary: { totalRevenue, totalDiscounts, transactions, avgOrderValue, totalProfit },
       monthlyChart,
     })
   }

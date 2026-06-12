@@ -8,7 +8,7 @@ import {
 } from "recharts"
 import {
   TrendingUp, Package, DollarSign, Download, RefreshCw,
-  ShoppingBag, AlertTriangle, Clock, Users,
+  ShoppingBag, AlertTriangle, Clock, Users, Wallet,
 } from "lucide-react"
 import { formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
@@ -23,10 +23,12 @@ interface SalesReport {
     totalSplit: number
     totalDiscount: number
     transactionCount: number
+    totalCost: number
+    totalProfit: number
   }
   dailyChart: Array<{ date: string; revenue: number; cash: number; mpesa: number; count: number }>
   byCashier: Array<{ name: string; revenue: number; count: number }>
-  topProducts: Array<{ name: string; qty: number; revenue: number }>
+  topProducts: Array<{ name: string; qty: number; revenue: number; cost: number; profit: number; margin: number | null }>
   transactions: Array<{
     id: string; receipt_number: string; created_at: string
     payment_method: string; total_amount: number; discount_amount: number
@@ -45,8 +47,8 @@ interface InventoryReport {
 }
 
 interface FinancialReport {
-  summary: { totalRevenue: number; totalDiscounts: number; transactions: number; avgOrderValue: number }
-  monthlyChart: Array<{ month: string; revenue: number; discounts: number; count: number }>
+  summary: { totalRevenue: number; totalDiscounts: number; transactions: number; avgOrderValue: number; totalProfit: number }
+  monthlyChart: Array<{ month: string; revenue: number; discounts: number; count: number; profit: number }>
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -131,8 +133,14 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
   return (
     <div className="space-y-6">
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard icon={TrendingUp} label="Total Revenue" value={formatKES(summary.totalRevenue)} sub={`${summary.transactionCount} transactions`} />
+        <KpiCard
+          icon={Wallet}
+          label="Gross Profit"
+          value={formatKES(summary.totalProfit)}
+          sub={summary.totalRevenue > 0 ? `${((summary.totalProfit / summary.totalRevenue) * 100).toFixed(1)}% margin` : undefined}
+        />
         <KpiCard icon={DollarSign} label="Cash" value={formatKES(summary.totalCash)} color="blue" />
         <KpiCard icon={ShoppingBag} label="M-Pesa" value={formatKES(summary.totalMpesa)} color="green" />
         <KpiCard icon={AlertTriangle} label="Discounts Given" value={formatKES(summary.totalDiscount)} color="amber" />
@@ -188,7 +196,13 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
                     style={{ width: `${(p.revenue / maxRevenue) * 100}%` }}
                   />
                 </div>
-                <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-0.5">{p.qty} units sold</p>
+                <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-0.5 flex items-center justify-between gap-2">
+                  <span>{p.qty} units sold</span>
+                  <span className={p.profit >= 0 ? "text-[var(--pt-green-600)] font-medium" : "text-[var(--pt-red)] font-medium"}>
+                    {formatKES(p.profit)} profit
+                    {p.margin !== null && <span className="text-[var(--pt-text-tertiary)] font-normal"> · {(p.margin * 100).toFixed(0)}%</span>}
+                  </span>
+                </p>
               </div>
             ))}
             {topProducts.length === 0 && <p className="text-[13px] text-[var(--pt-text-tertiary)]">No sales in range</p>}
@@ -435,8 +449,14 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard icon={TrendingUp} label="Total Revenue" value={formatKES(summary.totalRevenue)} sub={`${summary.transactions} transactions`} />
+        <KpiCard
+          icon={Wallet}
+          label="Gross Profit"
+          value={formatKES(summary.totalProfit)}
+          sub={summary.totalRevenue > 0 ? `${((summary.totalProfit / summary.totalRevenue) * 100).toFixed(1)}% margin` : undefined}
+        />
         <KpiCard icon={DollarSign} label="Avg. Order Value" value={formatKES(summary.avgOrderValue)} />
         <KpiCard icon={AlertTriangle} label="Total Discounts" value={formatKES(summary.totalDiscounts)} color="amber" />
         <KpiCard icon={ShoppingBag} label="Net Revenue" value={formatKES(summary.totalRevenue - summary.totalDiscounts)} color="blue" />
@@ -452,6 +472,7 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
               <Tooltip content={<CustomTooltip />} />
               <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#22c55e" strokeWidth={2.5} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="profit" name="Gross Profit" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
               <Line type="monotone" dataKey="discounts" name="Discounts" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 2" />
             </LineChart>
           </ResponsiveContainer>
@@ -472,7 +493,7 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--pt-border)]">
-                {["Month", "Transactions", "Revenue", "Discounts", "Net Revenue"].map(h => (
+                {["Month", "Transactions", "Revenue", "Discounts", "Gross Profit", "Net Revenue"].map(h => (
                   <th key={h} className="px-5 py-2.5 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -486,6 +507,7 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
                   <td className="px-5 py-3 text-center tabular-nums text-[13px]">{m.count}</td>
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-[13px]">{formatKES(m.revenue)}</td>
                   <td className="px-5 py-3 text-right tabular-nums text-amber-700 dark:text-amber-300 text-[13px]">{formatKES(m.discounts)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums font-semibold text-[13px] text-blue-600 dark:text-blue-400">{formatKES(m.profit)}</td>
                   <td className="px-5 py-3 text-right tabular-nums font-semibold text-[13px] text-[var(--pt-green-600)]">{formatKES(m.revenue - m.discounts)}</td>
                 </tr>
               ))}
