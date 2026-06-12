@@ -633,6 +633,87 @@ export type Database = {
           },
         ]
       }
+      stock_adjustments: {
+        Row: {
+          adjusted_by: string
+          batch_id: string
+          branch_id: string
+          created_at: string
+          delta: number
+          id: string
+          note: string | null
+          organization_id: string
+          product_id: string
+          quantity_after: number
+          quantity_before: number
+          reason: string
+        }
+        Insert: {
+          adjusted_by: string
+          batch_id: string
+          branch_id: string
+          created_at?: string
+          delta: number
+          id?: string
+          note?: string | null
+          organization_id: string
+          product_id: string
+          quantity_after: number
+          quantity_before: number
+          reason: string
+        }
+        Update: {
+          adjusted_by?: string
+          batch_id?: string
+          branch_id?: string
+          created_at?: string
+          delta?: number
+          id?: string
+          note?: string | null
+          organization_id?: string
+          product_id?: string
+          quantity_after?: number
+          quantity_before?: number
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_adjustments_adjusted_by_fkey"
+            columns: ["adjusted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "product_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           address: string | null

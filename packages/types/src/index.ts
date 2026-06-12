@@ -124,6 +124,29 @@ export interface ProductBatch {
   created_at: string
 }
 
+export type StockAdjustmentReason =
+  | "count_correction"
+  | "damage"
+  | "expiry"
+  | "theft_loss"
+  | "return"
+  | "other"
+
+export interface StockAdjustment {
+  id: string
+  organization_id: string
+  branch_id: string
+  product_id: string
+  batch_id: string
+  delta: number
+  quantity_before: number
+  quantity_after: number
+  reason: StockAdjustmentReason
+  note: string | null
+  adjusted_by: string | null
+  created_at: string
+}
+
 export interface ProductStock {
   product_id: string | null
   branch_id: string | null
