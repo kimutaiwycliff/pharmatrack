@@ -217,6 +217,8 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
         toast.success(`${name} added`)
         onCreated({
           ...(product as unknown as ProductWithStock),
+          // products table returns `id`; the cart/sale expect `product_id`.
+          product_id: product.id,
           stock_on_hand: addStock ? quantityReceived : 0,
           earliest_expiry: addStock ? expiryDate : null,
           batch_count: addStock ? 1 : 0,

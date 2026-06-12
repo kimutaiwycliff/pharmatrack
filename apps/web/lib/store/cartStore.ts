@@ -22,7 +22,14 @@ export const useCartStore = create<CartStore>()(
 
       addItem: (product) =>
         set((state) => {
-          const pid = product.product_id!
+          // Sources are inconsistent: the product_stock view returns
+          // `product_id`, the raw products table returns `id`. Accept either so
+          // a scanned/just-created product can never enter the cart without a
+          // usable id (which would fail UUID validation at checkout).
+          // `||` (not `??`) so an empty-string product_id also falls back —
+          // "" is what fails UUID validation at checkout.
+          const pid = product.product_id || (product as { id?: string }).id
+          if (!pid) return state
           const existing = state.items.find((i) => i.product_id === pid)
           if (existing) {
             return {
@@ -68,6 +75,9 @@ export const useCartStore = create<CartStore>()(
     }),
     {
       name: "pt-cart",
+      // Bumped to 1 to discard carts persisted before the product_id fix — a
+      // stale item with a bad product_id would otherwise keep failing checkout.
+      version: 1,
       storage: createJSONStorage(() => {
         if (typeof window === "undefined") return localStorage
         return sessionStorage
