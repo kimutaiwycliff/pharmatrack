@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
 import { redis } from "@/lib/redis"
+import { zodErrorResponse } from "@/lib/api/errors"
 import type { StockAdjustment } from "@pharmatrack/types"
 
 const REASONS = ["count_correction", "damage", "expiry", "theft_loss", "return", "other"] as const
@@ -80,12 +81,7 @@ export async function POST(request: NextRequest) {
   }
 
   const parsed = adjustSchema.safeParse(await request.json())
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid request" },
-      { status: 400 },
-    )
-  }
+  if (!parsed.success) return zodErrorResponse(parsed.error)
   const { batch_id, mode, value, reason, note } = parsed.data
 
   // Load the batch with its product (confirms org ownership + controlled flag).

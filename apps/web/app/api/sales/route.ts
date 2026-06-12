@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { apiError, zodErrorResponse } from "@/lib/api/errors"
 
 const cartItemSchema = z.object({
   product_id: z.string().uuid(),
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return apiError("Unauthorized", 401)
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -40,20 +41,11 @@ export async function POST(request: NextRequest) {
     .eq("id", user.id)
     .single()
 
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  if (!profile) return apiError("Profile not found", 404)
 
   const body = (await request.json()) as unknown
   const parsed = saleSchema.safeParse(body)
-  if (!parsed.success) {
-    // Include the failing field path so "Invalid UUID" et al. are actionable.
-    const issue = parsed.error.issues[0]
-    const path = issue?.path.join(".")
-    const message = issue?.message ?? "Invalid request"
-    return NextResponse.json(
-      { error: path ? `${message} (field: ${path})` : message },
-      { status: 400 },
-    )
-  }
+  if (!parsed.success) return zodErrorResponse(parsed.error)
 
   const data = parsed.data
   const subtotal = data.items.reduce((s, i) => s + i.line_total, 0)
@@ -64,7 +56,7 @@ export async function POST(request: NextRequest) {
     "generate_receipt_number",
     { p_branch_id: data.branch_id },
   )
-  if (receiptErr) return NextResponse.json({ error: receiptErr.message }, { status: 500 })
+  if (receiptErr) return apiError(receiptErr.message, 500)
 
   const receiptNumber = receiptData as string
 
@@ -91,7 +83,7 @@ export async function POST(request: NextRequest) {
     .select()
     .single()
 
-  if (saleErr) return NextResponse.json({ error: saleErr.message }, { status: 500 })
+  if (saleErr) return apiError(saleErr.message, 500)
 
   const saleItemsToInsert: Array<{
     sale_id: string
@@ -184,7 +176,7 @@ export async function POST(request: NextRequest) {
     .insert(saleItemsToInsert)
     .select()
 
-  if (itemsErr) return NextResponse.json({ error: itemsErr.message }, { status: 500 })
+  if (itemsErr) return apiError(itemsErr.message, 500)
 
   return NextResponse.json({ sale, items: insertedItems }, { status: 201 })
 }

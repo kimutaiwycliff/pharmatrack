@@ -91,3 +91,8 @@ export async function getUnsyncedSales(): Promise<OfflineSale[]> {
 export async function markSaleSynced(id: number) {
   return posDB.offlineSales.update(id, { synced: true })
 }
+
+/** Remove a queued sale that can never sync (e.g. malformed payload). */
+export async function deleteOfflineSale(id: number) {
+  return posDB.offlineSales.delete(id)
+}
