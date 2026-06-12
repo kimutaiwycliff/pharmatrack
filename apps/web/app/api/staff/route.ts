@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 
 const inviteSchema = z.object({
   email: z.string().email(),
   full_name: z.string().min(2),
   role: z.enum(["manager", "pharmacist", "cashier"]),
-  branch_id: z.string().uuid().nullable().optional(),
+  branch_id: zUuid().nullable().optional(),
   phone: z.string().optional(),
 })
 

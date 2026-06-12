@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
 
 const cartItemSchema = z.object({
-  product_id: z.string().uuid(),
+  product_id: zUuid(),
   product_name: z.string(),
   product_strength: z.string().nullable(),
   quantity: z.number().int().positive(),
@@ -16,8 +17,8 @@ const cartItemSchema = z.object({
 })
 
 const saleSchema = z.object({
-  branch_id: z.string().uuid(),
-  shift_id: z.string().uuid().nullable(),
+  branch_id: zUuid(),
+  shift_id: zUuid().nullable(),
   items: z.array(cartItemSchema).min(1),
   discount_amount: z.number().nonnegative().default(0),
   payment_method: z.enum(["cash", "mpesa", "split"]),

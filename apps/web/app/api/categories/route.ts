@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Category name is required").max(60),
-  parent_id: z.string().uuid().nullable().optional(),
+  parent_id: zUuid().nullable().optional(),
 })
 
 const WRITE_ROLES = ["owner", "manager", "pharmacist"]

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 
 const clockInSchema = z.object({
   opening_float: z.number().nonnegative(),
 })
 
 const clockOutSchema = z.object({
-  shift_id: z.string().uuid(),
+  shift_id: zUuid(),
   closing_cash: z.number().nonnegative(),
 })
 
