@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { getPlatformContext } from "@/lib/platform"
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
@@ -33,7 +34,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
 const patchSchema = z.object({
   status: z.enum(["trialing", "active", "past_due", "suspended", "cancelled"]).optional(),
-  plan_id: z.string().uuid().nullable().optional(),
+  plan_id: zUuid().nullable().optional(),
   current_period_end: z.string().datetime({ offset: true }).nullable().optional(),
   trial_ends_at: z.string().datetime({ offset: true }).nullable().optional(),
 })

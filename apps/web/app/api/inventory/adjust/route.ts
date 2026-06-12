@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
 import { zodErrorResponse } from "@/lib/api/errors"
 import type { StockAdjustment } from "@pharmatrack/types"
@@ -11,7 +12,7 @@ const REASONS = ["count_correction", "damage", "expiry", "theft_loss", "return",
 // amount. Server reads the authoritative current quantity either way, so a
 // `delta` is never applied against a stale client value.
 const adjustSchema = z.object({
-  batch_id: z.string().uuid(),
+  batch_id: zUuid(),
   mode: z.enum(["set", "delta"]),
   value: z.number().int(),
   reason: z.enum(REASONS),

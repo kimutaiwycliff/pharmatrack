@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { getApiContext } from "@/lib/api-auth"
 import { runDur } from "@/lib/prescriptions/dur"
 
@@ -7,7 +8,7 @@ const SELECT =
   "*, customer:customers(id, full_name, phone, allergies), items:prescription_items(*)"
 
 const itemSchema = z.object({
-  product_id: z.string().uuid().nullable().optional(),
+  product_id: zUuid().nullable().optional(),
   drug_name: z.string().trim().min(1),
   dose: z.string().max(80).optional(),
   frequency: z.string().max(80).optional(),
@@ -17,7 +18,7 @@ const itemSchema = z.object({
 })
 
 const createSchema = z.object({
-  customer_id: z.string().uuid().optional(),
+  customer_id: zUuid().optional(),
   customer_name: z.string().trim().min(1).max(120).optional(),
   customer_phone: z.string().trim().max(40).optional(),
   prescriber_name: z.string().max(120).optional(),

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
 
 const createBatchSchema = z.object({
-  product_id: z.string().uuid(),
-  branch_id: z.string().uuid(),
+  product_id: zUuid(),
+  branch_id: zUuid(),
   batch_number: z.string().min(1),
   expiry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
   manufactured_date: z
@@ -15,7 +16,7 @@ const createBatchSchema = z.object({
     .optional(),
   quantity_received: z.number().int().positive(),
   cost_price: z.number().nonnegative().optional(),
-  supplier_id: z.string().uuid().optional(),
+  supplier_id: zUuid().optional(),
   notes: z.string().optional(),
 })
 

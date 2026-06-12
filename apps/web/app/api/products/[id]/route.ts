@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
 
 const updateSchema = z.object({
@@ -11,8 +12,8 @@ const updateSchema = z.object({
   barcode_raw: z.string().nullable().optional(),
   strength: z.string().nullable().optional(),
   dosage_form: z.string().optional(),
-  category_id: z.string().uuid().nullable().optional(),
-  supplier_id: z.string().uuid().nullable().optional(),
+  category_id: zUuid().nullable().optional(),
+  supplier_id: zUuid().nullable().optional(),
   base_unit: z.string().min(1).optional(),
   pack_label: z.string().nullable().optional(),
   units_per_pack: z.number().int().positive().optional(),

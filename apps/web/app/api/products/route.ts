@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
 
 const createProductSchema = z.object({
@@ -11,8 +12,8 @@ const createProductSchema = z.object({
   barcode_raw: z.string().optional(),
   strength: z.string().optional(),
   dosage_form: z.string().optional(),
-  category_id: z.string().uuid().optional(),
-  supplier_id: z.string().uuid().nullable().optional(),
+  category_id: zUuid().optional(),
+  supplier_id: zUuid().nullable().optional(),
   base_unit: z.string().min(1),
   pack_label: z.string().optional(),
   units_per_pack: z.number().int().positive().default(1),

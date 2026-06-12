@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { queueReminders } from "@/lib/appointments/queue"
 
 const WRITE_ROLES = ["owner", "manager", "pharmacist"]
@@ -10,19 +11,19 @@ const SELECT =
 
 const createSchema = z.object({
   // Either an existing customer id, or details to find-or-create one.
-  customer_id: z.string().uuid().optional(),
+  customer_id: zUuid().optional(),
   customer_name: z.string().trim().min(1).max(120).optional(),
   customer_phone: z.string().trim().max(40).optional(),
   customer_email: z.string().trim().email().max(120).optional().or(z.literal("")),
 
-  branch_id: z.string().uuid(),
+  branch_id: zUuid(),
   service: z.string().min(1),
   service_label: z.string().max(120).optional(),
   scheduled_at: z.string().datetime({ offset: true }),
   duration_minutes: z.number().int().positive().max(480).default(15),
-  assigned_to: z.string().uuid().nullable().optional(),
+  assigned_to: zUuid().nullable().optional(),
   notes: z.string().max(1000).optional(),
-  parent_appointment_id: z.string().uuid().nullable().optional(),
+  parent_appointment_id: zUuid().nullable().optional(),
   reminders_opt_in: z.boolean().default(true),
 })
 

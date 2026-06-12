@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 import { serviceRecurrenceWeeks } from "@/lib/appointments/services"
 import { queueReminders } from "@/lib/appointments/queue"
 
@@ -13,7 +14,7 @@ const updateSchema = z.object({
   status: z.enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"]).optional(),
   scheduled_at: z.string().datetime({ offset: true }).optional(),
   duration_minutes: z.number().int().positive().max(480).optional(),
-  assigned_to: z.string().uuid().nullable().optional(),
+  assigned_to: zUuid().nullable().optional(),
   service: z.string().min(1).optional(),
   notes: z.string().max(1000).nullable().optional(),
 })
