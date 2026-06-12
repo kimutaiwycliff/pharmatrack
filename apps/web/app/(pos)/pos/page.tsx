@@ -16,6 +16,8 @@ import { useActiveShift } from "@/lib/hooks/useActiveShift"
 import { useQuery } from "@tanstack/react-query"
 import { useOnline } from "@/lib/offline/useOnline"
 import { queueOfflineSale } from "@/lib/offline/db"
+import { postJson } from "@/lib/api/fetcher"
+import { isUuid } from "@/lib/utils"
 import type { Sale, SaleItem } from "@pharmatrack/types"
 
 type PayModal = "cash" | "mpesa" | "split" | null
@@ -38,7 +40,13 @@ export default function PosPage() {
   const profile = useSessionStore((s) => s.profile)
   const branches = useSessionStore((s) => s.branches)
   const activeBranchId = useUIStore((s) => s.activeBranchId)
-  const activeBranch = branches.find((b) => b.id === activeBranchId) ?? branches[0]
+  // Resolve to a branch with a valid UUID id: the selected one, else the first
+  // valid branch. Guards against a stale/empty persisted activeBranchId so the
+  // sale never POSTs an empty branch_id.
+  const activeBranch =
+    branches.find((b) => b.id === activeBranchId && isUuid(b.id)) ??
+    branches.find((b) => isUuid(b.id)) ??
+    null
 
   const online = useOnline()
   const { data: shift } = useActiveShift(profile?.id ?? "")
@@ -71,7 +79,20 @@ export default function PosPage() {
     mpesaAmount?: number
     customerPhone?: string | null
   }) {
-    if (!activeBranch || !profile) return
+    if (!profile) return
+    if (!activeBranch || !isUuid(activeBranch.id)) {
+      toast.error("No valid branch selected — pick a branch from the selector and try again.")
+      return
+    }
+    if (items.length === 0) {
+      toast.error("Cart is empty.")
+      return
+    }
+    const badItem = items.find((i) => !isUuid(i.product_id))
+    if (badItem) {
+      toast.error(`"${badItem.product_name}" is missing a valid product id — remove and re-add it.`)
+      return
+    }
 
     // Offline: only cash can be recorded (M-Pesa/card need connectivity).
     if (!online) {
@@ -103,25 +124,19 @@ export default function PosPage() {
 
     setSubmitting(true)
     try {
-      const res = await fetch("/api/sales", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          branch_id: activeBranch.id,
-          shift_id: shift?.id ?? null,
-          items,
-          discount_amount: discount,
-          payment_method: params.paymentMethod,
-          amount_tendered: params.amountTendered,
-          change_given: params.changeGiven,
-          mpesa_reference: params.mpesaReference,
-          customer_name: null,
-          customer_phone: params.customerPhone ?? null,
-        }),
+      const json = await postJson<{ sale?: Sale; items?: SaleItem[] }>("/api/sales", {
+        branch_id: activeBranch.id,
+        shift_id: shift?.id ?? null,
+        items,
+        discount_amount: discount,
+        payment_method: params.paymentMethod,
+        amount_tendered: params.amountTendered,
+        change_given: params.changeGiven,
+        mpesa_reference: params.mpesaReference,
+        customer_name: null,
+        customer_phone: params.customerPhone ?? null,
       })
-
-      const json = (await res.json()) as { sale?: Sale; items?: SaleItem[]; error?: string }
-      if (!res.ok || !json.sale) throw new Error(json.error ?? "Sale failed")
+      if (!json.sale) throw new Error("Sale failed")
 
       setReceiptData({
         sale: json.sale,

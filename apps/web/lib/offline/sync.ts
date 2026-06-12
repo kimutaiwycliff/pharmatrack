@@ -1,14 +1,35 @@
-import { getUnsyncedSales, markSaleSynced } from "./db"
+import { getUnsyncedSales, markSaleSynced, deleteOfflineSale } from "./db"
+import { isUuid } from "@/lib/utils"
+
+export interface SyncResult {
+  synced: number
+  dropped: number
+}
 
 /**
- * Flush queued offline sales to the server. Stops at the first failure (likely
- * still offline) so the rest stay queued. Returns the number synced.
+ * Flush queued offline sales to the server. Malformed entries (which can never
+ * succeed — e.g. a missing/empty branch id from an earlier bug) are dropped so
+ * one poison record can't block the queue forever. Stops at the first genuine
+ * failure (likely still offline) so the rest stay queued.
  */
-export async function syncOfflineSales(): Promise<number> {
+export async function syncOfflineSales(): Promise<SyncResult> {
   const sales = await getUnsyncedSales()
   let synced = 0
+  let dropped = 0
 
   for (const s of sales) {
+    // Drop records that would always fail server validation.
+    const valid =
+      isUuid(s.branchId) &&
+      Array.isArray(s.items) &&
+      s.items.length > 0 &&
+      s.items.every((i) => isUuid(i.product_id))
+    if (!valid) {
+      if (s.id != null) await deleteOfflineSale(s.id)
+      dropped++
+      continue
+    }
+
     try {
       const res = await fetch("/api/sales", {
         method: "POST",
@@ -35,5 +56,5 @@ export async function syncOfflineSales(): Promise<number> {
     }
   }
 
-  return synced
+  return { synced, dropped }
 }

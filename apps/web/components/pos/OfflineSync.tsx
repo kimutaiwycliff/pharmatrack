@@ -13,8 +13,13 @@ export function OfflineSync() {
       if (running.current) return
       running.current = true
       try {
-        const n = await syncOfflineSales()
-        if (n > 0) toast.success(`Synced ${n} offline sale${n > 1 ? "s" : ""}`)
+        const { synced, dropped } = await syncOfflineSales()
+        if (synced > 0) toast.success(`Synced ${synced} offline sale${synced > 1 ? "s" : ""}`)
+        if (dropped > 0) {
+          toast.error(
+            `Discarded ${dropped} invalid offline sale${dropped > 1 ? "s" : ""} that couldn't be synced.`,
+          )
+        }
       } finally {
         running.current = false
       }

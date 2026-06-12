@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
 import { redis } from "@/lib/redis"
+import { apiError, zodErrorResponse } from "@/lib/api/errors"
 
 const createBatchSchema = z.object({
   product_id: z.string().uuid(),
@@ -24,14 +25,14 @@ export async function GET(request: NextRequest) {
   const branchId = searchParams.get("branch_id")
 
   if (!productId || !branchId) {
-    return NextResponse.json({ error: "product_id and branch_id required" }, { status: 400 })
+    return apiError("product_id and branch_id required")
   }
 
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return apiError("Unauthorized", 401)
 
   const { data, error } = await supabase
     .from("product_batches")
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
     .eq("branch_id", branchId)
     .order("expiry_date", { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return apiError(error.message, 500)
 
   return NextResponse.json({ batches: data ?? [] })
 }
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return apiError("Unauthorized", 401)
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -58,21 +59,16 @@ export async function POST(request: NextRequest) {
     .eq("id", user.id)
     .single()
 
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  if (!profile) return apiError("Profile not found", 404)
 
   const allowedRoles = ["owner", "manager", "pharmacist"]
   if (!allowedRoles.includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    return apiError("Forbidden", 403)
   }
 
   const body = (await request.json()) as unknown
   const parsed = createBatchSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid request" },
-      { status: 400 },
-    )
-  }
+  if (!parsed.success) return zodErrorResponse(parsed.error)
 
   const { data: batch, error } = await supabase
     .from("product_batches")
@@ -84,7 +80,7 @@ export async function POST(request: NextRequest) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return apiError(error.message, 500)
 
   // Invalidate product cache so updated stock is fetched fresh
   if (redis) {
