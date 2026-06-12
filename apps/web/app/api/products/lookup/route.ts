@@ -66,7 +66,14 @@ export async function GET(request: NextRequest) {
   if (redis) {
     try {
       const cached = await redis.get<LookupResponse>(cacheKey)
-      if (cached) return NextResponse.json(cached)
+      if (cached) {
+        // Heal entries cached before product_id was emitted (the cart and the
+        // sale schema key on product_id, not the raw products `id`).
+        if (cached.product && !cached.product.product_id && cached.product.id) {
+          cached.product.product_id = cached.product.id
+        }
+        return NextResponse.json(cached)
+      }
     } catch {
       // Cache miss — continue
     }
@@ -114,6 +121,10 @@ export async function GET(request: NextRequest) {
 
     const productWithStock = {
       ...product,
+      // The products table exposes `id`; the cart and sale schema expect
+      // `product_id` (as the product_stock view provides). Without this,
+      // scanned items reach the sale with no product_id and fail UUID validation.
+      product_id: product.id,
       stock_on_hand: stockOnHand,
       earliest_expiry: earliestExpiry,
       batch_count: batches.length,
