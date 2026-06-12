@@ -58,10 +58,10 @@ export function PosShell({ userId, children }: { userId: string; children: React
         <div className="w-px h-6 bg-[var(--pt-border)]" />
 
         {/* Branch breadcrumb */}
-        <div className="flex items-center gap-1.5 text-sm font-medium text-[var(--pt-text)]">
+        <div className="flex items-center gap-1.5 text-sm font-medium text-[var(--pt-text)] min-w-0">
           <span className="text-[var(--pt-text-secondary)] text-xs hidden sm:block">Nairobi Pharmacy</span>
           <span className="text-[var(--pt-text-tertiary)] text-xs hidden sm:block">›</span>
-          <span>{activeBranch?.name ?? "Branch"}</span>
+          <span className="truncate">{activeBranch?.name ?? "Branch"}</span>
         </div>
 
         <div className="flex-1" />
