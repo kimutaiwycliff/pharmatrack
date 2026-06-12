@@ -1,0 +1,51 @@
+name: DB Migrate
+
+# Applies any new supabase/migrations/** to the linked Supabase project after
+# they land on main, keeping prod schema in lockstep with the repo.
+#
+# Requires two repo secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN  — personal access token (supabase.com/dashboard/account/tokens)
+#   SUPABASE_DB_PASSWORD   — the project's database password
+# Until both are set the job skips cleanly (no red X). Runs only on main, never
+# on PRs, so it can't block merges. With the reconciled history, the first run
+# finds nothing pending; subsequent new migrations get pushed.
+
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/migrations/**"]
+
+concurrency:
+  group: db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard on secrets
+        id: guard
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::notice::SUPABASE_ACCESS_TOKEN not set — skipping. Add SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD to enable auto-migrations."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - if: steps.guard.outputs.skip != 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - if: steps.guard.outputs.skip != 'true'
+        name: Push migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref ylrhxbvmunbmhfdphwlh
+          supabase db push
