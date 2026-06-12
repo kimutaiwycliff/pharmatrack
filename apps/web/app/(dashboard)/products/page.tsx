@@ -200,7 +200,7 @@ export default function ProductsPage() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         {p.image_url ? (
-                          <img src={p.image_url} alt={p.name} className="w-9 h-9 rounded-lg object-cover shrink-0 border border-[var(--pt-border)]" />
+                          <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-9 h-9 rounded-lg object-cover shrink-0 border border-[var(--pt-border)]" />
                         ) : (
                           <div className="w-9 h-9 rounded-lg bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-tertiary)] shrink-0">
                             <Pill size={15} />

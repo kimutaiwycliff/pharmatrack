@@ -47,7 +47,7 @@ function ImageUploader({ value, onChange }: { value: string | null; onChange: (u
     <div className="flex items-center gap-4">
       <div className="w-20 h-20 rounded-xl border-2 border-dashed border-[var(--pt-border)] flex items-center justify-center bg-[var(--pt-muted)] shrink-0 overflow-hidden">
         {value ? (
-          <img src={value} alt="Product" className="w-full h-full object-cover" />
+          <img src={value} alt="Product" loading="lazy" decoding="async" className="w-full h-full object-cover" />
         ) : (
           <ImageIcon size={24} className="text-[var(--pt-text-tertiary)]" />
         )}

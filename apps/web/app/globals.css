@@ -204,3 +204,18 @@
     margin: 0;
   }
 }
+
+/* Safe-area handling for installed PWA with viewport-fit: cover.
+   Keeps content clear of the notch and the iOS home indicator. */
+@layer utilities {
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pl-safe { padding-left: env(safe-area-inset-left); }
+  .pr-safe { padding-right: env(safe-area-inset-right); }
+}
+
+/* Bottom-anchored padding so the last scrollable content and any fixed
+   footers sit above the home indicator on notched devices. */
+body {
+  padding-bottom: env(safe-area-inset-bottom);
+}
