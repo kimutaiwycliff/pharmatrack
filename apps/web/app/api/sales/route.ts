@@ -45,8 +45,12 @@ export async function POST(request: NextRequest) {
   const body = (await request.json()) as unknown
   const parsed = saleSchema.safeParse(body)
   if (!parsed.success) {
+    // Include the failing field path so "Invalid UUID" et al. are actionable.
+    const issue = parsed.error.issues[0]
+    const path = issue?.path.join(".")
+    const message = issue?.message ?? "Invalid request"
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid request" },
+      { error: path ? `${message} (field: ${path})` : message },
       { status: 400 },
     )
   }
