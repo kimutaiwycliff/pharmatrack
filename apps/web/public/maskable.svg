@@ -1,0 +1,13 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#15803d"/>
+    </linearGradient>
+  </defs>
+  <!-- Full-bleed background so the OS mask can clip to any shape -->
+  <rect width="512" height="512" fill="url(#g)"/>
+  <!-- Cross kept inside the 80% maskable safe zone (center ~205–307) -->
+  <rect x="232" y="176" width="48" height="160" rx="14" fill="#ffffff"/>
+  <rect x="176" y="232" width="160" height="48" rx="14" fill="#ffffff"/>
+</svg>

@@ -154,7 +154,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
             >
               <div className="flex items-center gap-3 min-w-0">
                 {p.image_url ? (
-                  <img src={p.image_url} alt={p.name ?? ""} className="w-9 h-9 rounded-lg object-cover shrink-0 border border-[var(--pt-border)] bg-[var(--pt-muted)]" />
+                  <img src={p.image_url} alt={p.name ?? ""} loading="lazy" decoding="async" className="w-9 h-9 rounded-lg object-cover shrink-0 border border-[var(--pt-border)] bg-[var(--pt-muted)]" />
                 ) : (
                   <div className="w-9 h-9 rounded-lg bg-[var(--pt-muted-strong)] flex items-center justify-center shrink-0 text-sm">💊</div>
                 )}
@@ -216,7 +216,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
               >
                 <div className="w-full aspect-square rounded-lg bg-[var(--pt-muted)] mb-2 overflow-hidden flex items-center justify-center border border-[var(--pt-border)]">
                   {p.image_url ? (
-                    <img src={p.image_url} alt={p.name ?? ""} className="w-full h-full object-cover" />
+                    <img src={p.image_url} alt={p.name ?? ""} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-2xl">💊</span>
                   )}
