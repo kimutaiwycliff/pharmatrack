@@ -49,6 +49,83 @@ function ExpiryCell({ expiry, days }: { expiry: string | null; days: number | nu
   )
 }
 
+function StatusBadges({ badges }: { badges: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {badges.map((s) => {
+        const cfg = BADGE_MAP[s]
+        if (!cfg) return null
+        return (
+          <span
+            key={s}
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cfg.className}`}
+          >
+            {cfg.label}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+// Mobile card — the table's action column gets clipped on narrow screens, so
+// phones get a card with explicit Batches / Edit buttons instead.
+function ProductCard({ product, onBatches, onEdit }: {
+  product: InventoryRow
+  onBatches: () => void
+  onEdit: () => void
+}) {
+  return (
+    <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-md bg-[var(--pt-muted-strong)] flex items-center justify-center text-[var(--pt-text-tertiary)] shrink-0">
+            <Pill size={15} />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-sm truncate">{product.name}</p>
+            <p className="text-[11px] text-[var(--pt-text-secondary)] mt-0.5 truncate">
+              {[product.strength, product.dosage_form].filter(Boolean).join(" · ") || "—"}
+            </p>
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <span className={`text-base font-bold tabular-nums ${stockColor(product.stock_on_hand ?? 0, product.reorder_level ?? 10)}`}>
+            {product.stock_on_hand ?? 0}
+          </span>
+          <span className="text-[11px] text-[var(--pt-text-tertiary)] ml-1">{product.base_unit}</span>
+          <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-0.5">
+            {product.selling_price != null ? formatKES(product.selling_price) : "—"}
+          </p>
+        </div>
+      </div>
+
+      {product.status_badges.length > 0 && (
+        <div className="mt-3">
+          <StatusBadges badges={product.status_badges} />
+        </div>
+      )}
+
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={onBatches}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-[var(--pt-border)] text-[13px] font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
+        >
+          <Layers size={14} />
+          Batches ({product.batch_count ?? 0})
+        </button>
+        <button
+          onClick={onEdit}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-[var(--pt-border)] text-[13px] font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
+        >
+          <Pencil size={14} />
+          Edit
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ActionMenu({ product, onBatches, onEdit }: {
   product: InventoryRow
   onBatches: () => void
@@ -127,7 +204,20 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
 
   return (
     <>
-      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
+      {/* Mobile: card list (the table's action column clips off-screen on phones) */}
+      <div className="md:hidden space-y-3">
+        {products.map((p) => (
+          <ProductCard
+            key={p.product_id}
+            product={p}
+            onBatches={() => setBatchesProduct(p)}
+            onEdit={() => setEditProductId(p.product_id ?? null)}
+          />
+        ))}
+      </div>
+
+      {/* Desktop / tablet: table */}
+      <div className="hidden md:block bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--pt-border)] bg-[var(--pt-muted)]">
@@ -227,20 +317,7 @@ export function InventoryTable({ products, branchId, isLoading }: Props) {
 
                 {/* Status badges */}
                 <td className="px-4 py-3.5">
-                  <div className="flex flex-wrap gap-1">
-                    {(p as InventoryRow).status_badges.map((s) => {
-                      const cfg = BADGE_MAP[s]
-                      if (!cfg) return null
-                      return (
-                        <span
-                          key={s}
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cfg.className}`}
-                        >
-                          {cfg.label}
-                        </span>
-                      )
-                    })}
-                  </div>
+                  <StatusBadges badges={(p as InventoryRow).status_badges} />
                 </td>
 
                 {/* Actions */}
