@@ -1,0 +1,8 @@
+# Reverse proxy for the PharmaTrack web app with automatic HTTPS.
+# APP_DOMAIN is read from the root .env (e.g. pos.mypharmacy.co.ke).
+# Point an A record for that domain at this VM, then `docker compose up -d`.
+
+{$APP_DOMAIN} {
+	encode gzip
+	reverse_proxy web:3000
+}

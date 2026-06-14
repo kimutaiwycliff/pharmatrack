@@ -1,17 +1,15 @@
 # Single-VM deployment (also a good base for a Swarm stack).
 #
-# This runs the PharmaTrack web app + a Redis container. Postgres/Auth/Storage
-# come from either Supabase Cloud or a self-hosted Supabase stack — point the
-# env vars below at whichever you use (the app code is identical for both).
+# Runs the PharmaTrack web app + Redis + a Caddy reverse proxy that terminates
+# TLS (automatic Let's Encrypt). Postgres/Auth/Storage come from a self-hosted
+# Supabase stack run SEPARATELY (see DEPLOYMENT.md) — point the SUPABASE_* env
+# vars at it. The app code is identical for managed vs self-hosted Supabase.
 #
-#   Managed backends:   set SUPABASE/UPSTASH/etc. to the hosted URLs (you can
-#                       drop the `redis` service and use Upstash instead).
-#   Pure VM:            run self-hosted Supabase separately
-#                       (https://supabase.com/docs/guides/self-hosting/docker)
-#                       and point NEXT_PUBLIC_SUPABASE_URL at it; use the redis
-#                       service below for REDIS_URL.
+# TLS is required, not optional: service workers (offline PWA) and the camera
+# barcode scanner only work over HTTPS, and M-Pesa callbacks need a public
+# HTTPS URL. Caddy handles certs automatically once DNS points at this VM.
 #
-# Copy apps/web/.env.local.example values into a root .env file first.
+# Copy apps/web/.env.local.example to a root .env file and fill it in first.
 
 services:
   web:
@@ -23,8 +21,10 @@ services:
     env_file: .env
     environment:
       PORT: "3000"
-    ports:
-      - "3000:3000"
+      # Self-hosted cache over the internal docker network (ioredis adapter).
+      REDIS_URL: redis://redis:6379
+    expose:
+      - "3000"
     depends_on:
       - redis
     healthcheck:
@@ -33,6 +33,21 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # TLS-terminating reverse proxy. Set APP_DOMAIN in .env (e.g. pos.mypharmacy.co.ke).
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
 
   redis:
     image: redis:7-alpine
@@ -61,3 +76,5 @@ services:
 
 volumes:
   redis-data:
+  caddy-data:
+  caddy-config:
