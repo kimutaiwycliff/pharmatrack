@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 import { hashPin, validatePin } from "@/lib/auth/pin"
+import { normalizeKePhone } from "@/lib/auth/phone"
 import { z } from "zod"
 
 const orgSchema = z.object({
@@ -139,9 +140,13 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
     }
+    const updates = {
+      ...parsed.data,
+      ...(parsed.data.phone !== undefined && { phone: normalizeKePhone(parsed.data.phone) }),
+    }
     const { data: updated, error } = await supabase
       .from("profiles")
-      .update(parsed.data)
+      .update(updates)
       .eq("id", user.id)
       .select()
       .single()

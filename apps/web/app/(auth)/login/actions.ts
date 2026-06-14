@@ -4,6 +4,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 import bcrypt from "bcryptjs"
+import { normalizeKePhone } from "@/lib/auth/phone"
 
 export type ActionState = { error?: string }
 
@@ -67,11 +68,9 @@ export async function signInWithPin(
   if (!rawPhone) return { error: "Phone number is required" }
   if (pin.length !== 4 || !/^\d{4}$/.test(pin)) return { error: "Enter your 4-digit PIN" }
 
-  // Normalize: 0712345678 → +254712345678, 254712345678 → +254712345678
-  const phone = rawPhone
-    .replace(/\s+/g, "")
-    .replace(/^0(\d)/, "+254$1")
-    .replace(/^254(\d)/, "+254$1")
+  // Canonicalize to +2547XXXXXXXX so it matches the stored value regardless of
+  // how the cashier typed it (with/without country code or leading 0).
+  const phone = normalizeKePhone(rawPhone)
 
   const admin = createAdminClient()
 

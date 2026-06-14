@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
 import { zUuid } from "@/lib/api/validation"
 import { hashPin, validatePin } from "@/lib/auth/pin"
+import { normalizeKePhone } from "@/lib/auth/phone"
 
 const updateSchema = z.object({
   role: z.enum(["manager", "pharmacist", "cashier"]).optional(),
@@ -43,6 +44,10 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   }
 
+  // Canonicalize phone so PIN login (an exact-match lookup) can find it later.
+  const normalizedPhone =
+    parsed.data.phone !== undefined ? normalizeKePhone(parsed.data.phone) : undefined
+
   // Ensure target is in same org
   const { data: target } = await supabase
     .from("profiles")
@@ -65,7 +70,7 @@ export async function PATCH(
   if (parsed.data.pin !== undefined) {
     const validation = validatePin(parsed.data.pin)
     if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
-    const effectivePhone = parsed.data.phone ?? target.phone
+    const effectivePhone = normalizedPhone ?? target.phone
     if (!effectivePhone) {
       return NextResponse.json(
         { error: "Set a phone number for this member before assigning a PIN" },
@@ -80,7 +85,7 @@ export async function PATCH(
     .update({
       ...(parsed.data.role !== undefined && { role: parsed.data.role }),
       ...(parsed.data.branch_id !== undefined && { branch_id: parsed.data.branch_id }),
-      ...(parsed.data.phone !== undefined && { phone: parsed.data.phone }),
+      ...(normalizedPhone !== undefined && { phone: normalizedPhone }),
       ...(parsed.data.is_active !== undefined && { is_active: parsed.data.is_active }),
       ...(pin_hash !== undefined && { pin_hash }),
     })
