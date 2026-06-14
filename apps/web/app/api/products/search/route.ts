@@ -5,6 +5,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const q = searchParams.get("q")?.trim() ?? ""
   const branchId = searchParams.get("branch_id")
+  // `all=1` returns the whole branch catalogue so the POS can warm its offline
+  // cache in one shot (bounded so a huge catalogue can't blow up the response).
+  const all = searchParams.get("all") === "1"
 
   if (!branchId) return NextResponse.json({ error: "branch_id required" }, { status: 400 })
 
@@ -29,9 +32,9 @@ export async function GET(request: NextRequest) {
     .eq("organization_id", profile.organization_id)
     .eq("is_active", true)
     .order("name", { ascending: true })
-    .limit(20)
+    .limit(all ? 5000 : 20)
 
-  if (q.length >= 2) {
+  if (!all && q.length >= 2) {
     query = query.or(`name.ilike.%${q}%,brand_name.ilike.%${q}%,strength.ilike.%${q}%`)
   }
 
