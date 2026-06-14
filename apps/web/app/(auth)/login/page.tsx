@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation"
+import { createAdminClient } from "@/lib/supabase/server"
 import { LoginForm } from "@/components/auth/LoginForm"
 
 export const metadata = { title: "Sign in — PharmaTrack" }
@@ -9,7 +11,14 @@ const FEATURES = [
   { icon: "🔒", label: "Role-based access control" },
 ]
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  // Brand-new install with no operator yet → send to first-run setup.
+  const admin = createAdminClient()
+  const { count } = await admin
+    .from("platform_admins")
+    .select("user_id", { count: "exact", head: true })
+  if ((count ?? 0) === 0) redirect("/setup")
+
   return (
     <div className="min-h-screen flex bg-[var(--pt-bg)]">
       {/* Left — branding panel (desktop only) */}
