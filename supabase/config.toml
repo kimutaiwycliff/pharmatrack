@@ -1,0 +1,46 @@
+# Supabase CLI config for LOCAL development/testing (`supabase start`).
+# Production uses the self-hosted Supabase docker stack (see DEPLOYMENT.md);
+# this file only drives the local CLI stack.
+
+project_id = "pharmatrack"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# Match the self-hosted target. NULLS NOT DISTINCT (drug_catalog) needs >= 15.
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+# Local email catcher — operator/staff invite emails land here, no SMTP needed.
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# Local convenience: don't require clicking a confirmation link.
+enable_confirmations = false
+
+# NOTE: `supabase start` applies everything in supabase/migrations (including
+# the Kenyan drug catalog) but does NOT run supabase/seed/001_dev_seed.sql,
+# so you get a clean, demo-free database — exactly the fresh-install scenario.

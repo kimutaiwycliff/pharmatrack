@@ -13,7 +13,70 @@ camera barcode scanner, and M-Pesa callbacks all require HTTPS.
                     └───────────────────────────────────┘
 ```
 
-## 0. Prerequisites
+---
+
+## Local end-to-end test first (Ubuntu) — recommended before the VM
+
+The Caddy/HTTPS stack above is for the public VM. To validate a fresh clone
+end-to-end on your laptop with the least friction, use the Supabase CLI for the
+backend and run the app's production build directly (so the offline PWA service
+worker is active — it only registers in production, and `http://localhost` is a
+secure context so no TLS is needed).
+
+**Prereqs:** Docker, Node 22 + pnpm (`corepack enable`), and the Supabase CLI
+(`npx supabase` works, or install it).
+
+```bash
+# 1. From the repo root — start a clean local Supabase (Postgres/Auth/Storage/Studio)
+supabase start
+#    Applies every migration in supabase/migrations (incl. the Kenyan drug
+#    catalog). Does NOT load demo data — a true fresh install.
+supabase status          # copy the API URL + anon key + service_role key
+```
+
+```bash
+# 2. Point the app at local Supabase (pnpm reads apps/web/.env.local)
+cp apps/web/.env.local.example apps/web/.env.local
+# edit apps/web/.env.local:
+#   NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from `supabase status`>
+#   SUPABASE_SERVICE_ROLE_KEY=<service_role key from `supabase status`>
+#   REDIS_URL=                      # leave empty → cache falls back to the DB
+#   NEXT_PUBLIC_APP_URL=http://localhost:3000
+#   (M-Pesa/SMS/email can stay as placeholders for this test)
+```
+
+```bash
+# 3. Build + run the production server (service worker registers in prod)
+pnpm install
+pnpm build
+pnpm --filter web start          # http://localhost:3000
+```
+
+**Walk the whole flow as a brand-new install:**
+1. Open `http://localhost:3000` → you're redirected to **`/setup`** → create the
+   platform admin → you land in `/platform`.
+2. In `/platform`, **add a subscriber** (pharmacy + owner email). The owner's
+   invite email appears in **Inbucket → http://localhost:54324** (no SMTP needed
+   locally) — open it, accept, set a password.
+3. As the owner: Inventory → **Load Kenyan drug catalog** → set a price + activate
+   an item → add stock (Receive/Import) → make a sale at **/pos**.
+4. **Offline test:** with `/pos` open, DevTools → Network → **Offline**, reload,
+   search/scan, complete a sale; go back online → "Synced N offline sales" toast.
+
+> Optional: create the image bucket if you want to test product photos —
+> Studio (http://localhost:54323) → Storage → new public bucket `product-images`.
+
+**Want to exercise the actual Docker image locally too?** On Linux you can run
+the container on the host network so it reaches local Supabase and serves on
+`localhost:3000` without Caddy:
+`docker build -t pharmatrack-web . && docker run --rm --network host --env-file apps/web/.env.local -e PORT=3000 pharmatrack-web`.
+The full Caddy/TLS compose is best validated on the real VM (or a local VM with
+a test domain), since Let's Encrypt needs a public domain.
+
+---
+
+## 0. Prerequisites (production VM)
 - A VM (Ubuntu 22.04+, **≥ 4 GB RAM**, 8 GB recommended; Supabase + app + build are memory-hungry).
 - A domain with two A records pointing at the VM IP:
   - `pos.yourdomain.co.ke` → the app
