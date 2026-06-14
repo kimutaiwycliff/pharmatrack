@@ -44,12 +44,29 @@ Edit `supabase/docker/.env` and set **all** of:
 - **SMTP** (`SMTP_HOST/PORT/USER/PASS/SENDER_NAME/ADMIN_EMAIL`) — **required**,
   or staff invites and password recovery emails silently fail.
 
-Put `supabase.yourdomain.co.ke` behind Caddy too (add a block proxying to
-`kong:8000`), or expose Kong directly. Start it:
+Start it:
 
 ```bash
 docker compose up -d
 ```
+
+**Serving Supabase through this repo's Caddy (optional).** The `Caddyfile`
+already has a `{$SUPABASE_DOMAIN}` block proxying to `kong:8000`. To use it,
+Caddy must share a network with the Supabase containers. Set `SUPABASE_DOMAIN`
+in `.env`, then attach Caddy to Supabase's network by adding to the `caddy`
+service in `docker-compose.yml`:
+
+```yaml
+    networks: [default, supabase]
+# and at the bottom of the file:
+networks:
+  supabase:
+    external: true
+    name: supabase_default   # the network name `docker network ls` shows for the Supabase stack
+```
+
+Otherwise leave `SUPABASE_DOMAIN` unset and expose Kong / terminate TLS via the
+Supabase stack's own proxy.
 
 ## 2. Apply the schema (fresh, no demo data)
 From a machine with the Supabase CLI and this repo. Use the **session pooler /
@@ -101,12 +118,22 @@ docker compose up -d --build
 Caddy fetches a certificate for `APP_DOMAIN` automatically. Visit
 `https://pos.yourdomain.co.ke`.
 
-## 4. First run & seed your pharmacy
-1. Sign up the first owner → creates the organization + first branch.
-2. Inventory → **Load Kenyan drug catalog** to materialise the catalog as your
-   branch's products (seeded inactive/unpriced — set prices, then activate).
-   Use **Unseed** to remove untouched seeded items.
-3. Add opening stock via **Receive Stock** or **Import CSV**.
+## 4. First run (operator → subscriber → staff)
+1. **Create the platform admin.** Open the app — with an empty database you're
+   sent to **`/setup`** to create the operator account (email + password). This
+   is one-time and self-locks once an admin exists; you land in `/platform`
+   signed in.
+2. **Add a subscriber.** In `/platform`, add a tenant (pharmacy name + owner
+   name + owner email). This provisions the org, a default branch, a trial
+   subscription, default services, and **emails the owner an invite**.
+3. **Owner takes over.** The owner clicks the invite, sets a password, and lands
+   in their dashboard, where they:
+   - **Load Kenyan drug catalog** (Inventory) — seeds products inactive/unpriced;
+     set prices and activate, or **Unseed** to remove untouched ones.
+   - Add opening stock via **Receive Stock** or **Import CSV**.
+   - Invite **staff**, set quick-login PINs, and configure settings.
+
+> SMTP must be working (step 1) for the owner/staff invite emails to arrive.
 
 ## 5. Verify offline (must be the production image, not `next dev`)
 The service worker only registers in production builds.

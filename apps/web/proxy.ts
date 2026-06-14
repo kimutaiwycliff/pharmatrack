@@ -4,7 +4,8 @@ import { NextResponse, type NextRequest } from "next/server"
 // /api/cron is exempt from the session check — those routes authenticate
 // themselves via CRON_SECRET (called by Vercel Cron, which has no session).
 // /auth/* handles email-link landings (invite/recovery) before a session exists.
-const PUBLIC_ROUTES = ["/login", "/auth", "/api/cron", "/api/health", "/api/webhooks"]
+// /setup is the first-run platform-admin bootstrap (no session yet).
+const PUBLIC_ROUTES = ["/login", "/setup", "/auth", "/api/cron", "/api/health", "/api/webhooks", "/api/setup"]
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
