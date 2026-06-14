@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
   // workspace deps correctly.
   outputFileTracingRoot: repoRoot,
   // Prevent Next.js from bundling server-only heavy packages that use WASM/native bindings
-  serverExternalPackages: ["@react-pdf/renderer", "@react-pdf/yoga"],
+  serverExternalPackages: ["@react-pdf/renderer", "@react-pdf/yoga", "ioredis"],
 };
 
 export default nextConfig;

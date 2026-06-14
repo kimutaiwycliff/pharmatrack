@@ -864,6 +864,7 @@ export type Database = {
           barcode_raw: string | null
           base_unit: string
           brand_name: string | null
+          catalog_id: string | null
           category_id: string | null
           cost_price: number | null
           created_at: string
@@ -892,6 +893,7 @@ export type Database = {
           barcode_raw?: string | null
           base_unit: string
           brand_name?: string | null
+          catalog_id?: string | null
           category_id?: string | null
           cost_price?: number | null
           created_at?: string
@@ -920,6 +922,7 @@ export type Database = {
           barcode_raw?: string | null
           base_unit?: string
           brand_name?: string | null
+          catalog_id?: string | null
           category_id?: string | null
           cost_price?: number | null
           created_at?: string
@@ -945,6 +948,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "products_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "drug_catalog"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "products_category_id_fkey"
             columns: ["category_id"]

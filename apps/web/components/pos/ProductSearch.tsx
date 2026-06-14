@@ -54,6 +54,24 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   const { data: searchData, isFetching: searchFetching } = useProductSearch(searchText, branchId)
   const { data: featuredData } = useProductSearch("", branchId)
 
+  // Warm the offline cache with the WHOLE branch catalogue once on load (while
+  // online), so a later outage can search/scan any product — not just ones the
+  // cashier happened to open. Failures (e.g. already offline) are ignored.
+  useQuery({
+    queryKey: ["branchCatalogPrefetch", branchId],
+    queryFn: async () => {
+      const res = await fetch(`/api/products/search?all=1&branch_id=${branchId}`)
+      if (!res.ok) return { cached: 0 }
+      const json = (await res.json()) as { products: ProductWithStock[] }
+      await cacheProducts(json.products)
+      return { cached: json.products.length }
+    },
+    enabled: branchId.length > 0,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    retry: false,
+  })
+
   const handleProductAdd = useCallback(
     (product: ProductWithStock) => {
       addItem(product)
