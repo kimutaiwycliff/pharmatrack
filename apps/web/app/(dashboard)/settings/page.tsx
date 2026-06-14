@@ -15,6 +15,7 @@ import type { Organization, Branch, Profile, AppointmentService } from "@pharmat
 interface SettingsData {
   org: Organization
   profile: Profile
+  has_pin: boolean
   branches: Branch[]
 }
 
@@ -127,7 +128,7 @@ export default function SettingsPage() {
             <BranchList branches={data.branches} isOwner={isOwner} />
           )}
           {tab === "profile" && (
-            <ProfileSettingsForm profile={data.profile} />
+            <ProfileSettingsForm profile={data.profile} hasPin={data.has_pin} />
           )}
         </>
       ) : (

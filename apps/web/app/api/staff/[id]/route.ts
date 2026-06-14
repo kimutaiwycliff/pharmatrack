@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
 import { zUuid } from "@/lib/api/validation"
+import { hashPin, validatePin } from "@/lib/auth/pin"
 
 const updateSchema = z.object({
   role: z.enum(["manager", "pharmacist", "cashier"]).optional(),
   branch_id: zUuid().nullable().optional(),
   phone: z.string().optional(),
   is_active: z.boolean().optional(),
+  pin: z.string().optional(),
 })
 
 export async function PATCH(
@@ -44,7 +46,7 @@ export async function PATCH(
   // Ensure target is in same org
   const { data: target } = await supabase
     .from("profiles")
-    .select("organization_id, role")
+    .select("organization_id, role, phone")
     .eq("id", id)
     .single()
 
@@ -57,6 +59,22 @@ export async function PATCH(
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
   }
 
+  // A PIN, if provided, must be valid and the member must have a phone number
+  // (PIN login matches by phone). Accept a phone set in the same request.
+  let pin_hash: string | undefined
+  if (parsed.data.pin !== undefined) {
+    const validation = validatePin(parsed.data.pin)
+    if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
+    const effectivePhone = parsed.data.phone ?? target.phone
+    if (!effectivePhone) {
+      return NextResponse.json(
+        { error: "Set a phone number for this member before assigning a PIN" },
+        { status: 400 },
+      )
+    }
+    pin_hash = await hashPin(validation.pin)
+  }
+
   const { data: updated, error } = await supabase
     .from("profiles")
     .update({
@@ -64,6 +82,7 @@ export async function PATCH(
       ...(parsed.data.branch_id !== undefined && { branch_id: parsed.data.branch_id }),
       ...(parsed.data.phone !== undefined && { phone: parsed.data.phone }),
       ...(parsed.data.is_active !== undefined && { is_active: parsed.data.is_active }),
+      ...(pin_hash !== undefined && { pin_hash }),
     })
     .eq("id", id)
     .select()
@@ -71,5 +90,6 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ staff: updated })
+  const { pin_hash: _omit, ...safeStaff } = updated
+  return NextResponse.json({ staff: safeStaff })
 }
