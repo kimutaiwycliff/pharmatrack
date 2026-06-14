@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { z } from "zod"
 import { zUuid } from "@/lib/api/validation"
+import { normalizeKePhone } from "@/lib/auth/phone"
 
 const inviteSchema = z.object({
   email: z.string().email(),
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
       full_name: parsed.data.full_name,
       role: parsed.data.role,
       branch_id: parsed.data.branch_id ?? null,
-      phone: parsed.data.phone ?? null,
+      phone: parsed.data.phone ? normalizeKePhone(parsed.data.phone) : null,
       is_active: true,
     })
 
