@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Eye, EyeOff } from "lucide-react"
+import { Loader2, Eye, EyeOff, KeyRound, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -10,9 +10,10 @@ import type { Profile } from "@pharmatrack/types"
 
 interface Props {
   profile: Profile
+  hasPin: boolean
 }
 
-export function ProfileSettingsForm({ profile }: Props) {
+export function ProfileSettingsForm({ profile, hasPin }: Props) {
   const [form, setForm] = useState({
     full_name: profile.full_name,
     phone: profile.phone ?? "",
@@ -23,6 +24,12 @@ export function ProfileSettingsForm({ profile }: Props) {
   const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" })
   const [showPw, setShowPw] = useState(false)
   const [pwSaving, setPwSaving] = useState(false)
+
+  const [pinForm, setPinForm] = useState({ password: "", pin: "", confirm: "" })
+  const [pinSaving, setPinSaving] = useState(false)
+  const [pinSet, setPinSet] = useState(hasPin)
+  // PIN login matches by the saved phone number, so it must already be on file.
+  const phoneOnFile = !!(profile.phone && profile.phone.trim())
 
   function setField(key: string, value: string) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -72,6 +79,29 @@ export function ProfileSettingsForm({ profile }: Props) {
       toast.error(err instanceof Error ? err.message : "Error")
     } finally {
       setPwSaving(false)
+    }
+  }
+
+  async function savePin() {
+    if (!/^\d{4}$/.test(pinForm.pin)) { toast.error("PIN must be exactly 4 digits"); return }
+    if (pinForm.pin !== pinForm.confirm) { toast.error("PINs do not match"); return }
+    if (!pinForm.password) { toast.error("Enter your account password to confirm"); return }
+    setPinSaving(true)
+    try {
+      const res = await fetch("/api/settings?target=pin", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pinForm.password, pin: pinForm.pin }),
+      })
+      const json = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(json.error ?? "Failed to set PIN")
+      toast.success(pinSet ? "PIN updated" : "PIN set — you can now sign in with it")
+      setPinForm({ password: "", pin: "", confirm: "" })
+      setPinSet(true)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error")
+    } finally {
+      setPinSaving(false)
     }
   }
 
@@ -168,6 +198,85 @@ export function ProfileSettingsForm({ profile }: Props) {
           {pwSaving ? <Loader2 size={15} className="animate-spin mr-1.5" /> : null}
           Update Password
         </Button>
+      </div>
+
+      {/* Quick PIN login */}
+      <div className="border-t border-[var(--pt-border)] pt-6 space-y-5">
+        <div className="flex items-center gap-2">
+          <KeyRound size={16} className="text-[var(--pt-text-secondary)]" />
+          <h3 className="text-sm font-bold">Quick PIN Login</h3>
+          {pinSet && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--pt-green-600)] bg-[var(--pt-green-50)] px-2 py-0.5 rounded-full">
+              <CheckCircle2 size={12} /> Set
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-[var(--pt-text-secondary)] -mt-2">
+          Sign in fast on a shared terminal with your phone number and a 4-digit PIN.
+        </p>
+
+        {!phoneOnFile ? (
+          <p className="text-sm text-[var(--pt-text-secondary)] bg-[var(--pt-muted)] px-3 py-2.5 rounded-lg">
+            Add and save your phone number above first — PIN login signs you in by phone.
+          </p>
+        ) : (
+          <>
+            <div>
+              <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+                Account Password
+              </label>
+              <Input
+                type="password"
+                autoComplete="current-password"
+                placeholder="Confirm it's you"
+                value={pinForm.password}
+                onChange={(e) => setPinForm((f) => ({ ...f, password: e.target.value }))}
+                className="h-10"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+                  {pinSet ? "New PIN" : "PIN"}
+                </label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="4 digits"
+                  value={pinForm.pin}
+                  onChange={(e) => setPinForm((f) => ({ ...f, pin: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+                  className="h-10 tracking-[0.4em] font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+                  Confirm PIN
+                </label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="Repeat"
+                  value={pinForm.confirm}
+                  onChange={(e) => setPinForm((f) => ({ ...f, confirm: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+                  className="h-10 tracking-[0.4em] font-mono"
+                />
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              onClick={savePin}
+              disabled={pinSaving || pinForm.pin.length !== 4 || pinForm.confirm.length !== 4 || !pinForm.password}
+              className="w-full sm:w-auto"
+            >
+              {pinSaving ? <Loader2 size={15} className="animate-spin mr-1.5" /> : null}
+              {pinSet ? "Update PIN" : "Set PIN"}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   )

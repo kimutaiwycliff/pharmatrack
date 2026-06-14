@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, UserCheck, UserX, Pencil, Loader2 } from "lucide-react"
+import { MoreHorizontal, UserCheck, UserX, Pencil, KeyRound, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
+import { SetPinDialog } from "./SetPinDialog"
 import type { Branch } from "@pharmatrack/types"
 
 interface StaffMember {
@@ -42,6 +43,7 @@ function ActionMenu({
 }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [showPin, setShowPin] = useState(false)
   const queryClient = useQueryClient()
 
   if (member.id === currentUserId || member.role === "owner") return null
@@ -94,6 +96,14 @@ function ActionMenu({
               ))}
             <div className="border-t border-[var(--pt-border)] my-1" />
             <button
+              onClick={() => { setShowPin(true); setOpen(false) }}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
+            >
+              <KeyRound size={13} className="text-[var(--pt-text-tertiary)]" />
+              Set Login PIN
+            </button>
+            <div className="border-t border-[var(--pt-border)] my-1" />
+            <button
               onClick={() => patch({ is_active: !member.is_active })}
               className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
             >
@@ -111,6 +121,13 @@ function ActionMenu({
             </button>
           </div>
         </>
+      )}
+
+      {showPin && (
+        <SetPinDialog
+          member={{ id: member.id, full_name: member.full_name, phone: member.phone }}
+          onClose={() => setShowPin(false)}
+        />
       )}
     </div>
   )
