@@ -3,11 +3,13 @@
 import { useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { Search, PackagePlus, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, PackagePlus, ChevronLeft, ChevronRight, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
+import { BulkImportDialog } from "@/components/inventory/BulkImportDialog"
 import { useUIStore } from "@/lib/store/uiStore"
+import { useSessionStore } from "@/lib/store/sessionStore"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 
 type StatusFilter = "all" | "out_of_stock" | "low_stock" | "expiring" | "controlled"
@@ -76,10 +78,13 @@ function useInventory(branchId: string | null, q: string, status: StatusFilter, 
 export default function InventoryPage() {
   const router = useRouter()
   const branchId = useUIStore((s) => s.activeBranchId)
+  const branches = useSessionStore((s) => s.branches)
+  const branchName = branches.find((b) => b.id === branchId)?.name
 
   const [rawSearch, setRawSearch] = useState("")
   const [status, setStatus] = useState<StatusFilter>("all")
   const [page, setPage] = useState(1)
+  const [showImport, setShowImport] = useState(false)
 
   const q = useDebounce(rawSearch, 300)
 
@@ -108,13 +113,23 @@ export default function InventoryPage() {
             {branchId ? `${data?.total ?? "—"} products` : "Select a branch"}
           </p>
         </div>
-        <Button
-          onClick={() => router.push("/inventory/receive")}
-          className="gap-2"
-        >
-          <PackagePlus size={16} />
-          Receive Stock
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowImport(true)}
+            className="gap-2"
+          >
+            <Upload size={16} />
+            Import CSV
+          </Button>
+          <Button
+            onClick={() => router.push("/inventory/receive")}
+            className="gap-2"
+          >
+            <PackagePlus size={16} />
+            Receive Stock
+          </Button>
+        </div>
       </div>
 
       {/* Summary chips */}
@@ -207,6 +222,14 @@ export default function InventoryPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {showImport && (
+        <BulkImportDialog
+          branchId={branchId}
+          branchName={branchName}
+          onClose={() => setShowImport(false)}
+        />
       )}
     </div>
   )

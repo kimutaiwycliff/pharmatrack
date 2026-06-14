@@ -1,9 +1,9 @@
 "use client"
 
-import { useRef, useState, useTransition } from "react"
+import { useEffect, useRef, useState, useTransition } from "react"
 import { z } from "zod"
 import { toast } from "sonner"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Search, Check, Sparkles, Loader2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -40,7 +40,22 @@ interface NewProductDialogProps {
 }
 
 const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Suspension", "Cream", "Gel", "Ointment", "Lotion", "Injection", "Drops", "Inhaler", "Sachet", "Other"]
-const BASE_UNITS = ["tablet", "capsule", "ml", "g", "unit", "bottle", "tube", "sachet", "pack", "vial"]
+const BASE_UNITS = ["tablet", "capsule", "ml", "g", "unit", "bottle", "tube", "sachet", "pack", "vial", "inhaler", "piece"]
+
+interface CatalogItem {
+  id: string
+  name: string
+  brand_name: string | null
+  manufacturer: string | null
+  gtin: string | null
+  strength: string | null
+  dosage_form: string | null
+  base_unit: string
+  pack_label: string | null
+  units_per_pack: number
+  is_controlled: boolean
+  requires_prescription: boolean
+}
 
 // Sensible base unit for a chosen dosage form (only applied until the user edits it)
 function defaultBaseUnit(dosageForm: string): string {
@@ -133,6 +148,50 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
   const [expiryDate, setExpiryDate] = useState(prefill?.expiryDate ? prefill.expiryDate.toISOString().slice(0, 10) : "")
   const [quantityReceived, setQuantityReceived] = useState(1)
   const [supplierId, setSupplierId] = useState("")
+
+  // Drug catalog autofill — search the shared reference list and prefill identity.
+  const [catalogQuery, setCatalogQuery] = useState("")
+  const [catalogResults, setCatalogResults] = useState<CatalogItem[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogOpen, setCatalogOpen] = useState(false)
+  const [pickedName, setPickedName] = useState<string | null>(null)
+
+  useEffect(() => {
+    const q = catalogQuery.trim()
+    let active = true
+    const t = setTimeout(async () => {
+      if (q.length < 1) { if (active) { setCatalogResults([]); setCatalogOpen(false) } return }
+      if (active) setCatalogLoading(true)
+      try {
+        const res = await fetch(`/api/catalog?q=${encodeURIComponent(q)}`)
+        if (!res.ok) return
+        const json = (await res.json()) as { items: CatalogItem[] }
+        if (active) { setCatalogResults(json.items); setCatalogOpen(true) }
+      } finally {
+        if (active) setCatalogLoading(false)
+      }
+    }, 250)
+    return () => { active = false; clearTimeout(t) }
+  }, [catalogQuery])
+
+  function applyCatalogItem(item: CatalogItem) {
+    setName(item.name)
+    setBrandName(item.brand_name ?? "")
+    setManufacturer(item.manufacturer ?? "")
+    setGtin(item.gtin ?? "")
+    setStrength(item.strength ?? "")
+    // Keep the dosage-form select valid; fall back to "Other" for niche forms.
+    setDosageForm(item.dosage_form && DOSAGE_FORMS.includes(item.dosage_form) ? item.dosage_form : (item.dosage_form ? "Other" : ""))
+    baseUnitTouched.current = true
+    setBaseUnit(BASE_UNITS.includes(item.base_unit) ? item.base_unit : "unit")
+    if (item.pack_label) setPackLabel(item.pack_label)
+    if (item.units_per_pack) setUnitsPerPack(item.units_per_pack)
+    setIsControlled(item.is_controlled)
+    setRequiresPrescription(item.requires_prescription)
+    setPickedName(`${item.name}${item.strength ? " " + item.strength : ""}`)
+    setCatalogOpen(false)
+    setCatalogQuery("")
+  }
 
   const costPerUnit = packCost && unitsPerPack > 0 ? parseFloat(packCost) / unitsPerPack : parseFloat(costPrice)
   const margin = costPerUnit > 0 && parseFloat(sellingPrice) > 0
@@ -238,6 +297,56 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Catalog autofill */}
+          <div className="rounded-lg border border-[var(--pt-green-100)] bg-[var(--pt-green-50)] p-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Sparkles size={14} className="text-[var(--pt-green-600)]" />
+              <span className="text-xs font-semibold text-[var(--pt-green-700)] uppercase tracking-wide">Quick start from catalog</span>
+            </div>
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--pt-text-tertiary)] pointer-events-none" />
+              <Input
+                value={catalogQuery}
+                onChange={(e) => { setCatalogQuery(e.target.value); setPickedName(null) }}
+                onFocus={() => { if (catalogResults.length) setCatalogOpen(true) }}
+                placeholder="Search e.g. Paracetamol, Amoxil, Amlodipine…"
+                className="h-10 pl-9 bg-[var(--pt-surface)]"
+              />
+              {catalogLoading && <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-[var(--pt-text-tertiary)]" />}
+              {catalogOpen && catalogResults.length > 0 && (
+                <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-[var(--pt-border)] bg-[var(--pt-surface)] shadow-lg">
+                  {catalogResults.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => applyCatalogItem(item)}
+                      className="w-full text-left px-3 py-2 hover:bg-[var(--pt-muted)] transition-colors border-b border-[var(--pt-border)] last:border-b-0"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium truncate">
+                          {item.name}{item.strength ? ` ${item.strength}` : ""}
+                        </span>
+                        <span className="text-[11px] text-[var(--pt-text-tertiary)] shrink-0">{item.dosage_form ?? ""}</span>
+                      </div>
+                      <div className="flex gap-1.5 mt-0.5">
+                        {item.requires_prescription && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300">Rx</span>}
+                        {item.is_controlled && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300">Controlled</span>}
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]">per {item.base_unit}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {pickedName ? (
+              <p className="flex items-center gap-1.5 mt-1.5 text-[12px] text-[var(--pt-green-700)]">
+                <Check size={13} /> Autofilled <span className="font-semibold">{pickedName}</span> — just set price &amp; stock below.
+              </p>
+            ) : (
+              <p className="mt-1.5 text-[11px] text-[var(--pt-text-tertiary)]">Pick a product to autofill its details, or type everything manually below.</p>
+            )}
+          </div>
+
           {/* Identity */}
           <div className="space-y-4">
             <SectionTitle>Identity</SectionTitle>

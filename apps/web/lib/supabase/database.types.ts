@@ -14,279 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      drug_interactions: {
-        Row: { drug_a: string; drug_b: string; id: string; note: string | null; severity: string }
-        Insert: { drug_a: string; drug_b: string; id?: string; note?: string | null; severity?: string }
-        Update: { drug_a?: string; drug_b?: string; id?: string; note?: string | null; severity?: string }
-        Relationships: []
-      }
-      prescriptions: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          customer_id: string
-          diagnosis: string | null
-          id: string
-          notes: string | null
-          organization_id: string
-          prescriber_name: string | null
-          prescriber_reg_no: string | null
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          customer_id: string
-          diagnosis?: string | null
-          id?: string
-          notes?: string | null
-          organization_id: string
-          prescriber_name?: string | null
-          prescriber_reg_no?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          customer_id?: string
-          diagnosis?: string | null
-          id?: string
-          notes?: string | null
-          organization_id?: string
-          prescriber_name?: string | null
-          prescriber_reg_no?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "prescriptions_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      prescription_items: {
-        Row: {
-          created_at: string
-          dose: string | null
-          drug_name: string
-          duration: string | null
-          frequency: string | null
-          id: string
-          instructions: string | null
-          prescription_id: string
-          product_id: string | null
-          quantity: number | null
-        }
-        Insert: {
-          created_at?: string
-          dose?: string | null
-          drug_name: string
-          duration?: string | null
-          frequency?: string | null
-          id?: string
-          instructions?: string | null
-          prescription_id: string
-          product_id?: string | null
-          quantity?: number | null
-        }
-        Update: {
-          created_at?: string
-          dose?: string | null
-          drug_name?: string
-          duration?: string | null
-          frequency?: string | null
-          id?: string
-          instructions?: string | null
-          prescription_id?: string
-          product_id?: string | null
-          quantity?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "prescription_items_prescription_id_fkey"
-            columns: ["prescription_id"]
-            isOneToOne: false
-            referencedRelation: "prescriptions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      appointment_services: {
-        Row: {
-          created_at: string
-          id: string
-          is_active: boolean
-          label: string
-          organization_id: string
-          recurrence_weeks: number | null
-          slug: string
-          sort_order: number
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          label: string
-          organization_id: string
-          recurrence_weeks?: number | null
-          slug: string
-          sort_order?: number
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          label?: string
-          organization_id?: string
-          recurrence_weeks?: number | null
-          slug?: string
-          sort_order?: number
-        }
-        Relationships: []
-      }
-      plans: {
-        Row: {
-          code: string
-          created_at: string
-          features: Json
-          id: string
-          interval: string
-          is_active: boolean
-          limits: Json
-          name: string
-          price_kes: number
-        }
-        Insert: {
-          code: string
-          created_at?: string
-          features?: Json
-          id?: string
-          interval?: string
-          is_active?: boolean
-          limits?: Json
-          name: string
-          price_kes?: number
-        }
-        Update: {
-          code?: string
-          created_at?: string
-          features?: Json
-          id?: string
-          interval?: string
-          is_active?: boolean
-          limits?: Json
-          name?: string
-          price_kes?: number
-        }
-        Relationships: []
-      }
-      subscriptions: {
-        Row: {
-          created_at: string
-          current_period_end: string | null
-          id: string
-          organization_id: string
-          plan_id: string | null
-          provider: string | null
-          provider_customer_id: string | null
-          provider_subscription_id: string | null
-          status: string
-          trial_ends_at: string | null
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          current_period_end?: string | null
-          id?: string
-          organization_id: string
-          plan_id?: string | null
-          provider?: string | null
-          provider_customer_id?: string | null
-          provider_subscription_id?: string | null
-          status?: string
-          trial_ends_at?: string | null
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          current_period_end?: string | null
-          id?: string
-          organization_id?: string
-          plan_id?: string | null
-          provider?: string | null
-          provider_customer_id?: string | null
-          provider_subscription_id?: string | null
-          status?: string
-          trial_ends_at?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "subscriptions_plan_id_fkey"
-            columns: ["plan_id"]
-            isOneToOne: false
-            referencedRelation: "plans"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      subscription_payments: {
-        Row: {
-          amount_kes: number
-          created_at: string
-          id: string
-          method: string | null
-          organization_id: string
-          period_end: string | null
-          period_start: string | null
-          recorded_by: string | null
-          reference: string | null
-        }
-        Insert: {
-          amount_kes: number
-          created_at?: string
-          id?: string
-          method?: string | null
-          organization_id: string
-          period_end?: string | null
-          period_start?: string | null
-          recorded_by?: string | null
-          reference?: string | null
-        }
-        Update: {
-          amount_kes?: number
-          created_at?: string
-          id?: string
-          method?: string | null
-          organization_id?: string
-          period_end?: string | null
-          period_start?: string | null
-          recorded_by?: string | null
-          reference?: string | null
-        }
-        Relationships: []
-      }
-      platform_admins: {
-        Row: {
-          created_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       appointment_reminders: {
         Row: {
           appointment_id: string
@@ -330,6 +57,54 @@ export type Database = {
             columns: ["appointment_id"]
             isOneToOne: false
             referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_reminders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      appointment_services: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          organization_id: string
+          recurrence_weeks: number | null
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          organization_id: string
+          recurrence_weeks?: number | null
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          organization_id?: string
+          recurrence_weeks?: number | null
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_services_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -405,6 +180,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "appointments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "appointments_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
@@ -418,52 +200,14 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "appointments_parent_appointment_id_fkey"
+            columns: ["parent_appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
         ]
-      }
-      customers: {
-        Row: {
-          allergies: string | null
-          created_at: string
-          created_by: string | null
-          date_of_birth: string | null
-          email: string | null
-          full_name: string
-          id: string
-          notes: string | null
-          organization_id: string
-          phone: string | null
-          reminders_opt_in: boolean
-          sex: string | null
-        }
-        Insert: {
-          allergies?: string | null
-          created_at?: string
-          created_by?: string | null
-          date_of_birth?: string | null
-          email?: string | null
-          full_name: string
-          id?: string
-          notes?: string | null
-          organization_id: string
-          phone?: string | null
-          reminders_opt_in?: boolean
-          sex?: string | null
-        }
-        Update: {
-          allergies?: string | null
-          created_at?: string
-          created_by?: string | null
-          date_of_birth?: string | null
-          email?: string | null
-          full_name?: string
-          id?: string
-          notes?: string | null
-          organization_id?: string
-          phone?: string | null
-          reminders_opt_in?: boolean
-          sex?: string | null
-        }
-        Relationships: []
       }
       branches: {
         Row: {
@@ -633,86 +377,137 @@ export type Database = {
           },
         ]
       }
-      stock_adjustments: {
+      customers: {
         Row: {
-          adjusted_by: string
-          batch_id: string
-          branch_id: string
+          allergies: string | null
           created_at: string
-          delta: number
+          created_by: string | null
+          date_of_birth: string | null
+          email: string | null
+          full_name: string
           id: string
-          note: string | null
+          notes: string | null
           organization_id: string
-          product_id: string
-          quantity_after: number
-          quantity_before: number
-          reason: string
+          phone: string | null
+          reminders_opt_in: boolean
+          sex: string | null
         }
         Insert: {
-          adjusted_by: string
-          batch_id: string
-          branch_id: string
+          allergies?: string | null
           created_at?: string
-          delta: number
+          created_by?: string | null
+          date_of_birth?: string | null
+          email?: string | null
+          full_name: string
           id?: string
-          note?: string | null
+          notes?: string | null
           organization_id: string
-          product_id: string
-          quantity_after: number
-          quantity_before: number
-          reason: string
+          phone?: string | null
+          reminders_opt_in?: boolean
+          sex?: string | null
         }
         Update: {
-          adjusted_by?: string
-          batch_id?: string
-          branch_id?: string
+          allergies?: string | null
           created_at?: string
-          delta?: number
+          created_by?: string | null
+          date_of_birth?: string | null
+          email?: string | null
+          full_name?: string
           id?: string
-          note?: string | null
+          notes?: string | null
           organization_id?: string
-          product_id?: string
-          quantity_after?: number
-          quantity_before?: number
-          reason?: string
+          phone?: string | null
+          reminders_opt_in?: boolean
+          sex?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "stock_adjustments_adjusted_by_fkey"
-            columns: ["adjusted_by"]
+            foreignKeyName: "customers_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "stock_adjustments_batch_id_fkey"
-            columns: ["batch_id"]
-            isOneToOne: false
-            referencedRelation: "product_batches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "stock_adjustments_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "stock_adjustments_organization_id_fkey"
+            foreignKeyName: "customers_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "stock_adjustments_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
         ]
+      }
+      drug_catalog: {
+        Row: {
+          base_unit: string
+          brand_name: string | null
+          created_at: string
+          dosage_form: string | null
+          gtin: string | null
+          id: string
+          is_controlled: boolean
+          manufacturer: string | null
+          name: string
+          pack_label: string | null
+          requires_prescription: boolean
+          strength: string | null
+          units_per_pack: number
+        }
+        Insert: {
+          base_unit?: string
+          brand_name?: string | null
+          created_at?: string
+          dosage_form?: string | null
+          gtin?: string | null
+          id?: string
+          is_controlled?: boolean
+          manufacturer?: string | null
+          name: string
+          pack_label?: string | null
+          requires_prescription?: boolean
+          strength?: string | null
+          units_per_pack?: number
+        }
+        Update: {
+          base_unit?: string
+          brand_name?: string | null
+          created_at?: string
+          dosage_form?: string | null
+          gtin?: string | null
+          id?: string
+          is_controlled?: boolean
+          manufacturer?: string | null
+          name?: string
+          pack_label?: string | null
+          requires_prescription?: boolean
+          strength?: string | null
+          units_per_pack?: number
+        }
+        Relationships: []
+      }
+      drug_interactions: {
+        Row: {
+          drug_a: string
+          drug_b: string
+          id: string
+          note: string | null
+          severity: string
+        }
+        Insert: {
+          drug_a: string
+          drug_b: string
+          id?: string
+          note?: string | null
+          severity?: string
+        }
+        Update: {
+          drug_a?: string
+          drug_b?: string
+          id?: string
+          note?: string | null
+          severity?: string
+        }
+        Relationships: []
       }
       organizations: {
         Row: {
@@ -749,6 +544,182 @@ export type Database = {
           settings?: Json
         }
         Relationships: []
+      }
+      plans: {
+        Row: {
+          code: string
+          created_at: string
+          features: Json
+          id: string
+          interval: string
+          is_active: boolean
+          limits: Json
+          name: string
+          price_kes: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          features?: Json
+          id?: string
+          interval?: string
+          is_active?: boolean
+          limits?: Json
+          name: string
+          price_kes?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          features?: Json
+          id?: string
+          interval?: string
+          is_active?: boolean
+          limits?: Json
+          name?: string
+          price_kes?: number
+        }
+        Relationships: []
+      }
+      platform_admins: {
+        Row: {
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      prescription_items: {
+        Row: {
+          created_at: string
+          dose: string | null
+          drug_name: string
+          duration: string | null
+          frequency: string | null
+          id: string
+          instructions: string | null
+          prescription_id: string
+          product_id: string | null
+          quantity: number | null
+        }
+        Insert: {
+          created_at?: string
+          dose?: string | null
+          drug_name: string
+          duration?: string | null
+          frequency?: string | null
+          id?: string
+          instructions?: string | null
+          prescription_id: string
+          product_id?: string | null
+          quantity?: number | null
+        }
+        Update: {
+          created_at?: string
+          dose?: string | null
+          drug_name?: string
+          duration?: string | null
+          frequency?: string | null
+          id?: string
+          instructions?: string | null
+          prescription_id?: string
+          product_id?: string | null
+          quantity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prescription_items_prescription_id_fkey"
+            columns: ["prescription_id"]
+            isOneToOne: false
+            referencedRelation: "prescriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prescription_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_stock"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "prescription_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prescriptions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          diagnosis: string | null
+          id: string
+          notes: string | null
+          organization_id: string
+          prescriber_name: string | null
+          prescriber_reg_no: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          diagnosis?: string | null
+          id?: string
+          notes?: string | null
+          organization_id: string
+          prescriber_name?: string | null
+          prescriber_reg_no?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          diagnosis?: string | null
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          prescriber_name?: string | null
+          prescriber_reg_no?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prescriptions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prescriptions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prescriptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_batches: {
         Row: {
@@ -872,6 +843,13 @@ export type Database = {
           units_per_pack?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "product_pack_sizes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_stock"
+            referencedColumns: ["product_id"]
+          },
           {
             foreignKeyName: "product_pack_sizes_product_id_fkey"
             columns: ["product_id"]
@@ -1271,6 +1249,202 @@ export type Database = {
           },
         ]
       }
+      stock_adjustments: {
+        Row: {
+          adjusted_by: string
+          batch_id: string
+          branch_id: string
+          created_at: string
+          delta: number
+          id: string
+          note: string | null
+          organization_id: string
+          product_id: string
+          quantity_after: number
+          quantity_before: number
+          reason: string
+        }
+        Insert: {
+          adjusted_by: string
+          batch_id: string
+          branch_id: string
+          created_at?: string
+          delta: number
+          id?: string
+          note?: string | null
+          organization_id: string
+          product_id: string
+          quantity_after: number
+          quantity_before: number
+          reason: string
+        }
+        Update: {
+          adjusted_by?: string
+          batch_id?: string
+          branch_id?: string
+          created_at?: string
+          delta?: number
+          id?: string
+          note?: string | null
+          organization_id?: string
+          product_id?: string
+          quantity_after?: number
+          quantity_before?: number
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_adjustments_adjusted_by_fkey"
+            columns: ["adjusted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "product_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_stock"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_payments: {
+        Row: {
+          amount_kes: number
+          created_at: string
+          id: string
+          method: string | null
+          organization_id: string
+          period_end: string | null
+          period_start: string | null
+          recorded_by: string | null
+          reference: string | null
+        }
+        Insert: {
+          amount_kes: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          organization_id: string
+          period_end?: string | null
+          period_start?: string | null
+          recorded_by?: string | null
+          reference?: string | null
+        }
+        Update: {
+          amount_kes?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          organization_id?: string
+          period_end?: string | null
+          period_start?: string | null
+          recorded_by?: string | null
+          reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_payments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_payments_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          id: string
+          organization_id: string
+          plan_id: string | null
+          provider: string | null
+          provider_customer_id: string | null
+          provider_subscription_id: string | null
+          status: string
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          organization_id: string
+          plan_id?: string | null
+          provider?: string | null
+          provider_customer_id?: string | null
+          provider_subscription_id?: string | null
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          organization_id?: string
+          plan_id?: string | null
+          provider?: string | null
+          provider_customer_id?: string | null
+          provider_subscription_id?: string | null
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -1371,6 +1545,8 @@ export type Database = {
         Args: { p_branch_id: string }
         Returns: string
       }
+      is_platform_admin: { Args: never; Returns: boolean }
+      org_access_allowed: { Args: { org: string }; Returns: boolean }
       user_branch_id: { Args: never; Returns: string }
       user_organization_id: { Args: never; Returns: string }
       user_role: { Args: never; Returns: string }
