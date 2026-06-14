@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
 import { BulkImportDialog } from "@/components/inventory/BulkImportDialog"
+import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useDebounce } from "@/lib/hooks/useDebounce"
@@ -80,6 +81,8 @@ export default function InventoryPage() {
   const branchId = useUIStore((s) => s.activeBranchId)
   const branches = useSessionStore((s) => s.branches)
   const branchName = branches.find((b) => b.id === branchId)?.name
+  const role = useSessionStore((s) => s.profile?.role)
+  const canManageCatalog = ["owner", "manager"].includes(role ?? "")
 
   const [rawSearch, setRawSearch] = useState("")
   const [status, setStatus] = useState<StatusFilter>("all")
@@ -185,6 +188,9 @@ export default function InventoryPage() {
           ))}
         </div>
       </div>
+
+      {/* One-click seed/unseed from the Kenyan drug catalog */}
+      <CatalogSeedControls canManage={canManageCatalog} />
 
       {/* Table */}
       <div className={isFetching && !isLoading ? "opacity-70 transition-opacity" : ""}>
