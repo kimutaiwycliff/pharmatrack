@@ -67,12 +67,38 @@ pnpm --filter web start          # http://localhost:3000
 > Optional: create the image bucket if you want to test product photos —
 > Studio (http://localhost:54323) → Storage → new public bucket `product-images`.
 
-**Want to exercise the actual Docker image locally too?** On Linux you can run
-the container on the host network so it reaches local Supabase and serves on
-`localhost:3000` without Caddy:
-`docker build -t pharmatrack-web . && docker run --rm --network host --env-file apps/web/.env.local -e PORT=3000 pharmatrack-web`.
-The full Caddy/TLS compose is best validated on the real VM (or a local VM with
-a test domain), since Let's Encrypt needs a public domain.
+### Want everything dockerized, like production?
+
+The CLI path above runs Supabase in Docker, but they're the CLI's dev images.
+For the **same images as production** (self-hosted Supabase compose + our app +
+Redis), use the fully-dockerized local path on Linux:
+
+1. Run the self-hosted Supabase docker stack (DEPLOYMENT.md §1) → Kong on
+   `http://localhost:8000`. Apply migrations to it (§2, `--db-url` =
+   `postgresql://postgres:<pw>@localhost:5432/postgres`).
+2. In the root `.env` set (these are used for **both build and runtime**):
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=http://localhost:8000
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from Supabase .env>
+   SUPABASE_SERVICE_ROLE_KEY=<service_role key from Supabase .env>
+   NEXT_PUBLIC_APP_URL=http://localhost:3000
+   REDIS_URL=redis://localhost:6379
+   ```
+3. Build + run only the app + Redis (Caddy/cron stay off):
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build web redis
+   ```
+   Open `http://localhost:3000`. This uses the production Dockerfile and runs
+   the app on the host network so it reaches Supabase/Redis on localhost.
+
+The **only** production element not reproduced locally is Caddy + public TLS
+(Let's Encrypt needs a real domain). Validate that on the real VM, or in a local
+VM using Caddy's internal CA (`tls internal`) with a `/etc/hosts` entry.
+
+> **Build-time note (applies everywhere):** `NEXT_PUBLIC_*` are inlined into the
+> browser bundle when the image is **built**, so they must be set in `.env`
+> *before* `docker compose ... up --build`. Compose passes them as build args.
+> Change the Supabase URL later → rebuild the image, don't just restart.
 
 ---
 
