@@ -5,8 +5,13 @@
 -- directly, never committed). Rebuilds the product_stock view from 001 to
 -- surface image_url / max_discount_percent and to count batches with stock via
 -- FILTER (so out-of-stock batches no longer suppress the earliest_expiry).
+--
+-- DROP + CREATE (not CREATE OR REPLACE): the new columns sit before
+-- stock_on_hand, and CREATE OR REPLACE VIEW can only append columns, not
+-- reorder them (errors 42P16 on a fresh apply). No objects depend on this view.
 
-CREATE OR REPLACE VIEW product_stock AS
+DROP VIEW IF EXISTS product_stock;
+CREATE VIEW product_stock AS
 SELECT
   p.id AS product_id,
   p.organization_id,
