@@ -1,0 +1,28 @@
+# Fully-dockerized LOCAL run on Linux that mirrors the production images
+# (same Dockerfile build + Redis), minus Caddy/TLS (which needs a public domain).
+#
+# Run a self-hosted Supabase docker stack first (DEPLOYMENT.md §1) — its Kong API
+# is on http://localhost:8000. Apply migrations to it (DEPLOYMENT.md §2).
+#
+# In the root .env set (used for BOTH the build and runtime):
+#   NEXT_PUBLIC_SUPABASE_URL=http://localhost:8000
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from your Supabase .env>
+#   SUPABASE_SERVICE_ROLE_KEY=<service_role key from your Supabase .env>
+#   NEXT_PUBLIC_APP_URL=http://localhost:3000
+#   REDIS_URL=redis://localhost:6379
+#
+# Then (only the web + redis services; Caddy/cron stay off):
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build web redis
+#
+# Host networking lets the app container reach Supabase (localhost:8000) and
+# Redis (localhost:6379) and serve on http://localhost:3000 — a secure context,
+# so the offline service worker still registers. Open http://localhost:3000.
+
+services:
+  web:
+    network_mode: host
+    environment:
+      # Host networking: reach Redis on localhost, not the bridge alias.
+      REDIS_URL: redis://localhost:6379
+  redis:
+    network_mode: host
