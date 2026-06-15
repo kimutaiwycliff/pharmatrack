@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { SetupForm } from "@/components/setup/SetupForm"
 
 export const metadata = { title: "Set up PharmaTrack" }
+// Reads platform_admins (service-role) at request time — never prerender.
+export const dynamic = "force-dynamic"
 
 // First-run only: if a platform admin already exists, there's nothing to set up.
 export default async function SetupPage() {

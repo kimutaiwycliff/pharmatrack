@@ -3,6 +3,9 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { LoginForm } from "@/components/auth/LoginForm"
 
 export const metadata = { title: "Sign in — PharmaTrack" }
+// Reads platform_admins (service-role) to route first-run installs to /setup —
+// must run per request, never prerendered at build (no DB/secret there).
+export const dynamic = "force-dynamic"
 
 const FEATURES = [
   { icon: "📦", label: "Barcode scanning & FEFO inventory" },
