@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { organization, admin } from "better-auth/plugins"
-import { dbAdmin } from "@pharmatrack/db"
+import { dbAdmin, user, session, account, verification, organization as organizationTable, member, invitation } from "@pharmatrack/db"
 import { sendEmail } from "@/lib/notifications/email"
 
 // ADR-002 — Better Auth owns identity; the `organization` plugin models tenants
@@ -16,7 +16,10 @@ import { sendEmail } from "@/lib/notifications/email"
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
-  database: drizzleAdapter(dbAdmin(), { provider: "pg" }),
+  database: drizzleAdapter(dbAdmin(), {
+    provider: "pg",
+    schema: { user, session, account, verification, organization: organizationTable, member, invitation },
+  }),
   emailAndPassword: {
     enabled: true,
     sendResetPassword: async ({ user, url }) => {
