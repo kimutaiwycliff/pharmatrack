@@ -15,9 +15,11 @@
 SUPABASE ?= npx --yes supabase
 COMPOSE  ?= docker compose
 APP      := $(COMPOSE) -f docker-compose.yml -f docker-compose.local.yml
-# Extra flags for `supabase start`, e.g. make up SUPABASE_START_FLAGS=--ignore-health-check
-# (useful if a non-essential container like storage fails its health check).
-SUPABASE_START_FLAGS ?=
+# Flags for `supabase start`. Defaults to --ignore-health-check because the
+# storage container reports a false-negative health check on some CLI versions
+# (it logs "Started Successfully" but the probe fails) which otherwise blocks
+# the whole stack. Override to re-enable strict checks: make up SUPABASE_START_FLAGS=
+SUPABASE_START_FLAGS ?= --ignore-health-check
 
 .DEFAULT_GOAL := help
 
