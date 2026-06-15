@@ -26,10 +26,11 @@ END $$;
 
 -- 2) Tenancy helper functions now read request GUCs instead of auth.uid().
 --    `true` second arg => return NULL (not error) when the GUC is unset.
-CREATE OR REPLACE FUNCTION public.user_organization_id() RETURNS uuid
+-- Org ids are TEXT (they are Better Auth organization ids).
+CREATE OR REPLACE FUNCTION public.user_organization_id() RETURNS text
   LANGUAGE sql STABLE
   SET search_path = ''
-  AS $$ SELECT nullif(current_setting('app.organization_id', true), '')::uuid $$;
+  AS $$ SELECT nullif(current_setting('app.organization_id', true), '') $$;
 
 CREATE OR REPLACE FUNCTION public.user_role() RETURNS text
   LANGUAGE sql STABLE
