@@ -15,6 +15,9 @@
 SUPABASE ?= npx --yes supabase
 COMPOSE  ?= docker compose
 APP      := $(COMPOSE) -f docker-compose.yml -f docker-compose.local.yml
+# Extra flags for `supabase start`, e.g. make up SUPABASE_START_FLAGS=--ignore-health-check
+# (useful if a non-essential container like storage fails its health check).
+SUPABASE_START_FLAGS ?=
 
 .DEFAULT_GOAL := help
 
@@ -31,7 +34,7 @@ doctor: ## Check prerequisites (docker, compose v2, node)
 	@echo "✓ docker, compose, node present"
 
 backend: ## Start the dockerized Supabase backend + apply migrations
-	$(SUPABASE) start
+	$(SUPABASE) start $(SUPABASE_START_FLAGS)
 
 env: ## Write root .env from the running backend (keeps keys in sync)
 	@$(SUPABASE) status -o env | node scripts/gen-local-env.mjs
