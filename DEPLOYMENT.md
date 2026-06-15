@@ -17,11 +17,33 @@ camera barcode scanner, and M-Pesa callbacks all require HTTPS.
 
 ## Local end-to-end test first (Ubuntu) — recommended before the VM
 
-The Caddy/HTTPS stack above is for the public VM. To validate a fresh clone
-end-to-end on your laptop with the least friction, use the Supabase CLI for the
-backend and run the app's production build directly (so the offline PWA service
-worker is active — it only registers in production, and `http://localhost` is a
-secure context so no TLS is needed).
+### TL;DR — one command (fully dockerized)
+
+```bash
+git clone <repo> pharmatrack && cd pharmatrack
+make up        # boots dockerized Supabase, applies migrations, builds + runs the prod app image + redis
+```
+
+Then open **http://localhost:3000** (first load → `/setup`). Other handy targets:
+`make down` (stop app), `make stop` (stop all), `make clean` (wipe data for a
+fresh start), `make logs`, `make migrate`, `make rebuild`, `make help`.
+
+`make up` runs the backend as containers via the Supabase CLI's local stack
+(same Postgres/Auth/Storage/Kong), and runs the **production app image** + Redis
+as containers (`docker-compose.local.yml`, host-networked) — everything in
+Docker, on `localhost`. Invite emails are caught by **Inbucket**
+(http://localhost:54324). Requirements: Docker + Compose v2 and Node (the CLI
+runs via `npx`). The only production element not reproduced locally is Caddy +
+public TLS (needs a real domain) — validated on the VM.
+
+> Prefer the **exact** self-hosted Supabase images locally instead of the CLI
+> stack? Follow the manual self-hosted-compose path below; ask and I'll add
+> `make` targets for it too.
+
+### Manual path (Supabase CLI + production build)
+
+If you'd rather not use Docker for the app, you can run the backend with the CLI
+and the app as a local production build:
 
 **Prereqs:** Docker, Node 22 + pnpm (`corepack enable`), and the Supabase CLI
 (`npx supabase` works, or install it).
