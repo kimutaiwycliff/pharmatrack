@@ -2,7 +2,10 @@
 
 # ── Base ─────────────────────────────────────────────────────
 FROM node:22-alpine AS base
-RUN corepack enable
+# Pin the exact pnpm that generated pnpm-lock.yaml so `--frozen-lockfile`
+# doesn't fail on a corepack-default version mismatch. Refresh corepack first
+# to avoid the "Cannot find matching keyid" signature error on older corepack.
+RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@9.15.9 --activate
 WORKDIR /app
 
 # ── Dependencies (cached on lockfile + manifests) ────────────
