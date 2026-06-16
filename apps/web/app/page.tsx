@@ -1,30 +1,18 @@
 import { redirect } from "next/navigation"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { getSession, getTenantContext, isPlatformAdmin } from "@/lib/auth/helpers"
 
+export const dynamic = "force-dynamic"
+
+// Route by identity: no session → /login; platform operator → /platform;
+// cashier/pharmacist → /pos; owner/manager → /dashboard.
 export default async function RootPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const session = await getSession()
+  if (!session?.user) redirect("/login")
 
-  if (!user) redirect("/login")
+  if (await isPlatformAdmin()) redirect("/platform")
 
-  // Platform operators have no pharmacy profile — route them to the console.
-  const admin = createAdminClient()
-  const { data: platformAdmin } = await admin
-    .from("platform_admins")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle()
-  if (platformAdmin) redirect("/platform")
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  const role = profile?.role
-  if (role === "cashier" || role === "pharmacist") redirect("/pos")
+  const ctx = await getTenantContext()
+  if (!ctx) redirect("/login")
+  if (ctx.role === "cashier" || ctx.role === "pharmacist") redirect("/pos")
   redirect("/dashboard")
 }

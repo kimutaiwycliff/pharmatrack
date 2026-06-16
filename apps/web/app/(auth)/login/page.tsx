@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { createAdminClient } from "@/lib/supabase/server"
+import { dbAdmin, platform_admin } from "@pharmatrack/db"
 import { LoginForm } from "@/components/auth/LoginForm"
 
 export const metadata = { title: "Sign in — PharmaTrack" }
@@ -16,11 +16,8 @@ const FEATURES = [
 
 export default async function LoginPage() {
   // Brand-new install with no operator yet → send to first-run setup.
-  const admin = createAdminClient()
-  const { count } = await admin
-    .from("platform_admins")
-    .select("user_id", { count: "exact", head: true })
-  if ((count ?? 0) === 0) redirect("/setup")
+  const admins = await dbAdmin().select().from(platform_admin)
+  if (admins.length === 0) redirect("/setup")
 
   return (
     <div className="min-h-screen flex bg-[var(--pt-bg)]">
