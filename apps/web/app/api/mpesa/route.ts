@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { getSession } from "@/lib/auth/helpers"
 
 const stkSchema = z.object({
   phone: z.string().min(9),
@@ -36,11 +36,8 @@ async function getDarajaToken(): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession()
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = (await request.json()) as unknown
   const parsed = stkSchema.safeParse(body)

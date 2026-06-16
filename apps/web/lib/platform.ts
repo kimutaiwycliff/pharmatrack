@@ -1,27 +1,21 @@
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { eq } from "drizzle-orm"
+import { dbAdmin, platform_admin } from "@pharmatrack/db"
+import { getSession } from "@/lib/auth/helpers"
 
 /**
- * Resolve the current user and confirm they're a platform (SaaS operator)
- * admin. Returns the admin (service-role) client for cross-tenant work, or
- * null if the caller isn't a platform admin. Membership is checked with the
- * admin client because `platform_admins` is locked down under RLS.
+ * Resolve the current user and confirm they're a platform (SaaS operator) admin.
+ * Returns the privileged Drizzle client for cross-tenant work, or null if the
+ * caller isn't a platform admin.
  */
 export async function getPlatformContext() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return null
+  const session = await getSession()
+  if (!session?.user) return null
 
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from("platform_admins")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle()
-  if (!data) return null
+  const db = dbAdmin()
+  const [row] = await db.select().from(platform_admin).where(eq(platform_admin.user_id, session.user.id)).limit(1)
+  if (!row) return null
 
-  return { user, admin }
+  return { user: session.user, db }
 }
 
 export async function isPlatformAdmin(): Promise<boolean> {

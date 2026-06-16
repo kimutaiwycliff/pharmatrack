@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/server"
+import { eq } from "drizzle-orm"
+import { dbAdmin, subscription, subscription_payment, plan } from "@pharmatrack/db"
 import { verifyWebhookSignature, addInterval } from "@/lib/billing/paystack"
 
 export const dynamic = "force-dynamic"
 
 interface PaystackEvent {
   event: string
-  data: {
-    reference: string
-    amount: number
-    metadata?: { organization_id?: string }
-  }
+  data: { reference: string; amount: number; metadata?: { organization_id?: string } }
 }
 
 // Paystack → subscription updates. Public (no session); authenticated via the
@@ -35,38 +32,25 @@ export async function POST(request: NextRequest) {
   const amountKes = (event.data.amount ?? 0) / 100
   if (!orgId || !reference) return NextResponse.json({ ok: true, ignored: "missing metadata" })
 
-  const admin = createAdminClient()
+  const db = dbAdmin()
 
   // Idempotency — skip if we've already recorded this reference.
-  const { data: existing } = await admin
-    .from("subscription_payments")
-    .select("id")
-    .eq("reference", reference)
-    .maybeSingle()
+  const [existing] = await db.select({ id: subscription_payment.id }).from(subscription_payment).where(eq(subscription_payment.reference, reference)).limit(1)
   if (existing) return NextResponse.json({ ok: true, duplicate: true })
 
-  const { data: sub } = await admin
-    .from("subscriptions")
-    .select("current_period_end, plan:plans(interval)")
-    .eq("organization_id", orgId)
-    .maybeSingle()
-  const interval = (sub?.plan as { interval: string } | null)?.interval ?? "monthly"
+  const [sub] = await db.select({ current_period_end: subscription.current_period_end, interval: plan.interval })
+    .from(subscription).leftJoin(plan, eq(plan.id, subscription.plan_id)).where(eq(subscription.organization_id, orgId)).limit(1)
+  const interval = sub?.interval ?? "monthly"
   const now = new Date()
   const base = sub?.current_period_end && new Date(sub.current_period_end) > now ? new Date(sub.current_period_end) : now
   const newEnd = addInterval(base, interval)
 
-  await admin
-    .from("subscriptions")
-    .update({ status: "active", current_period_end: newEnd.toISOString(), provider: "paystack", updated_at: now.toISOString() })
-    .eq("organization_id", orgId)
+  await db.update(subscription).set({ status: "active", current_period_end: newEnd, provider: "paystack", updated_at: now })
+    .where(eq(subscription.organization_id, orgId))
 
-  await admin.from("subscription_payments").insert({
-    organization_id: orgId,
-    amount_kes: amountKes,
-    method: "paystack",
-    reference,
-    period_start: base.toISOString().slice(0, 10),
-    period_end: newEnd.toISOString().slice(0, 10),
+  await db.insert(subscription_payment).values({
+    organization_id: orgId, amount_kes: String(amountKes), method: "paystack", reference,
+    period_start: base.toISOString().slice(0, 10), period_end: newEnd.toISOString().slice(0, 10),
   })
 
   return NextResponse.json({ ok: true })
