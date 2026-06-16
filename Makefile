@@ -1,79 +1,57 @@
-# PharmaTrack — local, fully-dockerized dev/test stack.
-#
-# After cloning, the whole thing comes up with one command:
-#
-#     make up
-#
-# That boots a dockerized Supabase backend (Supabase CLI's local stack — same
-# Postgres/Auth/Storage/Kong containers), applies all migrations (incl. the
-# Kenyan drug catalog, no demo data), writes .env, then builds and runs the
-# PRODUCTION app image + Redis as containers on http://localhost:3000.
-#
-# Requirements: Docker + Docker Compose v2, and Node (for the Supabase CLI via
-# npx). Override the CLI with `make SUPABASE="supabase" up` if installed natively.
+# PharmaTrack — self-hosted stack via Docker Compose + dbmate migrations.
+# See CLAUDE.md §9. Loads variables from .env if present.
 
-SUPABASE ?= npx --yes supabase
-COMPOSE  ?= docker compose
-APP      := $(COMPOSE) -f docker-compose.yml -f docker-compose.local.yml
-# Flags for `supabase start`. Defaults to --ignore-health-check because the
-# storage container reports a false-negative health check on some CLI versions
-# (it logs "Started Successfully" but the probe fails) which otherwise blocks
-# the whole stack. Override to re-enable strict checks: make up SUPABASE_START_FLAGS=
-SUPABASE_START_FLAGS ?= --ignore-health-check
+COMPOSE := docker compose -p pharmatrack -f infra/compose.core.yml
+DBMATE_IMAGE := ghcr.io/amacneil/dbmate:2
+APP_OWNER_PASSWORD ?= app_owner
+POSTGRES_DB ?= pharmatrack
+# dbmate connects as app_owner (owns objects → migrations bypass RLS).
+DBMATE_URL := postgres://app_owner:$(APP_OWNER_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
 
 .DEFAULT_GOAL := help
+.PHONY: help up up-app down logs db-migrate db-rollback db-shell test-rls typecheck lint build clean
 
-.PHONY: help doctor up backend env app down stop logs ps migrate rebuild clean open
+help: ## List targets
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n",$$1,$$2}'
 
-help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
-		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+up: ## Start the data plane (postgres, redis, minio)
+	$(COMPOSE) up -d postgres redis minio
 
-doctor: ## Check prerequisites (docker, compose v2, node)
-	@command -v docker >/dev/null || { echo "✗ Docker not found"; exit 1; }
-	@$(COMPOSE) version >/dev/null 2>&1 || { echo "✗ docker compose v2 not found"; exit 1; }
-	@command -v node >/dev/null || { echo "✗ Node not found"; exit 1; }
-	@echo "✓ docker, compose, node present"
+up-app: ## Start everything incl. web + worker (after cutover)
+	$(COMPOSE) --profile app up -d --build
 
-backend: ## Start the dockerized Supabase backend + apply migrations
-	$(SUPABASE) start $(SUPABASE_START_FLAGS)
+down: ## Stop all services
+	$(COMPOSE) down
 
-env: ## Write root .env from the running backend (keeps keys in sync)
-	@$(SUPABASE) status -o env | node scripts/gen-local-env.mjs
+logs: ## Follow logs
+	$(COMPOSE) logs -f
 
-app: ## Build + run the production app image + redis (host network)
-	$(APP) up -d --build web redis
+db-migrate: ## Apply dbmate migrations (as app_owner)
+	docker run --rm --network pharmatrack_default \
+		-v "$(CURDIR)/infra/migrations:/db/migrations" \
+		-e DATABASE_URL="$(DBMATE_URL)" \
+		$(DBMATE_IMAGE) --migrations-dir /db/migrations --no-dump-schema up
 
-up: doctor backend env app ## Bring the whole local stack up (one command)
-	@echo ""
-	@echo "  PharmaTrack is up — open http://localhost:3000 (first load → /setup)"
-	@echo "  Supabase Studio: http://localhost:54323"
-	@echo "  Invite emails:   http://localhost:54324  (Inbucket)"
-	@echo ""
+db-rollback: ## Roll back the last migration
+	docker run --rm --network pharmatrack_default \
+		-v "$(CURDIR)/infra/migrations:/db/migrations" \
+		-e DATABASE_URL="$(DBMATE_URL)" \
+		$(DBMATE_IMAGE) --migrations-dir /db/migrations --no-dump-schema down
 
-down: ## Stop the app + redis (leaves the backend running)
-	$(APP) down
+db-shell: ## psql into the database
+	$(COMPOSE) exec postgres psql -U postgres -d $(POSTGRES_DB)
 
-stop: ## Stop everything (app + backend), keep data
-	-$(APP) down
-	-$(SUPABASE) stop
+test-rls: ## Run the two-org RLS isolation suite
+	pnpm --filter @pharmatrack/db test:rls
 
-logs: ## Tail the app container logs
-	$(APP) logs -f web
+typecheck: ## Typecheck all packages
+	pnpm -r typecheck || npx tsc --noEmit -p apps/web/tsconfig.json
 
-ps: ## Show app containers
-	$(APP) ps
+lint: ## Lint
+	pnpm --filter web lint
 
-migrate: ## Apply any new migrations to the running backend
-	$(SUPABASE) migration up
+build: ## Build all
+	pnpm build
 
-rebuild: ## Rebuild the app image and restart it
-	$(APP) up -d --build web
-
-clean: ## Stop everything and WIPE local data (fresh start)
-	-$(APP) down -v
-	-$(SUPABASE) stop --no-backup
-	@echo "✓ Stopped and wiped local data."
-
-open: ## Open the app in a browser
-	@xdg-open http://localhost:3000 >/dev/null 2>&1 || true
+clean: ## Stop and wipe all data volumes
+	$(COMPOSE) down -v
