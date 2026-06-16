@@ -1,62 +1,49 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { getPlatformContext } from "@/lib/platform"
+import { randomBytes, randomUUID } from "node:crypto"
+import { eq, inArray, sql } from "drizzle-orm"
+import {
+  dbAdmin, organization, branch, subscription, plan, member,
+  staff_profile, appointment_service,
+} from "@pharmatrack/db"
+import { isPlatformAdmin } from "@/lib/auth/helpers"
+import { auth } from "@/lib/auth/server"
 
-interface OrgRow {
-  id: string
-  name: string
-  email: string | null
-  phone: string | null
-  created_at: string
-  subscriptions: Array<{
-    id: string
-    status: string
-    trial_ends_at: string | null
-    current_period_end: string | null
-    plan_id: string | null
-    plan: { name: string } | null
-  }>
-}
+// Operator console: list tenants + provision a new one. Operator-only; all
+// queries via dbAdmin (cross-tenant, bypasses RLS).
 
 export async function GET() {
-  const ctx = await getPlatformContext()
-  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  const { admin } = ctx
+  if (!(await isPlatformAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const db = dbAdmin()
 
-  const { data: orgs, error } = await admin
-    .from("organizations")
-    .select("id, name, email, phone, created_at, subscriptions(id, status, trial_ends_at, current_period_end, plan_id, plan:plans(name))")
-    .order("created_at", { ascending: false })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const orgs = await db.select().from(organization).orderBy(sql`${organization.createdAt} desc`)
+  const ids = orgs.map((o) => o.id)
+  const subs = ids.length ? await db.select().from(subscription).where(inArray(subscription.organization_id, ids)) : []
+  const plans = await db.select().from(plan)
+  const planName = new Map(plans.map((p) => [p.id, p.name]))
 
-  // Tally branch/staff counts in two queries (small tenant counts).
-  const [{ data: branches }, { data: profiles }] = await Promise.all([
-    admin.from("branches").select("organization_id"),
-    admin.from("profiles").select("organization_id"),
-  ])
-  const countBy = (rows: { organization_id: string }[] | null) => {
-    const m = new Map<string, number>()
-    for (const r of rows ?? []) m.set(r.organization_id, (m.get(r.organization_id) ?? 0) + 1)
-    return m
-  }
-  const branchCounts = countBy(branches)
-  const staffCounts = countBy(profiles)
+  const branchCounts = ids.length
+    ? await db.select({ org: branch.organization_id, n: sql<number>`count(*)::int` }).from(branch).where(inArray(branch.organization_id, ids)).groupBy(branch.organization_id)
+    : []
+  const staffCounts = ids.length
+    ? await db.select({ org: member.organizationId, n: sql<number>`count(*)::int` }).from(member).where(inArray(member.organizationId, ids)).groupBy(member.organizationId)
+    : []
+  const bMap = new Map(branchCounts.map((r) => [r.org, r.n]))
+  const sMap = new Map(staffCounts.map((r) => [r.org, r.n]))
+  const subMap = new Map(subs.map((s) => [s.organization_id, s]))
 
-  const tenants = ((orgs ?? []) as unknown as OrgRow[]).map((o) => {
-    const sub = o.subscriptions?.[0] ?? null
+  const tenants = orgs.map((o) => {
+    const s = subMap.get(o.id)
     return {
       id: o.id,
       name: o.name,
-      email: o.email,
-      phone: o.phone,
-      created_at: o.created_at,
-      subscription: sub ? { id: sub.id, status: sub.status, trial_ends_at: sub.trial_ends_at, current_period_end: sub.current_period_end, plan_id: sub.plan_id } : null,
-      plan_name: sub?.plan?.name ?? null,
-      branch_count: branchCounts.get(o.id) ?? 0,
-      staff_count: staffCounts.get(o.id) ?? 0,
+      created_at: o.createdAt,
+      subscription: s ? { id: s.id, status: s.status, trial_ends_at: s.trial_ends_at, current_period_end: s.current_period_end, plan_id: s.plan_id } : null,
+      plan_name: s?.plan_id ? planName.get(s.plan_id) ?? null : null,
+      branch_count: bMap.get(o.id) ?? 0,
+      staff_count: sMap.get(o.id) ?? 0,
     }
   })
-
   return NextResponse.json({ tenants })
 }
 
@@ -70,85 +57,59 @@ const provisionSchema = z.object({
 })
 
 const DEFAULT_SERVICES: Array<[string, string, number | null, number]> = [
-  ["family_planning_depo", "Family Planning — Depo-Provera", 13, 0],
-  ["family_planning_sayana", "Family Planning — Sayana Press", 13, 1],
-  ["family_planning_implant", "Family Planning — Implant review", null, 2],
-  ["vaccination", "Vaccination / Immunization", null, 3],
-  ["injection", "Injection (other)", null, 4],
-  ["consultation", "Consultation", null, 5],
-  ["other", "Other", null, 6],
+  ["family_planning_depo", "Family Planning — Depo-Provera", 12, 0],
+  ["vaccination", "Vaccination / Immunization", null, 1],
+  ["injection", "Injection (other)", null, 2],
+  ["consultation", "Consultation", null, 3],
+  ["other", "Other", null, 4],
 ]
 
 export async function POST(request: NextRequest) {
-  const ctx = await getPlatformContext()
-  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  const { admin } = ctx
-
+  if (!(await isPlatformAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   const parsed = provisionSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
   const d = parsed.data
+  const db = dbAdmin()
 
-  // 1. Organization
-  const { data: org, error: orgErr } = await admin
-    .from("organizations")
-    .insert({ name: d.pharmacy_name, email: d.owner_email })
-    .select("id")
-    .single()
-  if (orgErr || !org) return NextResponse.json({ error: orgErr?.message ?? "Failed to create org" }, { status: 500 })
+  const orgId = randomUUID()
+  const trialEnds = new Date(Date.now() + d.trial_days * 86_400_000)
+  const [planRow] = await db.select().from(plan).where(eq(plan.code, d.plan_code ?? "starter")).limit(1)
 
-  // 2. Default branch
-  const { data: branch } = await admin
-    .from("branches")
-    .insert({ organization_id: org.id, name: d.branch_name || "Main Branch" })
-    .select("id")
-    .single()
-
-  // 3. Subscription (trial)
-  const { data: plan } = await admin
-    .from("plans")
-    .select("id")
-    .eq("code", d.plan_code ?? "standard")
-    .maybeSingle()
-  const trialEnds = new Date(Date.now() + d.trial_days * 86_400_000).toISOString()
-  await admin.from("subscriptions").insert({
-    organization_id: org.id,
-    plan_id: plan?.id ?? null,
+  // 1) Org + branch + subscription + default services (service-level, no tenant ctx).
+  await db.insert(organization).values({ id: orgId, name: d.pharmacy_name, createdAt: new Date() })
+  const [b] = await db.insert(branch).values({ organization_id: orgId, name: d.branch_name || "Main Branch" }).returning()
+  await db.insert(subscription).values({
+    organization_id: orgId,
+    plan_id: planRow?.id ?? null,
     status: d.trial_days > 0 ? "trialing" : "active",
     trial_ends_at: d.trial_days > 0 ? trialEnds : null,
     current_period_end: trialEnds,
   })
-
-  // 4. Seed appointment services
-  await admin.from("appointment_services").insert(
+  await db.insert(appointment_service).values(
     DEFAULT_SERVICES.map(([slug, label, recurrence_weeks, sort_order]) => ({
-      organization_id: org.id, slug, label, recurrence_weeks, sort_order,
+      organization_id: orgId, slug, label, recurrence_weeks, sort_order,
     })),
   )
 
-  // 5. Invite the owner and create their profile
-  const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/callback`
-  const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(d.owner_email, {
-    data: { full_name: d.owner_name, role: "owner", organization_id: org.id },
-    redirectTo,
-  })
-  if (inviteErr || !invited.user) {
-    // Roll back the org so a failed invite doesn't leave an orphan tenant.
-    await admin.from("organizations").delete().eq("id", org.id)
-    return NextResponse.json({ error: inviteErr?.message ?? "Failed to invite owner" }, { status: 500 })
-  }
-  const { error: profErr } = await admin.from("profiles").insert({
-    id: invited.user.id,
-    organization_id: org.id,
-    full_name: d.owner_name,
-    role: "owner",
-    branch_id: branch?.id ?? null,
-    is_active: true,
-  })
-  if (profErr) {
-    await admin.auth.admin.deleteUser(invited.user.id)
-    await admin.from("organizations").delete().eq("id", org.id)
-    return NextResponse.json({ error: profErr.message }, { status: 500 })
+  // 2) Create the owner via Better Auth, link membership + staff profile, then
+  //    email them a "set your password" link.
+  try {
+    const created = await auth.api.signUpEmail({
+      body: { email: d.owner_email, password: randomBytes(24).toString("base64url"), name: d.owner_name },
+    })
+    const ownerId = created.user.id
+    await db.insert(member).values({ id: randomUUID(), organizationId: orgId, userId: ownerId, role: "owner" })
+    await db.insert(staff_profile).values({ user_id: ownerId, organization_id: orgId, role: "owner", branch_id: b?.id ?? null })
+    try {
+      await auth.api.requestPasswordReset({
+        body: { email: d.owner_email, redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/set-password` },
+      })
+    } catch { /* email send is best-effort; owner can use "forgot password" */ }
+  } catch (e) {
+    // Roll back the tenant so a failed owner setup doesn't orphan an org.
+    await db.delete(organization).where(eq(organization.id, orgId))
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to create owner" }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, organization_id: org.id }, { status: 201 })
+  return NextResponse.json({ ok: true, organization_id: orgId }, { status: 201 })
 }
