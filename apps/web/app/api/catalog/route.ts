@@ -1,33 +1,40 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { or, ilike, asc } from "drizzle-orm"
+import { dbAdmin, drug_catalog } from "@pharmatrack/db"
+import { getSession } from "@/lib/auth/helpers"
 
-// Shared, cross-tenant drug catalog used to speed up product onboarding.
-// Read-only: returns reference rows the user can pick from to autofill a new
-// product. RLS allows any authenticated user to read it.
+// Shared drug catalogue search (global reference) for product onboarding.
+// Read-only; any signed-in user may search it.
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  const q = searchParams.get("q")?.trim() ?? ""
+  const q = (searchParams.get("q") ?? "").trim()
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession()
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  let query = supabase
-    .from("drug_catalog")
-    .select("id, name, brand_name, manufacturer, gtin, strength, dosage_form, base_unit, pack_label, units_per_pack, is_controlled, requires_prescription")
-    .order("name", { ascending: true })
-    .limit(limit)
-
-  if (q.length >= 1) {
-    // Match by molecule/brand/strength, or an exact-ish barcode.
-    query = query.or(
-      `name.ilike.%${q}%,brand_name.ilike.%${q}%,strength.ilike.%${q}%,gtin.ilike.%${q}%`,
-    )
+  const db = dbAdmin()
+  const cols = {
+    id: drug_catalog.id,
+    name: drug_catalog.name,
+    brand_name: drug_catalog.brand_name,
+    manufacturer: drug_catalog.manufacturer,
+    gtin: drug_catalog.gtin,
+    strength: drug_catalog.strength,
+    dosage_form: drug_catalog.dosage_form,
+    base_unit: drug_catalog.base_unit,
+    is_controlled: drug_catalog.is_controlled,
+    requires_prescription: drug_catalog.requires_prescription,
   }
 
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const items = q.length >= 1
+    ? await db.select(cols).from(drug_catalog).where(or(
+        ilike(drug_catalog.name, `%${q}%`),
+        ilike(drug_catalog.brand_name, `%${q}%`),
+        ilike(drug_catalog.strength, `%${q}%`),
+        ilike(drug_catalog.gtin, `%${q}%`),
+      )).orderBy(asc(drug_catalog.name)).limit(limit)
+    : await db.select(cols).from(drug_catalog).orderBy(asc(drug_catalog.name)).limit(limit)
 
-  return NextResponse.json({ items: data ?? [] })
+  return NextResponse.json({ items })
 }
