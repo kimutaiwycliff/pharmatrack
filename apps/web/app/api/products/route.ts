@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { and, or, ilike, asc, sql } from "drizzle-orm"
+import { withTenant, product } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
-import { redis } from "@/lib/redis"
 
 const createProductSchema = z.object({
   name: z.string().min(1),
@@ -20,7 +21,6 @@ const createProductSchema = z.object({
   cost_price: z.number().nonnegative().optional(),
   selling_price: z.number().positive(),
   reorder_level: z.number().int().nonnegative().default(10),
-  reorder_quantity: z.number().int().positive().default(100),
   is_controlled: z.boolean().default(false),
   requires_prescription: z.boolean().default(false),
   image_url: z.string().nullable().optional(),
@@ -28,92 +28,64 @@ const createProductSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
   const { searchParams } = new URL(request.url)
-  const q = searchParams.get("q")?.trim() ?? ""
-  const categoryId = searchParams.get("category_id")
+  const q = (searchParams.get("q") ?? "").trim()
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles").select("organization_id").eq("id", user.id).single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-
-  let query = supabase
-    .from("products")
-    .select("*", { count: "exact" })
-    .eq("organization_id", profile.organization_id)
-    .order("name", { ascending: true })
-
-  if (q.length >= 2) {
-    query = query.or(`name.ilike.%${q}%,brand_name.ilike.%${q}%,gtin.ilike.%${q}%,strength.ilike.%${q}%`)
-  }
-  if (categoryId) query = query.eq("category_id", categoryId)
-
   const offset = (page - 1) * limit
-  query = query.range(offset, offset + limit - 1)
 
-  const { data, count, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const where = q.length >= 2
+    ? or(ilike(product.name, `%${q}%`), ilike(product.brand_name, `%${q}%`), ilike(product.gtin, `%${q}%`), ilike(product.strength, `%${q}%`))
+    : undefined
 
-  return NextResponse.json({ products: data ?? [], total: count ?? 0, page, limit })
+  const { rows, total } = await withTenant(ctx.organizationId, async (db) => {
+    const rows = await db.select().from(product).where(where).orderBy(asc(product.name)).limit(limit).offset(offset)
+    const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(product).where(where)
+    return { rows, total: c?.n ?? 0 }
+  })
+  return NextResponse.json({ products: rows, total, page, limit })
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-
-  const allowedRoles = ["owner", "manager", "pharmacist"]
-  if (!allowedRoles.includes(profile.role)) {
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
-
-  const body = (await request.json()) as unknown
-  const parsed = createProductSchema.safeParse(body)
+  const parsed = createProductSchema.safeParse(await request.json())
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid request" },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   }
+  const d = parsed.data
+  const num = (v: number | null | undefined) => (v == null ? null : String(v))
 
-  const { data: product, error } = await supabase
-    .from("products")
-    .insert({
-      ...parsed.data,
-      organization_id: profile.organization_id,
-      created_by: user.id,
-    })
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  // Invalidate Redis cache for this barcode
-  if (redis && parsed.data.gtin) {
-    try {
-      await redis.del(`product:${profile.organization_id}:${parsed.data.gtin}`)
-    } catch {}
-  }
-  if (redis && parsed.data.barcode_raw) {
-    try {
-      await redis.del(`product:${profile.organization_id}:${parsed.data.barcode_raw}`)
-    } catch {}
-  }
-
-  return NextResponse.json({ product }, { status: 201 })
+  const created = await withTenant(ctx.organizationId, (db) =>
+    db.insert(product).values({
+      organization_id: ctx.organizationId,
+      created_by: ctx.userId,
+      name: d.name,
+      brand_name: d.brand_name ?? null,
+      manufacturer: d.manufacturer ?? null,
+      gtin: d.gtin ?? null,
+      barcode_raw: d.barcode_raw ?? null,
+      strength: d.strength ?? null,
+      dosage_form: d.dosage_form ?? null,
+      category_id: d.category_id ?? null,
+      supplier_id: d.supplier_id ?? null,
+      base_unit: d.base_unit,
+      pack_label: d.pack_label ?? null,
+      units_per_pack: d.units_per_pack,
+      cost_price: num(d.cost_price),
+      selling_price: String(d.selling_price),
+      reorder_level: d.reorder_level,
+      is_controlled: d.is_controlled,
+      requires_prescription: d.requires_prescription,
+      image_url: d.image_url ?? null,
+      max_discount_percent: num(d.max_discount_percent),
+    }).returning(),
+  )
+  return NextResponse.json({ product: created[0] }, { status: 201 })
 }
