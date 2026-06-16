@@ -1,23 +1,22 @@
-import type { createClient } from "@/lib/supabase/server"
+import { eq } from "drizzle-orm"
+import { staff_profile, appointment_reminder, type DrizzleDB } from "@pharmatrack/db"
 import { buildReminders } from "./reminders"
-
-type ServerClient = Awaited<ReturnType<typeof createClient>>
 
 interface ApptForQueue {
   id: string
   scheduled_at: string
   assigned_to: string | null
-  customer: { phone: string | null; email: string | null; reminders_opt_in?: boolean } | null
+  customer: { phone: string | null; email: string | null; reminders_opt_in?: boolean | null } | null
 }
 
-/** (Re)build the pending reminder rows for an appointment. */
-export async function queueReminders(supabase: ServerClient, appt: ApptForQueue, orgId: string) {
+/** (Re)build the pending reminder rows for an appointment, inside a tenant tx. */
+export async function queueReminders(db: DrizzleDB, appt: ApptForQueue, orgId: string) {
   // Respect the customer's messaging opt-out (SMS costs money).
   if (appt.customer?.reminders_opt_in === false) return
 
   let pharmacistPhone: string | null = null
   if (appt.assigned_to) {
-    const { data: p } = await supabase.from("profiles").select("phone").eq("id", appt.assigned_to).single()
+    const [p] = await db.select({ phone: staff_profile.phone }).from(staff_profile).where(eq(staff_profile.user_id, appt.assigned_to)).limit(1)
     pharmacistPhone = p?.phone ?? null
   }
 
@@ -29,6 +28,9 @@ export async function queueReminders(supabase: ServerClient, appt: ApptForQueue,
     pharmacistPhone,
   })
   if (rows.length > 0) {
-    await supabase.from("appointment_reminders").insert(rows)
+    await db.insert(appointment_reminder).values(rows.map((r) => ({
+      appointment_id: r.appointment_id, organization_id: r.organization_id,
+      channel: r.channel, recipient: r.recipient, send_at: new Date(r.send_at), status: r.status,
+    })))
   }
 }

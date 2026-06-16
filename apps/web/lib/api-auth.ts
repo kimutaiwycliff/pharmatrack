@@ -1,44 +1,31 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
 
-export type Role = "owner" | "manager" | "pharmacist" | "cashier"
-
-type ServerClient = Awaited<ReturnType<typeof createClient>>
+export type { Role }
 
 export interface ApiContext {
-  supabase: ServerClient
-  user: { id: string }
-  profile: { organization_id: string; role: string }
+  userId: string
+  organizationId: string
+  role: Role
+  branchId: string | null
 }
 
 /**
- * Resolve the authenticated user + their organization and role for an API
- * route, returning a ready-made error response on any failure. Replaces the
- * getUser → load profile → check role boilerplate repeated across routes.
+ * Resolve the authenticated user + their organization and role for an API route,
+ * returning a ready-made error response on any failure. Backed by Better Auth +
+ * the tenant context (staff_profile); queries run via withTenant() under RLS.
  *
  *   const ctx = await getApiContext({ roles: ["owner", "manager"] })
  *   if ("error" in ctx) return ctx.error
- *   const { supabase, user, profile } = ctx
+ *   await withTenant(ctx.organizationId, (db) => ...)
  */
 export async function getApiContext(
   opts?: { roles?: Role[] },
 ): Promise<ApiContext | { error: NextResponse }> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return { error: NextResponse.json({ error: "Profile not found" }, { status: 404 }) }
-
-  if (opts?.roles && !opts.roles.includes(profile.role as Role)) {
+  const ctx = await getTenantContext()
+  if (!ctx) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
+  if (opts?.roles && !opts.roles.includes(ctx.role)) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
   }
-
-  return { supabase, user, profile }
+  return { userId: ctx.userId, organizationId: ctx.organizationId, role: ctx.role, branchId: ctx.branchId }
 }

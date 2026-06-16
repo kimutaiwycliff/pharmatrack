@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { and, asc, eq, or, ilike } from "drizzle-orm"
+import { withTenant, customer } from "@pharmatrack/db"
 import { getApiContext } from "@/lib/api-auth"
 
 // Lightweight search for the booking autocomplete (by name or phone).
@@ -7,19 +9,12 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getApiContext()
   if ("error" in ctx) return ctx.error
-  const { supabase, profile } = ctx
 
-  let query = supabase
-    .from("customers")
-    .select("id, full_name, phone, email, reminders_opt_in")
-    .eq("organization_id", profile.organization_id)
-    .order("full_name")
-    .limit(10)
+  const rows = await withTenant(ctx.organizationId, (db) =>
+    db.select({ id: customer.id, full_name: customer.full_name, phone: customer.phone, email: customer.email, reminders_opt_in: customer.reminders_opt_in })
+      .from(customer)
+      .where(q ? or(ilike(customer.full_name, `%${q}%`), ilike(customer.phone, `%${q}%`)) : undefined)
+      .orderBy(asc(customer.full_name)).limit(10))
 
-  if (q) query = query.or(`full_name.ilike.%${q}%,phone.ilike.%${q}%`)
-
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ customers: data ?? [] })
+  return NextResponse.json({ customers: rows })
 }

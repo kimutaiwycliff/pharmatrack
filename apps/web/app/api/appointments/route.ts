@@ -1,21 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { and, asc, eq, gte, lte } from "drizzle-orm"
+import { withTenant, appointment, customer, user } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { queueReminders } from "@/lib/appointments/queue"
+import { apptCols, shapeAppt, fetchAppointment } from "@/lib/appointments/serialize"
 
-const WRITE_ROLES = ["owner", "manager", "pharmacist"]
-
-const SELECT =
-  "*, customer:customers(id, full_name, phone, email, reminders_opt_in), assignee:profiles!appointments_assigned_to_fkey(id, full_name)"
+const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 
 const createSchema = z.object({
-  // Either an existing customer id, or details to find-or-create one.
   customer_id: zUuid().optional(),
   customer_name: z.string().trim().min(1).max(120).optional(),
   customer_phone: z.string().trim().max(40).optional(),
   customer_email: z.string().trim().email().max(120).optional().or(z.literal("")),
-
   branch_id: zUuid(),
   service: z.string().min(1),
   service_label: z.string().max(120).optional(),
@@ -29,141 +27,71 @@ const createSchema = z.object({
 
 export async function GET(request: NextRequest) {
   const sp = new URL(request.url).searchParams
-  const from = sp.get("from")
-  const to = sp.get("to")
-  const status = sp.get("status")
-  const branchId = sp.get("branch_id")
+  const from = sp.get("from"), to = sp.get("to"), status = sp.get("status"), branchId = sp.get("branch_id")
   const q = sp.get("q")?.trim()
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  return withTenant(ctx.organizationId, async (db) => {
+    const rows = await db.select(apptCols).from(appointment)
+      .leftJoin(customer, eq(customer.id, appointment.customer_id))
+      .leftJoin(user, eq(user.id, appointment.assigned_to))
+      .where(and(
+        from ? gte(appointment.scheduled_at, new Date(from)) : undefined,
+        to ? lte(appointment.scheduled_at, new Date(to)) : undefined,
+        status && status !== "all" ? eq(appointment.status, status) : undefined,
+        branchId ? eq(appointment.branch_id, branchId) : undefined,
+      )).orderBy(asc(appointment.scheduled_at))
 
-  let query = supabase
-    .from("appointments")
-    .select(SELECT)
-    .eq("organization_id", profile.organization_id)
-    .order("scheduled_at", { ascending: true })
-
-  if (from) query = query.gte("scheduled_at", from)
-  if (to) query = query.lte("scheduled_at", to)
-  if (status && status !== "all") query = query.eq("status", status)
-  if (branchId) query = query.eq("branch_id", branchId)
-
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  let rows = data ?? []
-  // Filter by customer name/phone client-side (joined column can't be filtered in the same query simply)
-  if (q) {
-    const needle = q.toLowerCase()
-    rows = rows.filter((r) => {
-      const c = (r as { customer: { full_name?: string; phone?: string } | null }).customer
-      return (
-        c?.full_name?.toLowerCase().includes(needle) ||
-        c?.phone?.includes(q)
-      )
-    })
-  }
-
-  return NextResponse.json({ appointments: rows })
+    let appointments = rows.map(shapeAppt)
+    if (q) {
+      const needle = q.toLowerCase()
+      appointments = appointments.filter((r) => r.customer?.full_name?.toLowerCase().includes(needle) || r.customer?.phone?.includes(q))
+    }
+    return NextResponse.json({ appointments })
+  })
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-  if (!WRITE_ROLES.includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = createSchema.safeParse(await request.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
-  }
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const d = parsed.data
-  const orgId = profile.organization_id
 
-  // ── Resolve the customer (find existing by phone, else create) ──
-  let customerId = d.customer_id ?? null
-  if (!customerId) {
-    if (!d.customer_name) {
-      return NextResponse.json({ error: "Customer name is required" }, { status: 400 })
-    }
-    if (d.customer_phone) {
-      const { data: existing } = await supabase
-        .from("customers")
-        .select("id")
-        .eq("organization_id", orgId)
-        .eq("phone", d.customer_phone)
-        .maybeSingle()
-      customerId = existing?.id ?? null
-    }
+  const out = await withTenant(ctx.organizationId, async (db) => {
+    // ── Resolve the customer (find existing by phone, else create) ──
+    let customerId = d.customer_id ?? null
     if (!customerId) {
-      const { data: created, error: custErr } = await supabase
-        .from("customers")
-        .insert({
-          organization_id: orgId,
-          full_name: d.customer_name,
-          phone: d.customer_phone || null,
-          email: d.customer_email || null,
-          reminders_opt_in: d.reminders_opt_in,
-          created_by: user.id,
-        })
-        .select("id")
-        .single()
-      if (custErr || !created) {
-        return NextResponse.json({ error: custErr?.message ?? "Failed to create customer" }, { status: 500 })
+      if (!d.customer_name) return { status: 400 as const, body: { error: "Customer name is required" } }
+      if (d.customer_phone) {
+        const [existing] = await db.select({ id: customer.id }).from(customer).where(eq(customer.phone, d.customer_phone)).limit(1)
+        customerId = existing?.id ?? null
       }
-      customerId = created.id
+      if (!customerId) {
+        const [created] = await db.insert(customer).values({
+          organization_id: ctx.organizationId, full_name: d.customer_name, phone: d.customer_phone || null,
+          email: d.customer_email || null, reminders_opt_in: d.reminders_opt_in, created_by: ctx.userId,
+        }).returning({ id: customer.id })
+        customerId = created!.id
+      }
     }
-  }
+    // Persist the messaging preference on the (existing or just-found) customer.
+    await db.update(customer).set({ reminders_opt_in: d.reminders_opt_in }).where(eq(customer.id, customerId!))
 
-  // Persist the messaging preference on the (existing or just-found) customer.
-  await supabase.from("customers").update({ reminders_opt_in: d.reminders_opt_in }).eq("id", customerId).eq("organization_id", orgId)
+    const [appt] = await db.insert(appointment).values({
+      organization_id: ctx.organizationId, branch_id: d.branch_id, customer_id: customerId!,
+      service: d.service, service_label: d.service_label ?? null, scheduled_at: new Date(d.scheduled_at),
+      duration_minutes: d.duration_minutes, assigned_to: d.assigned_to ?? null, notes: d.notes || null,
+      parent_appointment_id: d.parent_appointment_id ?? null, created_by: ctx.userId,
+    }).returning({ id: appointment.id })
 
-  // ── Insert the appointment ──
-  const { data: appt, error } = await supabase
-    .from("appointments")
-    .insert({
-      organization_id: orgId,
-      branch_id: d.branch_id,
-      customer_id: customerId,
-      service: d.service,
-      service_label: d.service_label ?? null,
-      scheduled_at: d.scheduled_at,
-      duration_minutes: d.duration_minutes,
-      assigned_to: d.assigned_to ?? null,
-      notes: d.notes || null,
-      parent_appointment_id: d.parent_appointment_id ?? null,
-      created_by: user.id,
-    })
-    .select(SELECT)
-    .single()
-  if (error || !appt) {
-    return NextResponse.json({ error: error?.message ?? "Failed to create appointment" }, { status: 500 })
-  }
-
-  // ── Queue reminders ──
-  await queueReminders(supabase, appt as { id: string; scheduled_at: string; assigned_to: string | null; customer: { phone: string | null; email: string | null } | null }, orgId)
-
-  return NextResponse.json({ appointment: appt }, { status: 201 })
+    const shaped = (await fetchAppointment(db, appt!.id))!
+    await queueReminders(db, { id: shaped.id, scheduled_at: shaped.scheduled_at.toISOString(), assigned_to: shaped.assigned_to, customer: shaped.customer }, ctx.organizationId)
+    return { status: 201 as const, body: { appointment: shaped } }
+  })
+  return NextResponse.json(out.body, { status: out.status })
 }
