@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient as createSupabaseClient } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/server"
+import { asc, eq } from "drizzle-orm"
+import { z } from "zod"
+import { dbAdmin, organization, org_settings, branch, staff_profile, user } from "@pharmatrack/db"
+import { auth } from "@/lib/auth/server"
+import { getSession } from "@/lib/auth/helpers"
 import { hashPin, validatePin } from "@/lib/auth/pin"
 import { normalizeKePhone } from "@/lib/auth/phone"
-import { z } from "zod"
 
 const orgSchema = z.object({
   name: z.string().min(2).optional(),
@@ -12,146 +14,99 @@ const orgSchema = z.object({
   email: z.string().email().optional(),
   address: z.string().optional(),
 })
-
 const profileSchema = z.object({
   full_name: z.string().min(2).optional(),
   phone: z.string().optional(),
 })
 
+// Org profile fields beyond name live in org_settings.settings (jsonb).
+const ORG_SETTING_KEYS = ["registration_number", "phone", "email", "address"] as const
+type OrgSettings = Partial<Record<(typeof ORG_SETTING_KEYS)[number], string>>
+
 export async function GET(_request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession()
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const db = dbAdmin()
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  const [sp] = await db.select().from(staff_profile).where(eq(staff_profile.user_id, session.user.id)).limit(1)
+  if (!sp) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
 
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("*")
-    .eq("id", profile.organization_id)
-    .single()
+  const [orgRow] = await db.select().from(organization).where(eq(organization.id, sp.organization_id)).limit(1)
+  const [settingsRow] = await db.select().from(org_settings).where(eq(org_settings.organization_id, sp.organization_id)).limit(1)
+  const s = (settingsRow?.settings ?? {}) as OrgSettings
 
-  const { data: branches } = await supabase
-    .from("branches")
-    .select("*")
-    .eq("organization_id", profile.organization_id)
-    .order("name", { ascending: true })
+  const branches = await db.select().from(branch).where(eq(branch.organization_id, sp.organization_id)).orderBy(asc(branch.name))
 
-  // Never ship the PIN hash to the client — expose only whether one is set.
-  const { pin_hash, ...safeProfile } = profile
-  return NextResponse.json({
-    profile: safeProfile,
-    has_pin: !!pin_hash,
-    org,
-    branches: branches ?? [],
-  })
+  const profile = {
+    id: session.user.id, organization_id: sp.organization_id, branch_id: sp.branch_id,
+    full_name: session.user.name ?? "", phone: sp.phone, role: sp.role, is_active: sp.is_active,
+    created_at: sp.created_at.toISOString(),
+  }
+  const org = orgRow ? { id: orgRow.id, name: orgRow.name, created_at: orgRow.createdAt.toISOString(), ...s } : null
+
+  return NextResponse.json({ profile, has_pin: !!sp.pin_hash, org, branches })
 }
 
 export async function PATCH(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const target = searchParams.get("target") // "org" | "profile"
+  const target = new URL(request.url).searchParams.get("target")
+  const session = await getSession()
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const db = dbAdmin()
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role, phone")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  const [sp] = await db.select().from(staff_profile).where(eq(staff_profile.user_id, session.user.id)).limit(1)
+  if (!sp) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
 
   const body = (await request.json()) as unknown
 
   if (target === "pin") {
-    const pinSchema = z.object({
-      password: z.string().min(1, "Account password is required"),
-      pin: z.string(),
-    })
-    const parsed = pinSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
-    }
-
-    // PIN login matches by phone, so a phone number must already be set.
-    if (!profile.phone) {
-      return NextResponse.json(
-        { error: "Add your phone number above before setting a PIN" },
-        { status: 400 },
-      )
-    }
-
+    const parsed = z.object({ password: z.string().min(1, "Account password is required"), pin: z.string() }).safeParse(body)
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
+    if (!sp.phone) return NextResponse.json({ error: "Add your phone number above before setting a PIN" }, { status: 400 })
     const validation = validatePin(parsed.data.pin)
     if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
+    if (!session.user.email) return NextResponse.json({ error: "Account has no email to verify against" }, { status: 400 })
 
-    if (!user.email) {
-      return NextResponse.json({ error: "Account has no email to verify against" }, { status: 400 })
+    // Verify the account password without disturbing the user's session: we call
+    // signInEmail but never forward its Set-Cookie to the browser.
+    try {
+      await auth.api.signInEmail({ body: { email: session.user.email, password: parsed.data.password } })
+    } catch {
+      return NextResponse.json({ error: "Incorrect account password" }, { status: 403 })
     }
 
-    // Verify the account password on a throwaway client so the user's cookie
-    // session is left untouched.
-    const verifier = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } },
-    )
-    const { error: pwError } = await verifier.auth.signInWithPassword({
-      email: user.email,
-      password: parsed.data.password,
-    })
-    if (pwError) return NextResponse.json({ error: "Incorrect account password" }, { status: 403 })
-
     const pin_hash = await hashPin(validation.pin)
-    const { error } = await supabase
-      .from("profiles")
-      .update({ pin_hash })
-      .eq("id", user.id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
+    await db.update(staff_profile).set({ pin_hash }).where(eq(staff_profile.user_id, session.user.id))
     return NextResponse.json({ ok: true })
   }
 
   if (target === "org") {
-    if (profile.role !== "owner") {
-      return NextResponse.json({ error: "Only owners can update organization settings" }, { status: 403 })
-    }
+    if (sp.role !== "owner") return NextResponse.json({ error: "Only owners can update organization settings" }, { status: 403 })
     const parsed = orgSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
-    }
-    const { data: org, error } = await supabase
-      .from("organizations")
-      .update(parsed.data)
-      .eq("id", profile.organization_id)
-      .select()
-      .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ org })
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
+
+    if (parsed.data.name) await db.update(organization).set({ name: parsed.data.name }).where(eq(organization.id, sp.organization_id))
+
+    const [existing] = await db.select().from(org_settings).where(eq(org_settings.organization_id, sp.organization_id)).limit(1)
+    const merged: OrgSettings = { ...(existing?.settings as OrgSettings ?? {}) }
+    for (const k of ORG_SETTING_KEYS) if (parsed.data[k] !== undefined) merged[k] = parsed.data[k]
+    if (existing) await db.update(org_settings).set({ settings: merged, updated_at: new Date() }).where(eq(org_settings.organization_id, sp.organization_id))
+    else await db.insert(org_settings).values({ organization_id: sp.organization_id, settings: merged })
+
+    const [orgRow] = await db.select().from(organization).where(eq(organization.id, sp.organization_id)).limit(1)
+    return NextResponse.json({ org: { id: orgRow!.id, name: orgRow!.name, created_at: orgRow!.createdAt.toISOString(), ...merged } })
   }
 
   if (target === "profile") {
     const parsed = profileSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
-    }
-    const updates = {
-      ...parsed.data,
-      ...(parsed.data.phone !== undefined && { phone: normalizeKePhone(parsed.data.phone) }),
-    }
-    const { data: updated, error } = await supabase
-      .from("profiles")
-      .update(updates)
-      .eq("id", user.id)
-      .select()
-      .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ profile: updated })
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
+    if (parsed.data.full_name !== undefined) await db.update(user).set({ name: parsed.data.full_name }).where(eq(user.id, session.user.id))
+    if (parsed.data.phone !== undefined) await db.update(staff_profile).set({ phone: normalizeKePhone(parsed.data.phone) }).where(eq(staff_profile.user_id, session.user.id))
+
+    const [sp2] = await db.select().from(staff_profile).where(eq(staff_profile.user_id, session.user.id)).limit(1)
+    return NextResponse.json({ profile: {
+      id: session.user.id, organization_id: sp2!.organization_id, branch_id: sp2!.branch_id,
+      full_name: parsed.data.full_name ?? session.user.name ?? "", phone: sp2!.phone, role: sp2!.role, is_active: sp2!.is_active,
+    } })
   }
 
   return NextResponse.json({ error: "target must be 'org', 'profile', or 'pin'" }, { status: 400 })

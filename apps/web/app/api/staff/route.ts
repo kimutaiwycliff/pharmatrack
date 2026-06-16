@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { randomUUID, randomBytes } from "node:crypto"
+import { asc, eq } from "drizzle-orm"
+import { dbAdmin, staff_profile, user, branch, member } from "@pharmatrack/db"
+import { auth } from "@/lib/auth/server"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { normalizeKePhone } from "@/lib/auth/phone"
 
@@ -12,91 +16,60 @@ const inviteSchema = z.object({
   phone: z.string().optional(),
 })
 
+const WRITE_ROLES: Role[] = ["owner", "manager"]
+
 export async function GET(_request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  const rows = await dbAdmin().select({
+    id: staff_profile.user_id, full_name: user.name, role: staff_profile.role,
+    branch_id: staff_profile.branch_id, phone: staff_profile.phone, is_active: staff_profile.is_active,
+    created_at: staff_profile.created_at, branch_name: branch.name,
+  }).from(staff_profile)
+    .leftJoin(user, eq(user.id, staff_profile.user_id))
+    .leftJoin(branch, eq(branch.id, staff_profile.branch_id))
+    .where(eq(staff_profile.organization_id, ctx.organizationId))
+    .orderBy(asc(user.name))
 
-  if (!["owner", "manager"].includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-
-  const { data: staff, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, role, branch_id, phone, is_active, created_at, branches(name)")
-    .eq("organization_id", profile.organization_id)
-    .order("full_name", { ascending: true })
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ staff: staff ?? [] })
+  const staff = rows.map(({ branch_name, ...r }) => ({ ...r, branches: branch_name ? { name: branch_name } : null }))
+  return NextResponse.json({ staff })
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  const parsed = inviteSchema.safeParse(await request.json())
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
+  const d = parsed.data
+  const db = dbAdmin()
 
-  if (!["owner", "manager"].includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-
-  const body = (await request.json()) as unknown
-  const parsed = inviteSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
-  }
-
-  const admin = createAdminClient()
-
-  // Invite via email — creates auth.users record
-  const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(
-    parsed.data.email,
-    {
-      data: {
-        full_name: parsed.data.full_name,
-        role: parsed.data.role,
-        organization_id: profile.organization_id,
-      },
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/callback`,
-    },
-  )
-
-  if (inviteError || !invited.user) {
-    return NextResponse.json({ error: inviteError?.message ?? "Failed to invite user" }, { status: 500 })
-  }
-
-  // Create profile record
-  const { error: profileError } = await supabase
-    .from("profiles")
-    .insert({
-      id: invited.user.id,
-      organization_id: profile.organization_id,
-      full_name: parsed.data.full_name,
-      role: parsed.data.role,
-      branch_id: parsed.data.branch_id ?? null,
-      phone: parsed.data.phone ? normalizeKePhone(parsed.data.phone) : null,
-      is_active: true,
+  // Create the staff user via Better Auth, link membership + profile, then email
+  // a "set your password" link (mirrors tenant owner provisioning).
+  let userId: string
+  try {
+    const created = await auth.api.signUpEmail({
+      body: { email: d.email, password: randomBytes(24).toString("base64url"), name: d.full_name },
     })
+    userId = created.user.id
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to invite user" }, { status: 500 })
+  }
 
-  if (profileError) {
-    // Roll back the auth user if profile insert fails
-    await admin.auth.admin.deleteUser(invited.user.id)
-    return NextResponse.json({ error: profileError.message }, { status: 500 })
+  try {
+    await db.insert(member).values({ id: randomUUID(), organizationId: ctx.organizationId, userId, role: d.role })
+    await db.insert(staff_profile).values({
+      user_id: userId, organization_id: ctx.organizationId, role: d.role,
+      branch_id: d.branch_id ?? null, phone: d.phone ? normalizeKePhone(d.phone) : null, is_active: true,
+    })
+    try {
+      await auth.api.requestPasswordReset({ body: { email: d.email, redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/set-password` } })
+    } catch { /* email is best-effort; staff can use "forgot password" */ }
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to set up staff profile" }, { status: 500 })
   }
 
   return NextResponse.json({ message: "Invitation sent" }, { status: 201 })

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { eq } from "drizzle-orm"
+import { withTenant, branch } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
 
 const updateSchema = z.object({
   name: z.string().min(2).optional(),
@@ -9,50 +11,20 @@ const updateSchema = z.object({
   is_active: z.boolean().optional(),
 })
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!(["owner", "manager"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  const parsed = updateSchema.safeParse(await request.json())
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
-  if (!["owner", "manager"].includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-
-  // Verify branch belongs to this org
-  const { data: branch } = await supabase
-    .from("branches")
-    .select("organization_id")
-    .eq("id", id)
-    .single()
-
-  if (!branch || branch.organization_id !== profile.organization_id) {
-    return NextResponse.json({ error: "Branch not found" }, { status: 404 })
-  }
-
-  const body = (await request.json()) as unknown
-  const parsed = updateSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
-  }
-
-  const { data: updated, error } = await supabase
-    .from("branches")
-    .update(parsed.data)
-    .eq("id", id)
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ branch: updated })
+  const out = await withTenant(ctx.organizationId, async (db) => {
+    const [existing] = await db.select({ id: branch.id }).from(branch).where(eq(branch.id, id)).limit(1)
+    if (!existing) return { status: 404 as const, body: { error: "Branch not found" } }
+    const [updated] = await db.update(branch).set(parsed.data).where(eq(branch.id, id)).returning()
+    return { status: 200 as const, body: { branch: updated } }
+  })
+  return NextResponse.json(out.body, { status: out.status })
 }
