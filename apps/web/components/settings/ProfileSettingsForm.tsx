@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Loader2, Eye, EyeOff, KeyRound, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
-import { createClient } from "@/lib/supabase/client"
+import { authClient } from "@/lib/auth/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Profile } from "@pharmatrack/types"
@@ -68,11 +68,18 @@ export function ProfileSettingsForm({ profile, hasPin }: Props) {
       toast.error("Passwords do not match")
       return
     }
+    if (!pwForm.current) {
+      toast.error("Enter your current password")
+      return
+    }
     setPwSaving(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.updateUser({ password: pwForm.next })
-      if (error) throw error
+      const { error } = await authClient.changePassword({
+        currentPassword: pwForm.current,
+        newPassword: pwForm.next,
+        revokeOtherSessions: true,
+      })
+      if (error) throw new Error(error.message)
       toast.success("Password changed successfully")
       setPwForm({ current: "", next: "", confirm: "" })
     } catch (err) {

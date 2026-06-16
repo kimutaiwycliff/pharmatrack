@@ -3,13 +3,12 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Loader2, MailCheck } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { authClient } from "@/lib/auth/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export default function ResetPasswordPage() {
-  const supabase = createClient()
   const [email, setEmail] = useState("")
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
@@ -21,8 +20,9 @@ export default function ResetPasswordPage() {
     setSending(true)
     setError(null)
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/auth/callback`,
+      const { error } = await authClient.requestPasswordReset({
+        email: email.trim(),
+        redirectTo: `${window.location.origin}/auth/set-password`,
       })
       if (error) throw new Error(error.message)
       setSent(true)

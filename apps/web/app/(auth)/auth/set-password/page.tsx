@@ -4,38 +4,37 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { authClient } from "@/lib/auth/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export default function SetPasswordPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [checking, setChecking] = useState(true)
-  const [hasSession, setHasSession] = useState(false)
+  const [token, setToken] = useState<string | null>(null)
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
   const [saving, setSaving] = useState(false)
 
+  // Better Auth appends ?token=... to the reset/invite link.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setHasSession(!!data.session)
-      setChecking(false)
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const params = new URLSearchParams(window.location.search)
+    setToken(params.get("token"))
+    setChecking(false)
   }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (password.length < 8) { toast.error("Use at least 8 characters"); return }
     if (password !== confirm) { toast.error("Passwords do not match"); return }
+    if (!token) { toast.error("This link is invalid or has expired"); return }
     setSaving(true)
     try {
-      const { error } = await supabase.auth.updateUser({ password })
+      const { error } = await authClient.resetPassword({ newPassword: password, token })
       if (error) throw new Error(error.message)
-      toast.success("Password set — signing you in")
-      router.push("/")
+      toast.success("Password set — please sign in")
+      router.push("/login")
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to set password")
@@ -52,7 +51,7 @@ export default function SetPasswordPage() {
 
         {checking ? (
           <div className="mt-6 flex items-center gap-2 text-[var(--pt-text-secondary)] text-sm"><Loader2 size={16} className="animate-spin" /> Checking your link…</div>
-        ) : !hasSession ? (
+        ) : !token ? (
           <p className="mt-6 text-sm text-[var(--pt-red)]">This link is invalid or has expired. Please request a new invite or reset link.</p>
         ) : (
           <form onSubmit={submit} className="mt-6 space-y-4">
