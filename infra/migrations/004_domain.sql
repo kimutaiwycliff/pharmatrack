@@ -281,9 +281,9 @@ SELECT
   p.units_per_pack, p.selling_price, p.cost_price, p.reorder_level,
   p.is_controlled, p.requires_prescription, p.gtin, p.barcode_raw,
   p.category_id, p.is_active, p.image_url, p.max_discount_percent, p.catalog_id,
-  COALESCE(SUM(pb.quantity_remaining) FILTER (WHERE pb.quantity_remaining > 0), 0) AS stock_on_hand,
+  COALESCE(SUM(pb.quantity_remaining) FILTER (WHERE pb.quantity_remaining > 0), 0)::int AS stock_on_hand,
   MIN(pb.expiry_date) FILTER (WHERE pb.quantity_remaining > 0) AS earliest_expiry,
-  COUNT(pb.id) FILTER (WHERE pb.quantity_remaining > 0) AS batch_count
+  COUNT(pb.id) FILTER (WHERE pb.quantity_remaining > 0)::int AS batch_count
 FROM product p
 LEFT JOIN product_batch pb ON pb.product_id = p.id
 GROUP BY p.id, pb.branch_id;

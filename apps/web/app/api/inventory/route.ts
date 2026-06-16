@@ -1,31 +1,29 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import type { ProductStock } from "@pharmatrack/types"
+import { and, eq, or, ilike, asc } from "drizzle-orm"
+import { withTenant, product_stock } from "@pharmatrack/db"
+import { getTenantContext } from "@/lib/auth/helpers"
 
 const EXPIRY_WARN_DAYS = 90
+const num = (v: string | number | null) => (v == null ? null : Number(v))
 
 function daysUntil(dateStr: string | null): number | null {
   if (!dateStr) return null
-  const diff = new Date(dateStr).getTime() - Date.now()
-  return Math.ceil(diff / 86_400_000)
+  return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000)
 }
 
-function getStatus(p: ProductStock): string[] {
+interface Row {
+  stock_on_hand: number | null; reorder_level: number | null
+  earliest_expiry: string | null; is_controlled: boolean | null
+}
+function getStatus(p: Row): string[] {
   const badges: string[] = []
   const stock = p.stock_on_hand ?? 0
-
-  if (stock === 0) {
-    badges.push("out_of_stock")
-  } else if (stock <= (p.reorder_level ?? 10)) {
-    badges.push("low_stock")
-  } else {
-    badges.push("ok")
-  }
-
+  if (stock === 0) badges.push("out_of_stock")
+  else if (stock <= (p.reorder_level ?? 10)) badges.push("low_stock")
+  else badges.push("ok")
   const days = daysUntil(p.earliest_expiry)
   if (days !== null && days <= EXPIRY_WARN_DAYS) badges.push("expiring")
   if (p.is_controlled) badges.push("controlled")
-
   return badges
 }
 
@@ -36,43 +34,29 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status") ?? "all"
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
-
   if (!branchId) return NextResponse.json({ error: "branch_id required" }, { status: 400 })
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  const where = and(
+    eq(product_stock.branch_id, branchId),
+    eq(product_stock.is_active, true),
+    q.length >= 2
+      ? or(ilike(product_stock.name, `%${q}%`), ilike(product_stock.brand_name, `%${q}%`), ilike(product_stock.strength, `%${q}%`), ilike(product_stock.gtin, `%${q}%`))
+      : undefined,
+  )
 
-  // Fetch all matching products (pharmacy scale: ≤1000 SKUs)
-  let query = supabase
-    .from("product_stock")
-    .select("*")
-    .eq("branch_id", branchId)
-    .eq("organization_id", profile.organization_id)
-    .eq("is_active", true)
-    .order("name", { ascending: true })
+  const all = await withTenant(ctx.organizationId, (db) =>
+    db.select().from(product_stock).where(where).orderBy(asc(product_stock.name)),
+  )
+  // PostgREST returned numerics as numbers; Drizzle/postgres.js returns strings — coerce.
+  const products = all.map((p) => ({
+    ...p,
+    selling_price: num(p.selling_price), cost_price: num(p.cost_price),
+    max_discount_percent: num(p.max_discount_percent),
+  }))
 
-  if (q.length >= 2) {
-    query = query.or(
-      `name.ilike.%${q}%,brand_name.ilike.%${q}%,strength.ilike.%${q}%,gtin.ilike.%${q}%`,
-    )
-  }
-
-  const { data: all, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  const products = all as ProductStock[]
-
-  // Compute summary counts (across all, before status filter)
   let outOfStock = 0, lowStock = 0, expiring = 0, controlled = 0
   for (const p of products) {
     const s = getStatus(p)
@@ -82,27 +66,12 @@ export async function GET(request: NextRequest) {
     if (s.includes("controlled")) controlled++
   }
 
-  // Apply status filter
-  const filtered = status === "all"
-    ? products
-    : products.filter((p) => getStatus(p).includes(status))
-
+  const filtered = status === "all" ? products : products.filter((p) => getStatus(p).includes(status))
   const total = filtered.length
   const offset = (page - 1) * limit
-  const paginated = filtered.slice(offset, offset + limit)
-
-  // Attach computed badges and expiry days to each row
-  const rows = paginated.map((p) => ({
-    ...p,
-    status_badges: getStatus(p),
-    expiry_days: daysUntil(p.earliest_expiry),
+  const rows = filtered.slice(offset, offset + limit).map((p) => ({
+    ...p, status_badges: getStatus(p), expiry_days: daysUntil(p.earliest_expiry),
   }))
 
-  return NextResponse.json({
-    products: rows,
-    total,
-    page,
-    limit,
-    summary: { outOfStock, lowStock, expiring, controlled },
-  })
+  return NextResponse.json({ products: rows, total, page, limit, summary: { outOfStock, lowStock, expiring, controlled } })
 }
