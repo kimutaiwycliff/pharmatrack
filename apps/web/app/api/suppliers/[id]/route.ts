@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { eq } from "drizzle-orm"
+import { withTenant, supplier } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { serializeSupplier } from "@/lib/suppliers/serialize"
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -10,64 +13,32 @@ const updateSchema = z.object({
   is_active: z.boolean().optional(),
 })
 
-// Editing / deactivating suppliers is a management action (owner/manager).
-const WRITE_ROLES = ["owner", "manager"]
-
-async function getContext() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return { error: NextResponse.json({ error: "Profile not found" }, { status: 404 }) }
-  if (!WRITE_ROLES.includes(profile.role)) {
-    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
-  }
-  return { supabase, profile }
-}
+// Editing suppliers is a management action (owner/manager).
+const WRITE_ROLES: Role[] = ["owner", "manager"]
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const ctx = await getContext()
-  if (ctx.error) return ctx.error
-  const { supabase, profile } = ctx
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = updateSchema.safeParse(await request.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
-  }
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
-  const { data: existing } = await supabase
-    .from("suppliers")
-    .select("id, organization_id")
-    .eq("id", id)
-    .single()
-  if (!existing || existing.organization_id !== profile.organization_id) {
-    return NextResponse.json({ error: "Supplier not found" }, { status: 404 })
-  }
-
-  // Normalise empty-string contact fields to null
+  // address + is_active no longer persist (schema dropped them); only name/phone/email remain.
   const d = parsed.data
-  const patch = {
-    ...d,
-    ...(d.phone === "" ? { phone: null } : {}),
-    ...(d.email === "" ? { email: null } : {}),
-    ...(d.address === "" ? { address: null } : {}),
-  }
+  const set: Partial<typeof supplier.$inferInsert> = {}
+  if (d.name !== undefined) set.name = d.name
+  if (d.phone !== undefined) set.phone = d.phone === "" ? null : d.phone
+  if (d.email !== undefined) set.email = d.email === "" ? null : d.email
 
-  const { data: supplier, error } = await supabase
-    .from("suppliers")
-    .update(patch)
-    .eq("id", id)
-    .select("id, name, phone, email, address, is_active")
-    .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ supplier })
+  const out = await withTenant(ctx.organizationId, async (db) => {
+    const [existing] = await db.select({ id: supplier.id }).from(supplier).where(eq(supplier.id, id)).limit(1)
+    if (!existing) return { status: 404 as const, body: { error: "Supplier not found" } }
+    const row = Object.keys(set).length > 0
+      ? (await db.update(supplier).set(set).where(eq(supplier.id, id)).returning())[0]!
+      : (await db.select().from(supplier).where(eq(supplier.id, id)).limit(1))[0]!
+    return { status: 200 as const, body: { supplier: serializeSupplier(row) } }
+  })
+  return NextResponse.json(out.body, { status: out.status })
 }

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { asc, ilike } from "drizzle-orm"
+import { withTenant, supplier } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { serializeSupplier } from "@/lib/suppliers/serialize"
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Supplier name is required").max(120),
@@ -10,87 +13,35 @@ const createSchema = z.object({
 })
 
 // Creating suppliers is allowed during product/stock entry, so pharmacists qualify too.
-const WRITE_ROLES = ["owner", "manager", "pharmacist"]
+const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 
-export async function GET(request: NextRequest) {
-  const includeInactive = new URL(request.url).searchParams.get("includeInactive") === "true"
+export async function GET(_request: NextRequest) {
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single()
-
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-
-  let query = supabase
-    .from("suppliers")
-    .select("id, name, phone, email, address, is_active")
-    .eq("organization_id", profile.organization_id)
-    .order("name")
-
-  if (!includeInactive) query = query.eq("is_active", true)
-
-  const { data, error } = await query
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ suppliers: data ?? [] })
+  const rows = await withTenant(ctx.organizationId, (db) =>
+    db.select().from(supplier).orderBy(asc(supplier.name)))
+  return NextResponse.json({ suppliers: rows.map(serializeSupplier) })
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-  if (!WRITE_ROLES.includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = createSchema.safeParse(await request.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
-  }
-  const { name, phone, email, address } = parsed.data
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
+  const { name, phone, email } = parsed.data
 
-  // Friendly duplicate guard within the org (case-insensitive)
-  const { data: dup } = await supabase
-    .from("suppliers")
-    .select("id")
-    .eq("organization_id", profile.organization_id)
-    .ilike("name", name)
-    .maybeSingle()
-  if (dup) {
-    return NextResponse.json({ error: `"${name}" already exists` }, { status: 409 })
-  }
+  const out = await withTenant(ctx.organizationId, async (db) => {
+    // Friendly duplicate guard within the org (case-insensitive).
+    const [dup] = await db.select({ id: supplier.id }).from(supplier).where(ilike(supplier.name, name)).limit(1)
+    if (dup) return { status: 409 as const, body: { error: `"${name}" already exists` } }
 
-  const { data: supplier, error } = await supabase
-    .from("suppliers")
-    .insert({
-      name,
-      phone: phone || null,
-      email: email || null,
-      address: address || null,
-      organization_id: profile.organization_id,
-    })
-    .select("id, name, phone, email, address, is_active")
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ supplier }, { status: 201 })
+    const [row] = await db.insert(supplier).values({
+      organization_id: ctx.organizationId, name, phone: phone || null, email: email || null,
+    }).returning()
+    return { status: 201 as const, body: { supplier: serializeSupplier(row!) } }
+  })
+  return NextResponse.json(out.body, { status: out.status })
 }

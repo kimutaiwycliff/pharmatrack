@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { and, asc, eq, ilike, isNull } from "drizzle-orm"
+import { withTenant, category } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 
 const createSchema = z.object({
@@ -8,92 +10,42 @@ const createSchema = z.object({
   parent_id: zUuid().nullable().optional(),
 })
 
-const WRITE_ROLES = ["owner", "manager", "pharmacist"]
+const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 
 export async function GET() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single()
-
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-
-  const { data, error } = await supabase
-    .from("categories")
-    .select("id, name, parent_id")
-    .eq("organization_id", profile.organization_id)
-    .order("name")
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ categories: data ?? [] })
+  const rows = await withTenant(ctx.organizationId, (db) =>
+    db.select({ id: category.id, name: category.name, parent_id: category.parent_id })
+      .from(category).orderBy(asc(category.name)))
+  return NextResponse.json({ categories: rows })
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-  if (!WRITE_ROLES.includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = createSchema.safeParse(await request.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
-  }
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const { name, parent_id } = parsed.data
 
-  // Enforce two-level depth: a parent must exist, belong to the org, and itself be top-level
-  if (parent_id) {
-    const { data: parent } = await supabase
-      .from("categories")
-      .select("id, parent_id, organization_id")
-      .eq("id", parent_id)
-      .single()
-    if (!parent || parent.organization_id !== profile.organization_id) {
-      return NextResponse.json({ error: "Parent category not found" }, { status: 400 })
+  const out = await withTenant(ctx.organizationId, async (db) => {
+    // Enforce two-level depth: parent must exist in-org and itself be top-level.
+    if (parent_id) {
+      const [parent] = await db.select({ parent_id: category.parent_id }).from(category).where(eq(category.id, parent_id)).limit(1)
+      if (!parent) return { status: 400 as const, body: { error: "Parent category not found" } }
+      if (parent.parent_id) return { status: 400 as const, body: { error: "Subcategories can only be one level deep" } }
     }
-    if (parent.parent_id) {
-      return NextResponse.json({ error: "Subcategories can only be one level deep" }, { status: 400 })
-    }
-  }
+    // Friendly duplicate guard within the same parent scope (case-insensitive).
+    const [dup] = await db.select({ id: category.id }).from(category)
+      .where(and(ilike(category.name, name), parent_id ? eq(category.parent_id, parent_id) : isNull(category.parent_id))).limit(1)
+    if (dup) return { status: 409 as const, body: { error: `"${name}" already exists here` } }
 
-  // Friendly duplicate guard within the same parent scope (case-insensitive)
-  const dupQuery = supabase
-    .from("categories")
-    .select("id")
-    .eq("organization_id", profile.organization_id)
-    .ilike("name", name)
-  const { data: dup } = parent_id
-    ? await dupQuery.eq("parent_id", parent_id).maybeSingle()
-    : await dupQuery.is("parent_id", null).maybeSingle()
-  if (dup) {
-    return NextResponse.json({ error: `"${name}" already exists here` }, { status: 409 })
-  }
-
-  const { data: category, error } = await supabase
-    .from("categories")
-    .insert({ name, parent_id: parent_id ?? null, organization_id: profile.organization_id })
-    .select("id, name, parent_id")
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ category }, { status: 201 })
+    const [row] = await db.insert(category).values({ organization_id: ctx.organizationId, name, parent_id: parent_id ?? null })
+      .returning({ id: category.id, name: category.name, parent_id: category.parent_id })
+    return { status: 201 as const, body: { category: row } }
+  })
+  return NextResponse.json(out.body, { status: out.status })
 }
