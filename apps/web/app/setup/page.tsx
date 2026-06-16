@@ -1,18 +1,15 @@
 import { redirect } from "next/navigation"
-import { createAdminClient } from "@/lib/supabase/server"
+import { dbAdmin, platform_admin } from "@pharmatrack/db"
 import { SetupForm } from "@/components/setup/SetupForm"
 
 export const metadata = { title: "Set up PharmaTrack" }
-// Reads platform_admins (service-role) at request time — never prerender.
+// Reads platform_admin at request time — never prerender.
 export const dynamic = "force-dynamic"
 
 // First-run only: if a platform admin already exists, there's nothing to set up.
 export default async function SetupPage() {
-  const admin = createAdminClient()
-  const { count } = await admin
-    .from("platform_admins")
-    .select("user_id", { count: "exact", head: true })
-  if ((count ?? 0) > 0) redirect("/login")
+  const admins = await dbAdmin().select().from(platform_admin)
+  if (admins.length > 0) redirect("/login")
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--pt-bg)] px-6 py-10">

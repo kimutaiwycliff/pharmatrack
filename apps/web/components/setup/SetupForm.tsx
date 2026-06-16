@@ -5,6 +5,7 @@ import { Loader2, ShieldCheck, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { authClient } from "@/lib/auth/client"
 
 export function SetupForm() {
   const [form, setForm] = useState({ full_name: "", email: "", password: "", confirm: "" })
@@ -26,11 +27,13 @@ export function SetupForm() {
       const res = await fetch("/api/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email, full_name: form.full_name || undefined, password: form.password }),
+        body: JSON.stringify({ email: form.email, name: form.full_name || undefined, password: form.password }),
       })
       const json = (await res.json()) as { ok?: boolean; error?: string }
       if (!res.ok || !json.ok) throw new Error(json.error ?? "Setup failed")
-      // Signed in by the API — go straight to the operator console.
+      // Sign in (sets the Better Auth session cookie), then go to the console.
+      const signin = await authClient.signIn.email({ email: form.email, password: form.password })
+      if (signin.error) throw new Error(signin.error.message ?? "Signed up but sign-in failed")
       window.location.href = "/platform"
     } catch (err) {
       setError(err instanceof Error ? err.message : "Setup failed")
