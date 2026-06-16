@@ -1,22 +1,15 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { getSession, isPlatformAdmin } from "@/lib/auth/helpers"
 import { signOut } from "@/app/(auth)/login/actions"
 import { PlatformProviders } from "@/components/platform/PlatformProviders"
 import { LogOut, ShieldCheck } from "lucide-react"
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login")
-
-  const admin = createAdminClient()
-  const { data: isAdmin } = await admin
-    .from("platform_admins")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle()
-  if (!isAdmin) redirect("/dashboard")
+  const session = await getSession()
+  if (!session?.user) redirect("/login")
+  if (!(await isPlatformAdmin())) redirect("/dashboard")
+  const user = session.user
 
   return (
     <PlatformProviders>
