@@ -1,284 +1,197 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { and, desc, eq, gte, inArray, lt, asc } from "drizzle-orm"
+import { withTenant, sale, sale_item, product, product_batch, product_stock, user, branch } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
 
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
-
-function toNairobiDate(isoString: string): string {
-  const d = new Date(new Date(isoString).getTime() + TZ_OFFSET_MS)
-  return d.toISOString().slice(0, 10)
+function toNairobiDate(d: Date): string {
+  return new Date(d.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 10)
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const report = searchParams.get("report") ?? "sales"
-  const from = searchParams.get("from") // YYYY-MM-DD (Nairobi)
-  const to = searchParams.get("to")     // YYYY-MM-DD (Nairobi)
+  const from = searchParams.get("from")
+  const to = searchParams.get("to")
   const branchId = searchParams.get("branch_id")
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!(["owner", "manager"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const { data: profile } = await supabase
-    .from("profiles").select("organization_id, role").eq("id", user.id).single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-  if (!["owner", "manager"].includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
+  // Nairobi date strings → UTC instants. RLS already scopes to the org, so when no
+  // branch is given we simply omit the branch filter (all org branches).
+  const fromUtc = from ? new Date(new Date(from).getTime() - TZ_OFFSET_MS) : null
+  const toUtcExclusive = to ? new Date(new Date(to).getTime() - TZ_OFFSET_MS + 86_400_000) : null
 
-  // Convert Nairobi date strings → UTC ISO timestamps for DB queries
-  const fromUtc = from ? new Date(new Date(from).getTime() - TZ_OFFSET_MS).toISOString() : null
-  const toUtcExclusive = to
-    ? new Date(new Date(to).getTime() - TZ_OFFSET_MS + 86_400_000).toISOString()
-    : null
+  return withTenant(ctx.organizationId, async (db) => {
+    if (report === "sales") {
+      const sales = await db.select({
+        id: sale.id, created_at: sale.created_at, receipt_number: sale.receipt_number,
+        payment_method: sale.payment_method, total_amount: sale.total_amount, discount_amount: sale.discount_amount,
+        cashier_name: user.name, branch_name: branch.name,
+      }).from(sale)
+        .leftJoin(user, eq(user.id, sale.cashier_id))
+        .leftJoin(branch, eq(branch.id, sale.branch_id))
+        .where(and(
+          eq(sale.status, "completed"),
+          branchId ? eq(sale.branch_id, branchId) : undefined,
+          fromUtc ? gte(sale.created_at, fromUtc) : undefined,
+          toUtcExclusive ? lt(sale.created_at, toUtcExclusive) : undefined,
+        )).orderBy(desc(sale.created_at))
 
-  if (report === "sales") {
-    let q = supabase
-      .from("sales")
-      .select(`
-        id, created_at, receipt_number, payment_method, total_amount,
-        discount_amount, status,
-        cashier:profiles!cashier_id(full_name),
-        branch:branches!branch_id(name),
-        sale_items(
-          product_name, quantity, unit_price, line_total, discount_percent,
-          product:products!product_id(cost_price),
-          batch:product_batches!batch_id(cost_price)
-        )
-      `)
-      .eq("status", "completed")
-      .order("created_at", { ascending: false })
+      const saleIds = sales.map((s) => s.id)
+      const items = saleIds.length
+        ? await db.select({
+            sale_id: sale_item.sale_id, product_name: sale_item.product_name, quantity: sale_item.quantity,
+            line_total: sale_item.line_total, product_cost: product.cost_price, batch_cost: product_batch.cost_price,
+          }).from(sale_item)
+            .leftJoin(product, eq(product.id, sale_item.product_id))
+            .leftJoin(product_batch, eq(product_batch.id, sale_item.batch_id))
+            .where(inArray(sale_item.sale_id, saleIds))
+        : []
 
-    if (branchId) q = q.eq("branch_id", branchId)
-    else {
-      // fetch all branches for this org
-      const { data: branches } = await supabase
-        .from("branches").select("id").eq("organization_id", profile.organization_id)
-      const ids = (branches ?? []).map((b: { id: string }) => b.id)
-      if (ids.length) q = q.in("branch_id", ids)
+      const itemsBySale: Record<string, typeof items> = {}
+      for (const it of items) {
+        if (!it.sale_id) continue
+        ;(itemsBySale[it.sale_id] ??= []).push(it)
+      }
+
+      const byDay: Record<string, { revenue: number; cash: number; mpesa: number; count: number }> = {}
+      const byCashier: Record<string, { name: string; revenue: number; count: number }> = {}
+      let totalRevenue = 0, totalCash = 0, totalMpesa = 0, totalDiscount = 0, transactionCount = 0
+      const totalSplit = 0
+
+      for (const s of sales) {
+        const amt = Number(s.total_amount), disc = Number(s.discount_amount)
+        const day = toNairobiDate(s.created_at)
+        if (!byDay[day]) byDay[day] = { revenue: 0, cash: 0, mpesa: 0, count: 0 }
+        byDay[day].revenue += amt; byDay[day].count++
+        if (s.payment_method === "cash" || s.payment_method === "split") byDay[day].cash += amt
+        if (s.payment_method === "mpesa" || s.payment_method === "split") byDay[day].mpesa += amt
+
+        const cashierName = s.cashier_name ?? "Unknown"
+        if (!byCashier[cashierName]) byCashier[cashierName] = { name: cashierName, revenue: 0, count: 0 }
+        byCashier[cashierName].revenue += amt; byCashier[cashierName].count++
+
+        totalRevenue += amt; totalDiscount += disc; transactionCount++
+        if (s.payment_method === "cash") totalCash += amt
+        else if (s.payment_method === "mpesa") totalMpesa += amt
+        else if (s.payment_method === "split") { totalCash += amt / 2; totalMpesa += amt / 2 }
+      }
+
+      // Top products with cost & profit. Cost basis: actual batch sold, falling back
+      // to the product's current cost. Profit = revenue (post-discount) − cost.
+      const unitCost = (it: { batch_cost: string | null; product_cost: string | null }): number | null => {
+        if (it.batch_cost != null) return Number(it.batch_cost)
+        return it.product_cost != null ? Number(it.product_cost) : null
+      }
+      const itemTotals: Record<string, { name: string; qty: number; revenue: number; cost: number; profit: number; costKnown: boolean }> = {}
+      let totalCost = 0, totalProfit = 0
+      for (const it of items) {
+        const lt2 = Number(it.line_total)
+        const e = (itemTotals[it.product_name] ??= { name: it.product_name, qty: 0, revenue: 0, cost: 0, profit: 0, costKnown: true })
+        e.qty += it.quantity; e.revenue += lt2
+        const uc = unitCost(it)
+        if (uc == null) e.costKnown = false
+        else { const lineCost = uc * it.quantity; e.cost += lineCost; e.profit += lt2 - lineCost; totalCost += lineCost; totalProfit += lt2 - lineCost }
+      }
+      const topProducts = Object.values(itemTotals).sort((a, b) => b.revenue - a.revenue).slice(0, 10)
+        .map((p) => ({ name: p.name, qty: p.qty, revenue: p.revenue, cost: p.cost, profit: p.profit, margin: p.costKnown && p.revenue > 0 ? p.profit / p.revenue : null }))
+
+      const dailyChart = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({ date, ...v }))
+
+      return NextResponse.json({
+        summary: { totalRevenue, totalCash, totalMpesa, totalSplit, totalDiscount, transactionCount, totalCost, totalProfit },
+        dailyChart,
+        byCashier: Object.values(byCashier).sort((a, b) => b.revenue - a.revenue),
+        topProducts,
+        transactions: sales.slice(0, 100).map((s) => ({
+          id: s.id, receipt_number: s.receipt_number, created_at: s.created_at, payment_method: s.payment_method,
+          total_amount: Number(s.total_amount), discount_amount: Number(s.discount_amount),
+          cashier: s.cashier_name ?? "—", branch: s.branch_name ?? "—", item_count: (itemsBySale[s.id] ?? []).length,
+        })),
+      })
     }
-    if (fromUtc) q = q.gte("created_at", fromUtc)
-    if (toUtcExclusive) q = q.lt("created_at", toUtcExclusive)
 
-    const { data: sales, error } = await q
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (report === "inventory") {
+      const stock = await db.select().from(product_stock)
+        .where(and(eq(product_stock.is_active, true), branchId ? eq(product_stock.branch_id, branchId) : undefined))
+        .orderBy(asc(product_stock.name))
 
-    // Aggregate by Nairobi date
-    const byDay: Record<string, { revenue: number; cash: number; mpesa: number; count: number }> = {}
-    // Aggregate by cashier
-    const byCashier: Record<string, { name: string; revenue: number; count: number }> = {}
-    // Aggregate by payment method
-    let totalRevenue = 0, totalCash = 0, totalMpesa = 0, totalDiscount = 0
-    const totalSplit = 0
-    let transactionCount = 0
-
-    for (const s of sales ?? []) {
-      const day = toNairobiDate(s.created_at)
-      if (!byDay[day]) byDay[day] = { revenue: 0, cash: 0, mpesa: 0, count: 0 }
-      byDay[day].revenue += s.total_amount
-      byDay[day].count++
-      if (s.payment_method === "cash" || s.payment_method === "split") byDay[day].cash += s.total_amount
-      if (s.payment_method === "mpesa" || s.payment_method === "split") byDay[day].mpesa += s.total_amount
-
-      const cashierRow = s.cashier as { full_name: string } | null
-      const cashierName = cashierRow?.full_name ?? "Unknown"
-      const cashierId = String(s.id).slice(0, 8) + cashierName // use name as key
-      if (!byCashier[cashierName]) byCashier[cashierName] = { name: cashierName, revenue: 0, count: 0 }
-      byCashier[cashierName].revenue += s.total_amount
-      byCashier[cashierName].count++
-
-      totalRevenue += s.total_amount
-      totalDiscount += s.discount_amount
-      transactionCount++
-      if (s.payment_method === "cash") totalCash += s.total_amount
-      else if (s.payment_method === "mpesa") totalMpesa += s.total_amount
-      else if (s.payment_method === "split") { totalCash += s.total_amount / 2; totalMpesa += s.total_amount / 2 }
-    }
-
-    // Top products from sale_items — with cost & profit.
-    // Cost basis: the actual batch sold (cost_price), falling back to the
-    // product's current cost_price. Profit = revenue (post-discount) − cost.
-    type SaleItem = {
-      product_name: string; quantity: number; line_total: number; discount_percent: number
-      product: { cost_price: number | null } | { cost_price: number | null }[] | null
-      batch: { cost_price: number | null } | { cost_price: number | null }[] | null
-    }
-    const unwrap = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v)
-    const unitCost = (item: SaleItem): number | null => {
-      const batchCost = unwrap(item.batch)?.cost_price
-      if (batchCost != null) return Number(batchCost)
-      const productCost = unwrap(item.product)?.cost_price
-      return productCost != null ? Number(productCost) : null
-    }
-
-    const itemTotals: Record<string, { name: string; qty: number; revenue: number; cost: number; profit: number; costKnown: boolean }> = {}
-    let totalCost = 0, totalProfit = 0
-    for (const s of sales ?? []) {
-      for (const item of (s.sale_items as SaleItem[] | null) ?? []) {
-        if (!itemTotals[item.product_name]) itemTotals[item.product_name] = { name: item.product_name, qty: 0, revenue: 0, cost: 0, profit: 0, costKnown: true }
-        const entry = itemTotals[item.product_name]!
-        entry.qty += item.quantity
-        entry.revenue += item.line_total
-        const uc = unitCost(item)
-        if (uc == null) {
-          entry.costKnown = false
-        } else {
-          const lineCost = uc * item.quantity
-          entry.cost += lineCost
-          entry.profit += item.line_total - lineCost
-          totalCost += lineCost
-          totalProfit += item.line_total - lineCost
+      const now = Date.now()
+      const num = (v: string | number | null) => (v == null ? null : Number(v))
+      const rows = stock.map((p) => {
+        const days = p.earliest_expiry ? Math.ceil((new Date(p.earliest_expiry).getTime() - now) / 86_400_000) : null
+        return {
+          ...p, selling_price: num(p.selling_price), cost_price: num(p.cost_price), max_discount_percent: num(p.max_discount_percent),
+          expiry_days: days,
+          status: (p.stock_on_hand ?? 0) === 0 ? "out_of_stock"
+            : (p.stock_on_hand ?? 0) <= (p.reorder_level ?? 10) ? "low_stock"
+            : days !== null && days <= 90 ? "expiring" : "ok",
         }
+      })
+
+      return NextResponse.json({
+        summary: {
+          totalSKUs: rows.length,
+          outOfStock: rows.filter((r) => r.status === "out_of_stock").length,
+          lowStock: rows.filter((r) => r.status === "low_stock").length,
+          expiring: rows.filter((r) => r.status === "expiring").length,
+          controlled: rows.filter((r) => r.is_controlled).length,
+        },
+        items: rows,
+      })
+    }
+
+    if (report === "financial") {
+      const sales = await db.select({
+        id: sale.id, total_amount: sale.total_amount, discount_amount: sale.discount_amount,
+        payment_method: sale.payment_method, created_at: sale.created_at,
+      }).from(sale).where(and(
+        eq(sale.status, "completed"),
+        branchId ? eq(sale.branch_id, branchId) : undefined,
+        fromUtc ? gte(sale.created_at, fromUtc) : undefined,
+        toUtcExclusive ? lt(sale.created_at, toUtcExclusive) : undefined,
+      ))
+
+      const saleIds = sales.map((s) => s.id)
+      const items = saleIds.length
+        ? await db.select({
+            sale_id: sale_item.sale_id, quantity: sale_item.quantity, line_total: sale_item.line_total,
+            product_cost: product.cost_price, batch_cost: product_batch.cost_price,
+          }).from(sale_item)
+            .leftJoin(product, eq(product.id, sale_item.product_id))
+            .leftJoin(product_batch, eq(product_batch.id, sale_item.batch_id))
+            .where(inArray(sale_item.sale_id, saleIds))
+        : []
+
+      const profitBySale: Record<string, number> = {}
+      for (const it of items) {
+        if (!it.sale_id) continue
+        const cost = it.batch_cost ?? it.product_cost
+        const lineProfit = cost == null ? 0 : Number(it.line_total) - Number(cost) * it.quantity
+        profitBySale[it.sale_id] = (profitBySale[it.sale_id] ?? 0) + lineProfit
       }
-    }
-    const topProducts = Object.values(itemTotals)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 10)
-      .map(p => ({
-        name: p.name,
-        qty: p.qty,
-        revenue: p.revenue,
-        cost: p.cost,
-        profit: p.profit,
-        // null margin signals "cost not recorded for some units"
-        margin: p.costKnown && p.revenue > 0 ? p.profit / p.revenue : null,
-      }))
 
-    const dailyChart = Object.entries(byDay)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, v]) => ({ date, ...v }))
-
-    return NextResponse.json({
-      summary: { totalRevenue, totalCash, totalMpesa, totalSplit, totalDiscount, transactionCount, totalCost, totalProfit },
-      dailyChart,
-      byCashier: Object.values(byCashier).sort((a, b) => b.revenue - a.revenue),
-      topProducts,
-      transactions: (sales ?? []).slice(0, 100).map(s => ({
-        id: s.id,
-        receipt_number: s.receipt_number,
-        created_at: s.created_at,
-        payment_method: s.payment_method,
-        total_amount: s.total_amount,
-        discount_amount: s.discount_amount,
-        cashier: (s.cashier as { full_name: string } | null)?.full_name ?? "—",
-        branch: (s.branch as { name: string } | null)?.name ?? "—",
-        item_count: ((s.sale_items as unknown[]) ?? []).length,
-      })),
-    })
-  }
-
-  if (report === "inventory") {
-    // Fetch all org branches if no specific branchId
-    let branchIds: string[] = []
-    if (branchId) {
-      branchIds = [branchId]
-    } else {
-      const { data: branches } = await supabase
-        .from("branches").select("id").eq("organization_id", profile.organization_id)
-      branchIds = (branches ?? []).map((b: { id: string }) => b.id)
-    }
-
-    const { data: stock, error } = await supabase
-      .from("product_stock")
-      .select("*")
-      .eq("organization_id", profile.organization_id)
-      .in("branch_id", branchIds)
-      .order("name", { ascending: true })
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    const now = Date.now()
-    const rows = (stock ?? []).map(p => {
-      const days = p.earliest_expiry
-        ? Math.ceil((new Date(p.earliest_expiry).getTime() - now) / 86_400_000)
-        : null
-      return {
-        ...p,
-        expiry_days: days,
-        status: (p.stock_on_hand ?? 0) === 0 ? "out_of_stock"
-          : (p.stock_on_hand ?? 0) <= (p.reorder_level ?? 10) ? "low_stock"
-          : days !== null && days <= 90 ? "expiring"
-          : "ok",
+      let totalRevenue = 0, totalDiscounts = 0, transactions = 0, totalProfit = 0
+      const monthlyMap: Record<string, { revenue: number; discounts: number; count: number; profit: number }> = {}
+      for (const s of sales) {
+        const amt = Number(s.total_amount), disc = Number(s.discount_amount)
+        totalRevenue += amt; totalDiscounts += disc; transactions++
+        const saleProfit = profitBySale[s.id] ?? 0
+        totalProfit += saleProfit
+        const month = toNairobiDate(s.created_at).slice(0, 7)
+        if (!monthlyMap[month]) monthlyMap[month] = { revenue: 0, discounts: 0, count: 0, profit: 0 }
+        monthlyMap[month].revenue += amt; monthlyMap[month].discounts += disc; monthlyMap[month].profit += saleProfit; monthlyMap[month].count++
       }
-    })
 
-    const totalSKUs = rows.length
-    const outOfStock = rows.filter(r => r.status === "out_of_stock").length
-    const lowStock = rows.filter(r => r.status === "low_stock").length
-    const expiring = rows.filter(r => r.status === "expiring").length
-    const controlled = rows.filter(r => r.is_controlled).length
-
-    return NextResponse.json({
-      summary: { totalSKUs, outOfStock, lowStock, expiring, controlled },
-      items: rows,
-    })
-  }
-
-  if (report === "financial") {
-    let q = supabase
-      .from("sales")
-      .select(`
-        total_amount, discount_amount, payment_method, created_at,
-        sale_items(
-          line_total, unit_price, quantity, product_name,
-          product:products!product_id(cost_price),
-          batch:product_batches!batch_id(cost_price)
-        )
-      `)
-      .eq("status", "completed")
-
-    if (branchId) q = q.eq("branch_id", branchId)
-    else {
-      const { data: branches } = await supabase
-        .from("branches").select("id").eq("organization_id", profile.organization_id)
-      const ids = (branches ?? []).map((b: { id: string }) => b.id)
-      if (ids.length) q = q.in("branch_id", ids)
-    }
-    if (fromUtc) q = q.gte("created_at", fromUtc)
-    if (toUtcExclusive) q = q.lt("created_at", toUtcExclusive)
-
-    const { data: sales, error } = await q
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    type FinItem = {
-      line_total: number; quantity: number
-      product: { cost_price: number | null } | { cost_price: number | null }[] | null
-      batch: { cost_price: number | null } | { cost_price: number | null }[] | null
-    }
-    const unwrap = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v)
-    const lineProfit = (item: FinItem): number => {
-      const cost = unwrap(item.batch)?.cost_price ?? unwrap(item.product)?.cost_price
-      if (cost == null) return 0 // unknown cost contributes no profit
-      return item.line_total - Number(cost) * item.quantity
+      return NextResponse.json({
+        summary: { totalRevenue, totalDiscounts, transactions, avgOrderValue: transactions > 0 ? totalRevenue / transactions : 0, totalProfit },
+        monthlyChart: Object.entries(monthlyMap).sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({ month, ...v })),
+      })
     }
 
-    let totalRevenue = 0, totalDiscounts = 0, transactions = 0, totalProfit = 0
-    const monthlyMap: Record<string, { revenue: number; discounts: number; count: number; profit: number }> = {}
-
-    for (const s of sales ?? []) {
-      totalRevenue += s.total_amount
-      totalDiscounts += s.discount_amount
-      transactions++
-      const saleProfit = ((s.sale_items as FinItem[] | null) ?? []).reduce((sum, it) => sum + lineProfit(it), 0)
-      totalProfit += saleProfit
-      const month = toNairobiDate(s.created_at).slice(0, 7) // YYYY-MM
-      if (!monthlyMap[month]) monthlyMap[month] = { revenue: 0, discounts: 0, count: 0, profit: 0 }
-      monthlyMap[month].revenue += s.total_amount
-      monthlyMap[month].discounts += s.discount_amount
-      monthlyMap[month].profit += saleProfit
-      monthlyMap[month].count++
-    }
-
-    const avgOrderValue = transactions > 0 ? totalRevenue / transactions : 0
-    const monthlyChart = Object.entries(monthlyMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, v]) => ({ month, ...v }))
-
-    return NextResponse.json({
-      summary: { totalRevenue, totalDiscounts, transactions, avgOrderValue, totalProfit },
-      monthlyChart,
-    })
-  }
-
-  return NextResponse.json({ error: "Unknown report type" }, { status: 400 })
+    return NextResponse.json({ error: "Unknown report type" }, { status: 400 })
+  })
 }
