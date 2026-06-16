@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { eq } from "drizzle-orm"
+import { withTenant, product_pack_size } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { serializePackSize } from "@/lib/products/packsize"
 
+// is_active/barcode are no longer columns — accepted for backward compat, ignored.
 const updateSchema = z.object({
   pack_label: z.string().min(1).optional(),
   units_per_pack: z.number().int().positive().optional(),
@@ -10,54 +14,43 @@ const updateSchema = z.object({
   is_active: z.boolean().optional(),
 })
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string; sizeId: string }> },
-) {
-  const { sizeId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles").select("role").eq("id", user.id).single()
-  if (!["owner", "manager", "pharmacist"].includes(profile?.role ?? "")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-
-  const body = (await request.json()) as unknown
-  const parsed = updateSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
-  }
-
-  const { data, error } = await supabase
-    .from("product_pack_sizes")
-    .update(parsed.data)
-    .eq("id", sizeId)
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ packSize: data })
+function canWrite(role: Role) {
+  return (["owner", "manager", "pharmacist"] as Role[]).includes(role)
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string; sizeId: string }> },
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string; sizeId: string }> }) {
   const { sizeId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!canWrite(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const { data: profile } = await supabase
-    .from("profiles").select("role").eq("id", user.id).single()
-  if (!["owner", "manager", "pharmacist"].includes(profile?.role ?? "")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
+  const parsed = updateSchema.safeParse(await request.json())
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
-  const { error } = await supabase.from("product_pack_sizes").delete().eq("id", sizeId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const set: Partial<typeof product_pack_size.$inferInsert> = {}
+  if (parsed.data.pack_label !== undefined) set.label = parsed.data.pack_label
+  if (parsed.data.units_per_pack !== undefined) set.unit_count = parsed.data.units_per_pack
+  if (parsed.data.selling_price !== undefined) set.selling_price = String(parsed.data.selling_price)
+
+  const out = await withTenant(ctx.organizationId, async (db) => {
+    if (Object.keys(set).length === 0) {
+      const [row] = await db.select().from(product_pack_size).where(eq(product_pack_size.id, sizeId)).limit(1)
+      if (!row) return { status: 404 as const, body: { error: "Pack size not found" } }
+      return { status: 200 as const, body: { packSize: serializePackSize(row) } }
+    }
+    const [row] = await db.update(product_pack_size).set(set).where(eq(product_pack_size.id, sizeId)).returning()
+    if (!row) return { status: 404 as const, body: { error: "Pack size not found" } }
+    return { status: 200 as const, body: { packSize: serializePackSize(row) } }
+  })
+  return NextResponse.json(out.body, { status: out.status })
+}
+
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string; sizeId: string }> }) {
+  const { sizeId } = await params
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!canWrite(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+  await withTenant(ctx.organizationId, (db) => db.delete(product_pack_size).where(eq(product_pack_size.id, sizeId)))
   return NextResponse.json({ success: true })
 }

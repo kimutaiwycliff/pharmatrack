@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { and, asc, eq } from "drizzle-orm"
+import { withTenant, product, product_pack_size } from "@pharmatrack/db"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
+import { serializePackSize } from "@/lib/products/packsize"
 import { redis } from "@/lib/redis"
 
 const updateSchema = z.object({
@@ -11,7 +14,7 @@ const updateSchema = z.object({
   gtin: z.string().nullable().optional(),
   barcode_raw: z.string().nullable().optional(),
   strength: z.string().nullable().optional(),
-  dosage_form: z.string().optional(),
+  dosage_form: z.string().nullable().optional(),
   category_id: zUuid().nullable().optional(),
   supplier_id: zUuid().nullable().optional(),
   base_unit: z.string().min(1).optional(),
@@ -20,7 +23,6 @@ const updateSchema = z.object({
   cost_price: z.number().nonnegative().nullable().optional(),
   selling_price: z.number().positive().optional(),
   reorder_level: z.number().int().nonnegative().optional(),
-  reorder_quantity: z.number().int().positive().optional(),
   is_controlled: z.boolean().optional(),
   requires_prescription: z.boolean().optional(),
   image_url: z.string().nullable().optional(),
@@ -28,85 +30,55 @@ const updateSchema = z.object({
   is_active: z.boolean().optional(),
 })
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from("profiles").select("organization_id").eq("id", user.id).single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-
-  const { data: product, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("id", id)
-    .eq("organization_id", profile.organization_id)
-    .single()
-
-  if (error || !product) return NextResponse.json({ error: "Product not found" }, { status: 404 })
-
-  const { data: packSizes } = await supabase
-    .from("product_pack_sizes")
-    .select("*")
-    .eq("product_id", id)
-    .order("units_per_pack", { ascending: true })
-
-  return NextResponse.json({ product, packSizes: packSizes ?? [] })
+const num = (v: string | number | null) => (v == null ? null : Number(v))
+function serialize(p: typeof product.$inferSelect) {
+  return { ...p, selling_price: num(p.selling_price), cost_price: num(p.cost_price), max_discount_percent: num(p.max_discount_percent) }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { data: profile } = await supabase
-    .from("profiles").select("organization_id, role").eq("id", user.id).single()
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  return withTenant(ctx.organizationId, async (db) => {
+    const [p] = await db.select().from(product).where(eq(product.id, id)).limit(1)
+    if (!p) return NextResponse.json({ error: "Product not found" }, { status: 404 })
+    const packSizes = await db.select().from(product_pack_size)
+      .where(eq(product_pack_size.product_id, id)).orderBy(asc(product_pack_size.unit_count))
+    return NextResponse.json({ product: serialize(p), packSizes: packSizes.map(serializePackSize) })
+  })
+}
 
-  if (!["owner", "manager", "pharmacist"].includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const body = (await request.json()) as unknown
-  const parsed = updateSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
-  }
+  const parsed = updateSchema.safeParse(await request.json())
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
-  const { data: existing } = await supabase
-    .from("products").select("organization_id, gtin, barcode_raw").eq("id", id).single()
-  if (!existing || existing.organization_id !== profile.organization_id) {
-    return NextResponse.json({ error: "Product not found" }, { status: 404 })
-  }
+  const out = await withTenant(ctx.organizationId, async (db) => {
+    const [existing] = await db.select({ gtin: product.gtin, barcode_raw: product.barcode_raw }).from(product).where(eq(product.id, id)).limit(1)
+    if (!existing) return { status: 404 as const, body: { error: "Product not found" } }
 
-  const { data: product, error } = await supabase
-    .from("products")
-    .update({ ...parsed.data, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single()
+    const { cost_price, selling_price, max_discount_percent, ...rest } = parsed.data
+    const [updated] = await db.update(product).set({
+      ...rest,
+      ...(cost_price !== undefined && { cost_price: cost_price == null ? null : String(cost_price) }),
+      ...(selling_price !== undefined && { selling_price: String(selling_price) }),
+      ...(max_discount_percent !== undefined && { max_discount_percent: max_discount_percent == null ? null : String(max_discount_percent) }),
+      updated_at: new Date(),
+    }).where(and(eq(product.id, id), eq(product.organization_id, ctx.organizationId))).returning()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return { status: 200 as const, body: { product: serialize(updated!) }, gtin: parsed.data.gtin ?? existing.gtin, raw: parsed.data.barcode_raw ?? existing.barcode_raw }
+  })
 
-  // Invalidate Redis cache
-  if (redis) {
+  if (out.status === 200 && redis) {
     try {
-      const orgId = profile.organization_id
-      const gtin = parsed.data.gtin ?? existing.gtin
-      const raw = parsed.data.barcode_raw ?? existing.barcode_raw
-      if (gtin) await redis.del(`product:${orgId}:${gtin}`)
-      if (raw) await redis.del(`product:${orgId}:${raw}`)
+      if (out.gtin) await redis.del(`product:${ctx.organizationId}:${out.gtin}`)
+      if (out.raw) await redis.del(`product:${ctx.organizationId}:${out.raw}`)
     } catch {}
   }
-
-  return NextResponse.json({ product })
+  return NextResponse.json(out.body, { status: out.status })
 }
