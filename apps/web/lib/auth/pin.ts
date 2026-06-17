@@ -17,7 +17,12 @@ export function validatePin(raw: unknown): PinValidation {
   return { ok: true, pin }
 }
 
-/** bcrypt hash for storage in profiles.pin_hash (same cost factor as passwords elsewhere). */
+/** bcrypt hash for storage in staff_profile.pin_hash (same cost factor as passwords elsewhere). */
 export async function hashPin(pin: string): Promise<string> {
   return bcrypt.hash(pin, 10)
+}
+
+/** Compare a raw PIN against a stored bcrypt hash. */
+export async function verifyPin(pin: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(pin, hash)
 }

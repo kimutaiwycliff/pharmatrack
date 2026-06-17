@@ -3,6 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { organization, admin } from "better-auth/plugins"
 import { dbAdmin, user, session, account, verification, organization as organizationTable, member, invitation } from "@pharmatrack/db"
 import { sendEmail } from "@/lib/notifications/email"
+import { pinLogin } from "@/lib/auth/pin-plugin"
 
 // ADR-002 — Better Auth owns identity; the `organization` plugin models tenants
 // (orgs = tenants), `admin` plugin gates platform operators. PIN login is a
@@ -51,6 +52,7 @@ export const auth = betterAuth({
       },
     }),
     admin(),
+    pinLogin(),
   ],
 })
 

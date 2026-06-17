@@ -8,8 +8,10 @@ POSTGRES_DB ?= pharmatrack
 # dbmate connects as app_owner (owns objects → migrations bypass RLS).
 DBMATE_URL := postgres://app_owner:$(APP_OWNER_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
 
+STANDALONE := apps/web/.next/standalone/apps/web
+
 .DEFAULT_GOAL := help
-.PHONY: help up up-app down logs db-migrate db-rollback db-shell test-rls typecheck lint build clean
+.PHONY: help up up-app down logs db-migrate db-rollback db-shell test-rls typecheck lint build build-web start-web clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n",$$1,$$2}'
@@ -52,6 +54,16 @@ lint: ## Lint
 
 build: ## Build all
 	pnpm build
+
+build-web: ## Production build of the web app (Next standalone output)
+	NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter web build
+
+start-web: ## Run the production standalone server locally (assembles assets, loads .env)
+	@test -f $(STANDALONE)/server.js || { echo "No standalone build — run 'make build-web' first"; exit 1; }
+	@mkdir -p $(STANDALONE)/.next
+	rm -rf $(STANDALONE)/.next/static && cp -r apps/web/.next/static $(STANDALONE)/.next/static
+	@[ -d apps/web/public ] && { rm -rf $(STANDALONE)/public && cp -r apps/web/public $(STANDALONE)/public; } || true
+	set -a; [ -f .env ] && . ./.env; set +a; node $(STANDALONE)/server.js
 
 clean: ## Stop and wipe all data volumes
 	$(COMPOSE) down -v

@@ -13,6 +13,8 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [phone, setPhone] = useState("")
+  const [pin, setPin] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -27,6 +29,25 @@ export function LoginForm() {
       return
     }
     // Session cookie set; root routes by role.
+    window.location.href = "/"
+  }
+
+  async function onPinSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setPending(true)
+    // Custom Better Auth endpoint (lib/auth/pin-plugin); sets the same session cookie.
+    const res = await fetch("/api/auth/sign-in/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, pin }),
+    })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { message?: string }
+      setError(body.message ?? "Invalid phone or PIN")
+      setPending(false)
+      return
+    }
     window.location.href = "/"
   }
 
@@ -87,9 +108,28 @@ export function LoginForm() {
             </Button>
           </form>
         ) : (
-          <p className="text-sm text-[var(--pt-text-secondary)] bg-[var(--pt-muted)] rounded-lg px-4 py-6 text-center">
-            Quick PIN login is being migrated to the new auth system and will be back shortly. Use email login for now.
-          </p>
+          <form onSubmit={onPinSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="phone" className="text-sm font-medium">Phone</Label>
+              <Input id="phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phone}
+                onChange={(e) => setPhone(e.target.value)} placeholder="0712 345 678" className="mt-1.5 h-11" required />
+            </div>
+            <div>
+              <Label htmlFor="pin" className="text-sm font-medium mb-1.5 block">PIN</Label>
+              <Input id="pin" name="pin" type="password" inputMode="numeric" autoComplete="off" maxLength={4}
+                value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="••••"
+                className="h-11 tracking-[0.5em] text-center text-lg" required />
+            </div>
+
+            {error && (
+              <p className="text-sm text-[var(--pt-red)] bg-[var(--pt-red-50)] px-3 py-2 rounded-lg">{error}</p>
+            )}
+
+            <Button type="submit" disabled={pending || pin.length < 4 || !phone}
+              className="w-full h-11 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white font-semibold mt-2">
+              {pending ? "Signing in…" : "Sign in with PIN"}
+            </Button>
+          </form>
         )}
       </div>
 
