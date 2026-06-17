@@ -146,14 +146,20 @@ pnpm install
 
 ### 2. Configure environment
 ```bash
-cp .env.example .env       # fill in secrets (see Environment variables)
+cp .env.example .env
 ```
+The DB / Redis / MinIO defaults already work for local dev (they point at the host
+ports the compose stack publishes — Postgres `55432`, Redis `56379`, MinIO `9000`).
+The only values you must set:
+- `BETTER_AUTH_SECRET` → any random 32+ character string
+- `CRON_SECRET` → any random string
+- *(optional)* `RESEND_API_KEY` + `EMAIL_FROM` → only if you want invite/reset emails to actually send
 
 ### 3. Bring up the data plane + apply migrations
 ```bash
-make up           # postgres + redis + minio
-make db-migrate   # dbmate applies infra/migrations/*.sql as app_owner
-make test-rls     # (optional) prove two-org tenant isolation
+make up           # starts postgres + redis + minio (Docker)
+make db-migrate   # applies infra/migrations 001–007: schema + RLS + seeds (plans + ~95 KEML drug catalog)
+make test-rls     # optional — proves two-org tenant isolation
 ```
 
 ### 4. Run the app
@@ -161,9 +167,44 @@ make test-rls     # (optional) prove two-org tenant isolation
 pnpm dev          # http://localhost:3000
 ```
 
-First run? Hit `/setup` to create the platform (operator) admin, then provision a tenant from `/platform`.
+Open **http://localhost:3000** → you're redirected to **`/setup`** to create the
+platform (operator) admin (email + password). You land in **`/platform`**, where you
+**provision a pharmacy** (org + branch + 14-day trial + default services + owner).
 
-> **Note:** the dev server runs with Webpack and a bounded heap. This is intentional — Next 16's default Turbopack dev watcher can exhaust memory on low-RAM machines. Production builds are unaffected.
+> **Note:** the dev server runs with Webpack and a bounded heap — intentional, so
+> Next 16's Turbopack dev watcher can't exhaust memory on low-RAM machines.
+> Production builds are unaffected.
+
+### 5. Log in as the pharmacy owner
+Provisioning emails the owner a "set your password" link, so:
+- **With Resend configured** — the email arrives; the owner opens `/auth/set-password?token=…`, sets a password, and signs in.
+- **Pure local (no email)** — read the reset token straight from the DB and set the password:
+  ```bash
+  TOKEN=$(docker exec pharmatrack-postgres-1 psql -U app_owner -d pharmatrack -tAc \
+    'select identifier from verification order by "createdAt" desc limit 1;' | sed 's/reset-password://')
+  curl -s -X POST http://localhost:3000/api/auth/reset-password \
+    -H 'Content-Type: application/json' \
+    -d "{\"newPassword\":\"owner-pass-123\",\"token\":\"$TOKEN\"}"
+  ```
+  Then sign in at `/login` with the owner's email + that password. (You can also set a
+  phone + 4-digit PIN in **Settings → Profile** and use the **Quick PIN Login** tab.)
+
+### 6. (Optional) product image uploads
+Image upload needs a MinIO bucket — everything else works without it:
+```bash
+docker run --rm --network pharmatrack_default --entrypoint sh minio/mc -c "\
+  mc alias set m http://minio:9000 minioadmin minioadmin && \
+  mc mb -p m/pharmatrack-products && mc anonymous set download m/pharmatrack-products"
+```
+
+### Handy commands
+| Command | Does |
+|---|---|
+| `make down` | stop the stack |
+| `make clean` | stop **and wipe** data volumes (fresh start) |
+| `make logs` | follow container logs |
+| `make db-shell` | psql into the database |
+| `make build-web && make start-web` | run the **production** standalone server locally (service worker registers) |
 
 ---
 
