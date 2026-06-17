@@ -2,8 +2,8 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 // ADR-004 — self-hosted MinIO (S3-compatible) for product images + backups.
-// Replaces Supabase Storage. Uploads go via a presigned PUT issued server-side;
-// the object key is stored on the product and served from the public bucket URL.
+// Uploads go via a presigned PUT issued server-side; the object key is stored on
+// the product and served from the public bucket URL.
 
 let _client: S3Client | null = null
 function client(): S3Client {

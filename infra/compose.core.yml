@@ -1,6 +1,5 @@
 # PharmaTrack core stack (self-hosted). Data plane (postgres/redis/minio) runs by
-# default; the app + worker + caddy are under the `app` profile (enable after the
-# Supabase→Postgres cutover is complete). Use via the Makefile (`make up`).
+# default; the app + worker are under the `app` profile. Use via the Makefile.
 #
 #   make up          # postgres + redis + minio
 #   make db-migrate  # dbmate up (as app_owner)

@@ -1,18 +1,8 @@
 # Reverse proxy for PharmaTrack with automatic HTTPS.
-# APP_DOMAIN / SUPABASE_DOMAIN are read from the root .env.
-# Point A records for both at this VM, then `docker compose up -d`.
+# APP_DOMAIN is read from the root .env. Point an A record at this VM, then
+# bring the stack up (web service listens on :3000).
 
 {$APP_DOMAIN} {
 	encode gzip
 	reverse_proxy web:3000
-}
-
-# Supabase API gateway (Kong from the self-hosted Supabase stack).
-# The default keeps Caddy from crashing when SUPABASE_DOMAIN is unset; set the
-# real domain in .env to activate it. Requires Caddy to share a network with the
-# Supabase containers so `kong` resolves — see DEPLOYMENT.md. Remove this block
-# if Supabase terminates its own TLS.
-{$SUPABASE_DOMAIN:supabase.localhost} {
-	encode gzip
-	reverse_proxy kong:8000
 }

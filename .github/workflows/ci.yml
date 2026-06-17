@@ -41,7 +41,5 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
           NODE_OPTIONS: --max-old-space-size=4096
-          # Build-time placeholders; real values are injected at deploy time.
-          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          # Build-time placeholder; real value is injected at deploy time.
           NEXT_PUBLIC_APP_URL: http://localhost:3000

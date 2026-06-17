@@ -4,7 +4,6 @@
 **/.turbo
 **/dist
 **/.env*
-!**/.env.local.example
 **/*.log
 .vscode
 .claude
@@ -14,4 +13,3 @@ docs
 **/*.spec.*
 Dockerfile
 .dockerignore
-docker-compose*.yml

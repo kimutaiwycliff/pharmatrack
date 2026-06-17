@@ -1,9 +1,9 @@
 -- migrate:up
 -- ============================================================================
--- ADR-001 — De-Supabase RLS cutover: dual roles + GUC-based tenancy helpers.
+-- ADR-001 — RLS via dual roles + GUC-based tenancy helpers.
 --
--- Replaces Supabase's `auth.uid()`-based tenancy with request-scoped GUCs set by
--- packages/db `withTenant()`:  app.organization_id / app.role / app.branch_id.
+-- Tenancy is request-scoped through GUCs set by packages/db `withTenant()`:
+-- app.organization_id / app.role / app.branch_id (read by the helpers below).
 --
 -- Roles (passwords come from the DB init / env, NOT this migration):
 --   app_owner          owns objects → bypasses RLS (migrations, seed, platform).

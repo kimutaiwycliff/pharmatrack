@@ -7,7 +7,7 @@ import { auth } from "./server"
 export type Role = "owner" | "manager" | "pharmacist" | "cashier"
 const RANK: Record<Role, number> = { owner: 4, manager: 3, pharmacist: 2, cashier: 1 }
 
-/** Current Better Auth session (or null). Replaces supabase.auth.getUser(). */
+/** Current Better Auth session (or null). */
 export async function getSession() {
   return auth.api.getSession({ headers: await headers() })
 }

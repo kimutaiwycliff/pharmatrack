@@ -1,4 +1,5 @@
-// Domain types for PharmaTrack — kept in sync with supabase/migrations/001_initial_schema.sql
+// Domain types for PharmaTrack — kept in sync with the Drizzle schema in
+// packages/db (infra/migrations/*.sql).
 
 export type UserRole = "owner" | "manager" | "pharmacist" | "cashier"
 export type PaymentMethod = "cash" | "mpesa" | "split"

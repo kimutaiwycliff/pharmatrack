@@ -1,47 +1,10 @@
--- ============================================================
--- DRUG CATALOG (shared reference data)
--- ============================================================
--- A global, cross-tenant list of common products sold in Kenyan
--- pharmacies. Onboarding becomes "search → pick → set qty + price"
--- instead of typing every field for every SKU. It carries identity
--- only (name/strength/form/unit/regulatory flags) — pricing, packs and
--- stock stay org-specific and are set when a product is created from it.
+-- migrate:up
+-- KEML drug catalog seed (~95 common Kenyan pharmacy products): a global,
+-- cross-tenant reference list powering the "Load Kenyan drug catalog"
+-- onboarding flow. Identity only — pricing/packs/stock stay org-specific.
+-- Ported from the original Supabase migration; idempotent via ON CONFLICT.
 
-CREATE TABLE IF NOT EXISTS public.drug_catalog (
-  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name                  text NOT NULL,
-  brand_name            text,
-  manufacturer          text,
-  gtin                  text,
-  strength              text,
-  dosage_form           text,
-  base_unit             text NOT NULL DEFAULT 'tablet',
-  pack_label            text,
-  units_per_pack        integer NOT NULL DEFAULT 1,
-  is_controlled         boolean NOT NULL DEFAULT false,
-  requires_prescription boolean NOT NULL DEFAULT false,
-  created_at            timestamptz NOT NULL DEFAULT now(),
-  -- Treat NULL strength/form as equal so the same molecule isn't seeded twice.
-  CONSTRAINT uq_drug_catalog_identity UNIQUE NULLS NOT DISTINCT (name, strength, dosage_form)
-);
-
-CREATE INDEX IF NOT EXISTS idx_drug_catalog_name_trgm
-  ON public.drug_catalog USING gin (to_tsvector('simple', name));
-CREATE INDEX IF NOT EXISTS idx_drug_catalog_gtin
-  ON public.drug_catalog (gtin) WHERE gtin IS NOT NULL;
-
-ALTER TABLE public.drug_catalog ENABLE ROW LEVEL SECURITY;
-
--- Reference data: any signed-in user may read it. Writes are service-role
--- only (curated centrally), so there is no insert/update/delete policy.
-DROP POLICY IF EXISTS "drug_catalog_select" ON public.drug_catalog;
-CREATE POLICY "drug_catalog_select" ON public.drug_catalog
-  FOR SELECT TO authenticated USING (true);
-
--- ------------------------------------------------------------
--- Seed: common Kenyan pharmacy products
--- ------------------------------------------------------------
-INSERT INTO public.drug_catalog
+INSERT INTO drug_catalog
   (name, strength, dosage_form, base_unit, is_controlled, requires_prescription)
 VALUES
   -- Analgesics / antipyretics / NSAIDs
@@ -153,3 +116,6 @@ VALUES
   ('Glucose Test Strips', NULL, 'Strip', 'piece', false, false),
   ('Face Mask (Surgical)', NULL, 'Unit', 'piece', false, false)
 ON CONFLICT (name, strength, dosage_form) DO NOTHING;
+
+-- migrate:down
+DELETE FROM drug_catalog;

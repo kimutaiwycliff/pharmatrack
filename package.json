@@ -6,13 +6,9 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
-    "start": "pnpm --filter web start",
-    "seed": "tsx supabase/seed/run-seed.ts"
+    "start": "pnpm --filter web start"
   },
   "devDependencies": {
-    "@supabase/supabase-js": "^2.105.3",
-    "@types/bcryptjs": "^3.0.0",
-    "bcryptjs": "^3.0.3",
     "tsx": "^4.21.0"
   }
 }

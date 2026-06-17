@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm"
 import { appointment, customer, user, type DrizzleDB } from "@pharmatrack/db"
 
-// Column set mirroring the old nested supabase SELECT: appointment row + a small
-// customer object + the assignee (pharmacist) name.
+// Shapes an appointment for the API: the row + a small customer object + the
+// assignee (pharmacist) name, matching what the UI expects.
 export const apptCols = {
   appt: appointment,
   c_id: customer.id, c_name: customer.full_name, c_phone: customer.phone, c_email: customer.email, c_opt: customer.reminders_opt_in,
