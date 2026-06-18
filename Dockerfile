@@ -13,13 +13,17 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/db/package.json packages/db/package.json
+COPY packages/core/package.json packages/core/package.json
 COPY packages/types/package.json packages/types/package.json
 RUN pnpm install --frozen-lockfile
 
 # ── Build ────────────────────────────────────────────────────
 FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+# Bring the entire installed tree (root + every workspace package's node_modules,
+# incl. pnpm symlinks under .pnpm). Cherry-picking individual node_modules dirs
+# misses packages/{db,core,types}, breaking their drizzle-orm/postgres imports.
+COPY --from=deps /app ./
+# Overlay source; node_modules is .dockerignore'd so the installed deps survive.
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # NEXT_PUBLIC_* are inlined into the browser bundle at BUILD time, so they must
@@ -28,6 +32,16 @@ ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_GLITCHTIP_DSN
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
     NEXT_PUBLIC_GLITCHTIP_DSN=$NEXT_PUBLIC_GLITCHTIP_DSN
+# Build-only placeholders. next build's "collect page data" step imports route
+# modules, some of which construct the DB client / Better Auth at module top
+# level (auth/server.ts calls dbAdmin()). postgres-js connects lazily, so a dummy
+# URL lets module evaluation succeed without a real DB. These ENV live only in
+# this builder stage (the runner is a separate FROM); real values come from the
+# runtime env_file.
+ENV DATABASE_URL=postgres://build:build@127.0.0.1:5432/build \
+    DATABASE_AUTHENTICATED_URL=postgres://build:build@127.0.0.1:5432/build \
+    BETTER_AUTH_SECRET=build-time-placeholder-secret-change-me-0123456789 \
+    BETTER_AUTH_URL=http://localhost:3000
 # Bound heap so the build is predictable on small build hosts.
 RUN NODE_OPTIONS=--max-old-space-size=3072 pnpm --filter web build
 
