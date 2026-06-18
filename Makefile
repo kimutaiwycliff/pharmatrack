@@ -11,7 +11,7 @@ DBMATE_URL := postgres://app_owner:$(APP_OWNER_PASSWORD)@postgres:5432/$(POSTGRE
 STANDALONE := apps/web/.next/standalone/apps/web
 
 .DEFAULT_GOAL := help
-.PHONY: help up up-app down logs db-migrate db-rollback db-shell test-rls typecheck lint build build-web start-web clean
+.PHONY: help up up-app up-prod down logs db-migrate db-rollback db-shell test-rls typecheck lint build build-web start-web clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n",$$1,$$2}'
@@ -19,8 +19,14 @@ help: ## List targets
 up: ## Start the data plane (postgres, redis, minio)
 	$(COMPOSE) up -d postgres redis minio
 
-up-app: ## Start everything incl. web + worker (after cutover)
-	$(COMPOSE) --profile app up -d --build
+# --env-file makes root .env the interpolation source so NEXT_PUBLIC_* build args
+# are inlined into the browser bundle. Without it Compose looks beside the compose
+# file (infra/) and the args resolve blank. Both targets need .env to run anyway.
+up-app: ## Local mirror: build + start web + worker (http://localhost:3000, no TLS)
+	$(COMPOSE) --env-file .env --profile app up -d --build
+
+up-prod: ## Production: build + start web + worker behind Caddy (TLS for $$APP_DOMAIN)
+	$(COMPOSE) --env-file .env --profile app --profile edge up -d --build
 
 down: ## Stop all services
 	$(COMPOSE) down

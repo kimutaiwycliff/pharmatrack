@@ -1,10 +1,11 @@
 # PharmaTrack — single-VM deployment (self-hosted)
 
 Everything runs on one VM via Docker Compose: **PostgreSQL 16** (RLS, two roles),
-**Redis** (cache + BullMQ), **MinIO** (object storage), the **Next.js app**
-(standalone), a **BullMQ worker**, and **Caddy** (automatic HTTPS). TLS is
-mandatory — the offline PWA service worker, the camera barcode scanner, and
-M‑Pesa callbacks all require HTTPS.
+**Redis** (cache), **MinIO** (object storage), the **Next.js app** (standalone),
+a small **worker** (a dependency-free scheduler that drives the appointment-reminder
+cron; the future home for queue jobs), and **Caddy** (automatic HTTPS). TLS is
+mandatory in production — the offline PWA service worker, the camera barcode
+scanner, and M‑Pesa callbacks all require HTTPS.
 
 ```
                     ┌──────────────── VM ────────────────┐
@@ -18,32 +19,83 @@ The whole stack is driven by `make` (see the [Makefile](Makefile)) and `dbmate`
 migrations in `infra/migrations/`. There is no external backend service — no
 cloud database, no managed auth.
 
+The same compose file (`infra/compose.core.yml`) drives every environment via
+profiles, so a local mirror and the VM are the **same containers**:
+
+| Command | Brings up | TLS / URL |
+|---|---|---|
+| `make up` | postgres, redis, minio | — (data plane only) |
+| `make up-app` | + web, worker | http://localhost:3000 (no TLS) — **local production mirror** |
+| `make up-prod` | + web, worker, **caddy** | https://`$APP_DOMAIN` (Let's Encrypt) — **VM** |
+
+`up-app` and `up-prod` build and run the *production* image (Next standalone,
+service worker active) — not `next dev`. The only differences between them are
+Caddy/TLS and the `NEXT_PUBLIC_APP_URL` baked into the build (localhost vs your
+domain).
+
 ---
 
-## Local end-to-end test first — recommended before the VM
+## A. Local production mirror — the whole stack in Docker
+
+Run the exact production containers (web + worker + data plane) on your laptop at
+**http://localhost:3000**, with no TLS and no domain. Recommended before touching
+the VM — if this works, the VM is the same thing plus Caddy.
 
 ```bash
 git clone <repo> pharmatrack && cd pharmatrack
-pnpm install
-cp .env.example .env            # fill in dev values (see below)
-make up                         # postgres + redis + minio (Docker)
-make db-migrate                 # apply infra/migrations/*.sql via dbmate
-make test-rls                   # prove two-org tenant isolation (optional)
-pnpm dev                        # http://localhost:3000
+cp .env.example .env
 ```
 
-Open **http://localhost:3000** → first load redirects to `/setup` (create the
-platform admin) → `/platform` (provision a pharmacy).
+`.env.example` already has working local defaults. For a mirror you only need to
+set the secrets and the URLs:
 
-To exercise the **production** server locally (standalone build, service worker
-registers, no Docker for the app):
+```env
+NEXT_PUBLIC_APP_URL=http://localhost:3000      # baked into the build (see note)
+BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_SECRET=any-long-random-string-at-least-32-chars
+CRON_SECRET=any-long-random-string
+RESEND_API_KEY=...                             # needed for invite/recovery emails
+```
+
+> **Leave `DATABASE_URL` / `REDIS_URL` / `MINIO_ENDPOINT` as the `localhost:…`
+> defaults.** Those are for host tools (`pnpm dev`, tests). For the containers,
+> compose overrides them with the in-network service names (`postgres:5432`,
+> `redis:6379`, `minio`) automatically — so the same `.env` serves both.
 
 ```bash
-make build-web && make start-web   # node .next/standalone server, loads .env
+make up           # 1. data plane: postgres, redis, minio
+make db-migrate   # 2. apply infra/migrations/*.sql (dbmate, as app_owner)
+make up-app       # 3. build the production image, start web + worker
 ```
 
-Other handy targets: `make down` (stop stack), `make logs`, `make db-shell`,
-`make clean` (wipe data volumes), `make help`.
+Create the product-image bucket once (see step B.2 for the `mc` one-liner), then
+open **http://localhost:3000** → `/setup` (create platform admin) → `/platform`
+(provision a pharmacy). The worker is already polling the reminder cron on its
+interval — watch it with `make logs`.
+
+Tear down with `make down` (keeps data) or `make clean` (wipes the volumes).
+
+> **Why Docker and not `pnpm dev`?** `next dev` is for editing code, but it does
+> **not** register the PWA service worker and is not the production build. The
+> mirror above runs the real standalone image, so offline POS, the SW, and the
+> worker all behave exactly as they will on the VM.
+
+### Dev mode (editing code)
+
+For an inner loop with hot reload, run the data plane in Docker and the app on the
+host instead:
+
+```bash
+make up && make db-migrate
+pnpm install && pnpm dev        # http://localhost:3000, hot reload, no SW
+make test-rls                   # optional: prove two-org tenant isolation
+```
+
+Handy targets: `make logs`, `make db-shell`, `make help` (lists all).
+
+---
+
+## B. Production on a VM
 
 ---
 
@@ -74,15 +126,20 @@ Fill in `.env` (used for **both** the image build and runtime):
 - `BETTER_AUTH_URL=https://pos.yourdomain.co.ke`, `NEXT_PUBLIC_APP_URL=https://pos.yourdomain.co.ke`, `APP_DOMAIN=pos.yourdomain.co.ke`
 - `REDIS_URL=redis://redis:6379`
 - `MINIO_ENDPOINT=minio`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET_PRODUCTS=pharmatrack-products`
-- `RESEND_API_KEY` / `EMAIL_FROM` — **required** for staff invites + password recovery to deliver.
+- `RESEND_API_KEY` / `RESEND_FROM` — **required** for staff invites + password recovery to deliver.
 - `MPESA_*` with `MPESA_CALLBACK_URL=https://pos.yourdomain.co.ke/api/mpesa/callback` (only if using M‑Pesa).
 - `CRON_SECRET` — any long random string.
 - `AFRICASTALKING_*`, `PAYSTACK_*`, `GLITCHTIP_DSN` — as needed.
 
+> The `DATABASE_URL` / `REDIS_URL` / `MINIO_ENDPOINT` lines above are what the
+> **host** tools use; for the containers, compose derives the in-network endpoints
+> (`postgres:5432`, `redis:6379`, `minio`) from the service names + the password
+> vars, so just keep those passwords correct.
+
 > **Build-time note:** `NEXT_PUBLIC_*` are inlined into the browser bundle when the
-> image is **built**, so they must be set in `.env` before `make up-app`. Compose
-> passes them as build args. Change `NEXT_PUBLIC_APP_URL` later → rebuild, don't
-> just restart.
+> image is **built**, so they must be set in `.env` before `make up-app` / `up-prod`.
+> Compose passes them as build args. Change `NEXT_PUBLIC_APP_URL` later → rebuild,
+> don't just restart.
 
 ## 2. Bring up the data plane + apply the schema
 
@@ -103,16 +160,20 @@ docker run --rm --network pharmatrack_default --entrypoint sh minio/mc -c "\
   mc mb -p m/pharmatrack-products && mc anonymous set download m/pharmatrack-products"
 ```
 
-## 3. Build and run the app + worker
+## 3. Build and run the app + worker + Caddy
 
 ```bash
-make up-app       # builds the image and starts web + worker (the `app` profile)
+make up-prod      # builds the image and starts web + worker + caddy
 ```
 
-The `web` service publishes `:3000`. Put **Caddy** in front for TLS using the
-repo `Caddyfile` (it reverse-proxies `web:3000` and fetches a Let's Encrypt cert
-for `APP_DOMAIN`) — run it on the host or add a `caddy` service sharing the
-compose network. Then visit `https://pos.yourdomain.co.ke`.
+This adds the `edge` profile on top of `app`, so it starts **web**, **worker**,
+and **caddy** together. Caddy (repo `Caddyfile`) binds `:80`/`:443`, reverse-proxies
+`web:3000`, and fetches a Let's Encrypt cert for `APP_DOMAIN` automatically. Make
+sure ports 80 and 443 are open on the VM and the DNS A record already points here,
+then visit `https://pos.yourdomain.co.ke`.
+
+> Certs persist in the `caddy-data` volume — don't delete it. Use `make up-app`
+> (no Caddy) only if you front the stack with your own proxy/load balancer.
 
 ## 4. First run (operator → subscriber → staff)
 
@@ -148,15 +209,18 @@ confirmation/validation URL. It must be public HTTPS (Caddy provides this).
 
 - **Postgres:** schedule `pg_dump` (or pgBackRest → MinIO) off-box daily. `make db-shell` for a psql session.
 - **MinIO:** mirror the `pharmatrack-products` bucket and DB-backup bucket off-box.
-- **Redis:** cache + queue; AOF persistence is on for warm restarts, but it's safe to lose.
+- **Redis:** cache today (queue later); AOF persistence is on for warm restarts, but it's safe to lose.
 - **Caddy:** the `caddy-data` volume holds certs — keep it.
 - **Logs:** `make logs` (or `docker compose -p pharmatrack -f infra/compose.core.yml logs -f web worker`).
-- **Update:** `git pull && make db-migrate && make up-app`.
+- **Update:** `git pull && make db-migrate && make up-prod` (or `make up-app` if you run your own proxy).
 - **Rollback:** redeploy the previous image tag and `make db-rollback` if a migration must be reverted.
 
 ## Notes
 
-- The reminder cron hits `/api/cron/appointment-reminders` with the `CRON_SECRET`
-  bearer token; the BullMQ worker also schedules background jobs.
+- The **worker** (`apps/worker/server.js`) is a small dependency-free scheduler
+  that calls `/api/cron/appointment-reminders` (Bearer `CRON_SECRET`) on an
+  interval — default hourly, override with `REMINDER_INTERVAL_MS` /
+  `CRON_TARGET_URL` in `.env`. The endpoint is idempotent. It's the future home
+  for a BullMQ worker; no queue jobs run yet.
 - RLS is the tenant boundary. Before shipping schema changes, keep `make test-rls`
   green — it proves two orgs cannot see each other's rows.

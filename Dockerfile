@@ -50,6 +50,10 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+# Next's standalone server binds to process.env.HOSTNAME, which Docker sets to
+# the container ID — that binds to the eth0 IP only, so the 127.0.0.1 healthcheck
+# (and clean port mapping) fail. Pin it to all interfaces.
+ENV HOSTNAME=0.0.0.0
 RUN addgroup -g 1001 nodejs && adduser -u 1001 -G nodejs -S nextjs
 
 # Standalone server + assets (monorepo layout puts the entrypoint at apps/web/server.js)

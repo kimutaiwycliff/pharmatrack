@@ -1,9 +1,11 @@
 # PharmaTrack core stack (self-hosted). Data plane (postgres/redis/minio) runs by
-# default; the app + worker are under the `app` profile. Use via the Makefile.
+# default; the app + worker are under the `app` profile; Caddy (TLS) is under the
+# `edge` profile so a local mirror can skip it. Use via the Makefile.
 #
 #   make up          # postgres + redis + minio
 #   make db-migrate  # dbmate up (as app_owner)
-#   make up-app      # + web, worker, caddy
+#   make up-app      # + web + worker (local mirror, http://localhost:3000)
+#   make up-prod     # + web + worker + caddy (TLS for $APP_DOMAIN)
 
 name: pharmatrack
 
@@ -64,6 +66,16 @@ services:
     env_file: ../.env
     environment:
       PORT: "3000"
+      # Container-internal endpoints. These OVERRIDE the host-oriented values in
+      # .env (localhost:55432 etc., used by `pnpm dev`/tests): inside the compose
+      # network the app reaches Postgres/Redis/MinIO by service name. Passwords +
+      # db name come from the same vars the postgres service uses, so they stay in
+      # sync. .env remains the single source for secrets and the domain URLs.
+      DATABASE_URL: postgres://app_owner:${APP_OWNER_PASSWORD:-app_owner}@postgres:5432/${POSTGRES_DB:-pharmatrack}
+      DATABASE_AUTHENTICATED_URL: postgres://app_authenticated:${APP_AUTHENTICATED_PASSWORD:-app_authenticated}@postgres:5432/${POSTGRES_DB:-pharmatrack}
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -76,12 +88,35 @@ services:
     restart: unless-stopped
     env_file: ../.env
     command: ["node", "apps/worker/server.js"]
+    # Reuses the web image but isn't a web server, so the image's /api/health
+    # HEALTHCHECK never passes here — disable it for this service.
+    healthcheck:
+      disable: true
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
+      web: { condition: service_healthy }
+
+  # ── Edge (production TLS) — `make up-prod`. Omitted from the local mirror so it
+  #     doesn't bind 80/443 or try to provision a cert for localhost. ───────────
+  caddy:
+    profiles: ["edge"]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: ../.env          # provides APP_DOMAIN for the Caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data       # Let's Encrypt certs live here — keep this volume
+      - caddy-config:/config
+    depends_on:
       web: { condition: service_healthy }
 
 volumes:
   pg-data:
   redis-data:
   minio-data:
+  caddy-data:
+  caddy-config:
