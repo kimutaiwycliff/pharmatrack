@@ -56,6 +56,9 @@ RUN addgroup -g 1001 nodejs && adduser -u 1001 -G nodejs -S nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+# Worker entrypoint — dependency-free Node script run from this same image with
+# an override command (see compose `worker` service). No node_modules needed.
+COPY --from=builder --chown=nextjs:nodejs /app/apps/worker ./apps/worker
 
 USER nextjs
 EXPOSE 3000
