@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { organization, admin } from "better-auth/plugins"
+import { nextCookies } from "better-auth/next-js"
 import { dbAdmin, user, session, account, verification, organization as organizationTable, member, invitation } from "@pharmatrack/db"
 import { sendEmail } from "@/lib/notifications/email"
 import { pinLogin } from "@/lib/auth/pin-plugin"
@@ -53,6 +54,10 @@ export const auth = betterAuth({
     }),
     admin(),
     pinLogin(),
+    // MUST be last — applies Set-Cookie headers from auth.api.* calls made inside
+    // Next.js server actions (e.g. signOut clearing the session cookie, sign-in
+    // setting it). Without it the cookie is never written and middleware loops.
+    nextCookies(),
   ],
 })
 
