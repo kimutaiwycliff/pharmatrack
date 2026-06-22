@@ -189,8 +189,8 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* One-click seed/unseed from the Kenyan drug catalog */}
-      <CatalogSeedControls canManage={canManageCatalog} />
+      {/* Quick Start: load the Kenyan retail catalogue by department, then price & stock */}
+      <CatalogSeedControls canManage={canManageCatalog} branchId={branchId} />
 
       {/* Table */}
       <div className={isFetching && !isLoading ? "opacity-70 transition-opacity" : ""}>
