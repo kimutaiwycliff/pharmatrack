@@ -36,21 +36,20 @@ const DEFAULT_SERVICES: Array<[string, string, number | null, number]> = [
   ["other", "Other", null, 4],
 ]
 
-export async function provisionTenant(input: ProvisionInput): Promise<ProvisionResult> {
+// Create org + branch + trial subscription + default services. Returns the ids.
+async function createOrgScaffold(opts: { pharmacyName: string; branchName?: string; planCode?: string; trialDays: number }) {
   const db = dbAdmin()
-  const trialDays = input.trialDays ?? 14
   const orgId = randomUUID()
-  const trialEnds = new Date(Date.now() + trialDays * 86_400_000)
-  const [planRow] = await db.select().from(plan).where(eq(plan.code, input.planCode ?? "starter")).limit(1)
+  const trialEnds = new Date(Date.now() + opts.trialDays * 86_400_000)
+  const [planRow] = await db.select().from(plan).where(eq(plan.code, opts.planCode ?? "starter")).limit(1)
 
-  // 1) Org + branch + subscription + default services.
-  await db.insert(organization).values({ id: orgId, name: input.pharmacyName, createdAt: new Date() })
-  const [b] = await db.insert(branch).values({ organization_id: orgId, name: input.branchName || "Main Branch" }).returning()
+  await db.insert(organization).values({ id: orgId, name: opts.pharmacyName, createdAt: new Date() })
+  const [b] = await db.insert(branch).values({ organization_id: orgId, name: opts.branchName || "Main Branch" }).returning()
   await db.insert(subscription).values({
     organization_id: orgId,
     plan_id: planRow?.id ?? null,
-    status: trialDays > 0 ? "trialing" : "active",
-    trial_ends_at: trialDays > 0 ? trialEnds : null,
+    status: opts.trialDays > 0 ? "trialing" : "active",
+    trial_ends_at: opts.trialDays > 0 ? trialEnds : null,
     current_period_end: trialEnds,
   })
   await db.insert(appointment_service).values(
@@ -58,19 +57,42 @@ export async function provisionTenant(input: ProvisionInput): Promise<ProvisionR
       organization_id: orgId, slug, label, recurrence_weeks, sort_order,
     })),
   )
+  return { orgId, branchId: b?.id ?? null }
+}
 
-  // 2) Owner account + membership + staff profile. Roll back the org on failure
-  //    so a failed owner setup can't orphan a tenant.
+async function linkOwner(orgId: string, branchId: string | null, userId: string) {
+  const db = dbAdmin()
+  await db.insert(member).values({ id: randomUUID(), organizationId: orgId, userId, role: "owner" })
+  await db.insert(staff_profile).values({ user_id: userId, organization_id: orgId, role: "owner", branch_id: branchId })
+}
+
+/** Provision a tenant and create the owner account (email + password). */
+export async function provisionTenant(input: ProvisionInput): Promise<ProvisionResult> {
+  const { orgId, branchId } = await createOrgScaffold({ ...input, trialDays: input.trialDays ?? 14 })
   try {
     const created = await auth.api.signUpEmail({
       body: { email: input.ownerEmail, password: input.ownerPassword, name: input.ownerName },
     })
-    const ownerId = created.user.id
-    await db.insert(member).values({ id: randomUUID(), organizationId: orgId, userId: ownerId, role: "owner" })
-    await db.insert(staff_profile).values({ user_id: ownerId, organization_id: orgId, role: "owner", branch_id: b?.id ?? null })
-    return { organizationId: orgId, ownerId, branchId: b?.id ?? null }
+    await linkOwner(orgId, branchId, created.user.id)
+    return { organizationId: orgId, ownerId: created.user.id, branchId }
   } catch (e) {
-    await db.delete(organization).where(eq(organization.id, orgId))
+    // Roll back the org so a failed owner setup can't orphan a tenant.
+    await dbAdmin().delete(organization).where(eq(organization.id, orgId))
+    throw e
+  }
+}
+
+/** Provision a tenant for an EXISTING user (e.g. someone who just signed in with
+ *  Google and has no pharmacy yet). No account is created. */
+export async function provisionTenantForUser(input: {
+  userId: string; pharmacyName: string; branchName?: string; planCode?: string; trialDays?: number
+}): Promise<ProvisionResult> {
+  const { orgId, branchId } = await createOrgScaffold({ ...input, trialDays: input.trialDays ?? 14 })
+  try {
+    await linkOwner(orgId, branchId, input.userId)
+    return { organizationId: orgId, ownerId: input.userId, branchId }
+  } catch (e) {
+    await dbAdmin().delete(organization).where(eq(organization.id, orgId))
     throw e
   }
 }

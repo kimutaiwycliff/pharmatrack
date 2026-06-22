@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
-import { withTenant, subscription, plan } from "@pharmatrack/db"
+import { withTenant, subscription, plan, organization, dbAdmin } from "@pharmatrack/db"
 import { getApiContext } from "@/lib/api-auth"
 import { getSession } from "@/lib/auth/helpers"
 import { initializeTransaction, paystackConfigured } from "@/lib/billing/paystack"
+import { notifyPlatformSubscription } from "@/lib/notifications/platform"
 
 // Owner starts (or renews) their subscription payment via Paystack.
 export async function POST() {
@@ -35,6 +36,11 @@ export async function POST() {
       metadata: { organization_id: ctx.organizationId, plan_name: planRow.name, type: "subscription" },
       callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/settings`,
     })
+
+    // Tell the platform someone is starting a paid subscription (best-effort).
+    const [org] = await dbAdmin().select({ name: organization.name }).from(organization).where(eq(organization.id, ctx.organizationId)).limit(1)
+    await notifyPlatformSubscription({ pharmacy: org?.name ?? ctx.organizationId, plan: planRow.name, email })
+
     return NextResponse.json({ authorization_url: authorizationUrl })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Payment init failed" }, { status: 502 })

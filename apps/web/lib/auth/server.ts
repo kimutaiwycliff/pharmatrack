@@ -1,10 +1,14 @@
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
-import { organization, admin } from "better-auth/plugins"
+import { organization, admin, haveIBeenPwned, captcha } from "better-auth/plugins"
 import { nextCookies } from "better-auth/next-js"
 import { dbAdmin, user, session, account, verification, organization as organizationTable, member, invitation } from "@pharmatrack/db"
 import { sendEmail } from "@/lib/notifications/email"
 import { pinLogin } from "@/lib/auth/pin-plugin"
+
+// Third-party integrations are opt-in via env so local/dev runs without keys.
+const googleConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+const turnstileConfigured = !!process.env.TURNSTILE_SECRET_KEY
 
 // ADR-002 — Better Auth owns identity; the `organization` plugin models tenants
 // (orgs = tenants), `admin` plugin gates platform operators. PIN login is a
@@ -64,6 +68,12 @@ export const auth = betterAuth({
       )
     },
   },
+  // Google sign-in for faster onboarding. New Google users land with no tenant;
+  // the /home router sends them to /onboarding to name their pharmacy. Enabled
+  // only when credentials are configured.
+  ...(googleConfigured
+    ? { socialProviders: { google: { clientId: process.env.GOOGLE_CLIENT_ID!, clientSecret: process.env.GOOGLE_CLIENT_SECRET! } } }
+    : {}),
   plugins: [
     organization({
       sendInvitationEmail: async (data) => {
@@ -77,6 +87,22 @@ export const auth = betterAuth({
     }),
     admin(),
     pinLogin(),
+    // Reject passwords found in known breaches (k-anonymity range query to HIBP;
+    // no API key, password never leaves as plaintext). Applies to sign-up,
+    // password change and reset — including our signup (provision → signUpEmail).
+    haveIBeenPwned({ customPasswordCompromisedMessage: "This password has appeared in a known data breach. Please choose a different one." }),
+    // Cloudflare Turnstile on the browser credential endpoints that carry a
+    // widget. Token is sent as the `x-captcha-response` header (LoginForm). NOT
+    // the till PIN, and NOT /forget-password (the reset page has no widget, and
+    // captcha there would block resets). Internal auth.api calls (our /api/signup)
+    // bypass onRequest, so they're unaffected — verified.
+    ...(turnstileConfigured
+      ? [captcha({
+          provider: "cloudflare-turnstile",
+          secretKey: process.env.TURNSTILE_SECRET_KEY!,
+          endpoints: ["/sign-in/email", "/sign-up/email"],
+        })]
+      : []),
     // MUST be last — applies Set-Cookie headers from auth.api.* calls made inside
     // Next.js server actions (e.g. signOut clearing the session cookie, sign-in
     // setting it). Without it the cookie is never written and middleware loops.

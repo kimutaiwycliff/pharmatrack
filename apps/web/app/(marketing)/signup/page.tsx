@@ -52,7 +52,7 @@ export default async function SignupPage() {
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight">Start your free trial</h1>
         <p className="mt-2 text-[var(--pt-text-secondary)]">14 days free. No card. Cancel anytime.</p>
         <div className="mt-7">
-          <SignupForm />
+          <SignupForm googleEnabled={!!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)} />
         </div>
       </div>
     </section>

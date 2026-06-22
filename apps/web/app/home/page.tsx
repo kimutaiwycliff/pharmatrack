@@ -14,7 +14,8 @@ export default async function HomeRouter() {
   if (await isPlatformAdmin()) redirect("/platform")
 
   const ctx = await getTenantContext()
-  if (!ctx) redirect("/login")
+  // Signed in but no pharmacy yet (e.g. a fresh Google sign-up) → finish onboarding.
+  if (!ctx) redirect("/onboarding")
   if (ctx.role === "cashier" || ctx.role === "pharmacist") redirect("/pos")
   redirect("/dashboard")
 }

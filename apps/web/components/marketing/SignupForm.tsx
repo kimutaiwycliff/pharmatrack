@@ -3,13 +3,16 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Loader2, ArrowRight, ArrowLeft, MailCheck } from "lucide-react"
+import { Turnstile, turnstileEnabled } from "@/components/auth/Turnstile"
+import { GoogleButton } from "@/components/auth/GoogleButton"
 
 type Phase = "details" | "code"
 
-export function SignupForm() {
+export function SignupForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const [phase, setPhase] = useState<Phase>("details")
   const [form, setForm] = useState({ pharmacy_name: "", owner_name: "", email: "", password: "" })
   const [otp, setOtp] = useState("")
+  const [captcha, setCaptcha] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -25,7 +28,7 @@ export function SignupForm() {
     try {
       const res = await fetch("/api/signup/send-otp", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(captcha ? { "x-captcha-response": captcha } : {}) },
         body: JSON.stringify({ email: form.email }),
       })
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
@@ -110,14 +113,24 @@ export function SignupForm() {
 
   return (
     <form onSubmit={requestCode} className="space-y-4">
+      {googleEnabled && (
+        <>
+          <GoogleButton label="Sign up with Google" />
+          <div className="flex items-center gap-3 text-xs text-[var(--pt-text-tertiary)]">
+            <span className="h-px flex-1 bg-[var(--pt-border)]" /> or with email <span className="h-px flex-1 bg-[var(--pt-border)]" />
+          </div>
+        </>
+      )}
+
       <Field label="Pharmacy name" value={form.pharmacy_name} onChange={set("pharmacy_name")} placeholder="e.g. Westlands Chemist" autoFocus />
       <Field label="Your name" value={form.owner_name} onChange={set("owner_name")} placeholder="e.g. Jane Mwangi" />
       <Field label="Work email" type="email" value={form.email} onChange={set("email")} placeholder="you@pharmacy.co.ke" />
       <Field label="Password" type="password" value={form.password} onChange={set("password")} placeholder="At least 8 characters" />
 
+      <Turnstile onToken={setCaptcha} />
       {error && <p className="text-sm text-[var(--pt-red)] bg-[var(--pt-red-50)] rounded-lg px-3 py-2">{error}</p>}
 
-      <button type="submit" disabled={pending}
+      <button type="submit" disabled={pending || (turnstileEnabled && !captcha)}
         className="group w-full h-12 rounded-xl bg-[var(--pt-green)] text-white font-semibold inline-flex items-center justify-center gap-2 hover:bg-[var(--pt-green-600)] transition-colors disabled:opacity-60">
         {pending ? <Loader2 size={18} className="animate-spin" /> : <>Continue <ArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" /></>}
       </button>

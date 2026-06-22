@@ -6,6 +6,7 @@ import { provisionTenant } from "@/lib/provisioning"
 import { auth } from "@/lib/auth/server"
 import { rateLimit, clientIp } from "@/lib/rate-limit"
 import { verifySignupOtp } from "@/lib/email-otp"
+import { notifyPlatformNewSignup } from "@/lib/notifications/platform"
 
 function tooMany(retryAfter: number) {
   return NextResponse.json(
@@ -65,11 +66,13 @@ export async function POST(request: NextRequest) {
     ownerId = res.ownerId
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not create your account"
-    // Surface the common "email taken" case cleanly (without matching DB errors
-    // like "relation ... does not exist").
-    const friendly = /already exists|duplicate|unique constraint|user_email/i.test(msg)
-      ? "An account with that email already exists — try signing in instead."
-      : "We couldn't create your account. Please try again."
+    // Surface actionable cases (email taken, breached password) cleanly; avoid
+    // matching DB errors like "relation ... does not exist".
+    let friendly = "We couldn't create your account. Please try again."
+    if (/already exists|duplicate|unique constraint|user_email/i.test(msg))
+      friendly = "An account with that email already exists — try signing in instead."
+    else if (/breach|compromis|pwned/i.test(msg))
+      friendly = "This password has appeared in a known data breach. Please choose a different one."
     return NextResponse.json({ error: friendly }, { status: 400 })
   }
 
@@ -77,6 +80,9 @@ export async function POST(request: NextRequest) {
   try {
     await dbAdmin().update(user).set({ emailVerified: true, updatedAt: new Date() }).where(eq(user.id, ownerId))
   } catch { /* non-fatal */ }
+
+  // Tell the platform a new pharmacy signed up (best-effort).
+  await notifyPlatformNewSignup({ pharmacy: d.pharmacy_name, ownerName: d.owner_name, email: d.email, via: "trial" })
 
   // Sign the owner in — nextCookies writes the session cookie onto this response.
   try {

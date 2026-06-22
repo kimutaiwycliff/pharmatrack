@@ -110,7 +110,7 @@ export default async function LoginPage() {
             </span>
           </div>
 
-          <LoginForm />
+          <LoginForm googleEnabled={!!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)} />
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { z } from "zod"
 import { createSignupOtp } from "@/lib/email-otp"
 import { sendEmail } from "@/lib/notifications/email"
 import { rateLimit, clientIp } from "@/lib/rate-limit"
+import { verifyTurnstile } from "@/lib/turnstile"
 
 // Step 1 of self-serve signup: email a verification code. Rate-limited per IP and
 // per email to prevent code-spam. Always returns ok (never reveals whether an
@@ -21,6 +22,12 @@ export async function POST(request: NextRequest) {
   const ip = clientIp(request)
   const ipLimit = await rateLimit(`otp:ip:${ip}`, 10, 3600)
   if (!ipLimit.ok) return tooMany(ipLimit.retryAfter)
+
+  // Cloudflare Turnstile (no-op unless configured). Token comes in the same
+  // header Better Auth's captcha plugin uses.
+  if (!(await verifyTurnstile(request.headers.get("x-captcha-response"), ip))) {
+    return NextResponse.json({ error: "Captcha verification failed. Please try again." }, { status: 400 })
+  }
 
   const parsed = schema.safeParse(await request.json().catch(() => undefined))
   if (!parsed.success) {

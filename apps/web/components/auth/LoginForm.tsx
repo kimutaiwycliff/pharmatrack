@@ -7,14 +7,17 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Eye, EyeOff } from "lucide-react"
 import { authClient } from "@/lib/auth/client"
+import { Turnstile, turnstileEnabled } from "@/components/auth/Turnstile"
+import { GoogleButton } from "@/components/auth/GoogleButton"
 
-export function LoginForm() {
+export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const [tab, setTab] = useState<"email" | "pin">("email")
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [phone, setPhone] = useState("")
   const [pin, setPin] = useState("")
+  const [captcha, setCaptcha] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -22,7 +25,10 @@ export function LoginForm() {
     e.preventDefault()
     setError(null)
     setPending(true)
-    const res = await authClient.signIn.email({ email, password })
+    const res = await authClient.signIn.email({
+      email, password,
+      fetchOptions: captcha ? { headers: { "x-captcha-response": captcha } } : undefined,
+    })
     if (res.error) {
       setError(res.error.message ?? "Invalid email or password")
       setPending(false)
@@ -77,6 +83,14 @@ export function LoginForm() {
 
         {tab === "email" ? (
           <form onSubmit={onEmailSubmit} className="space-y-4">
+            {googleEnabled && (
+              <>
+                <GoogleButton label="Continue with Google" />
+                <div className="flex items-center gap-3 text-xs text-[var(--pt-text-tertiary)]">
+                  <span className="h-px flex-1 bg-[var(--pt-border)]" /> or <span className="h-px flex-1 bg-[var(--pt-border)]" />
+                </div>
+              </>
+            )}
             <div>
               <Label htmlFor="email" className="text-sm font-medium">Email</Label>
               <Input id="email" name="email" type="email" autoComplete="email" value={email}
@@ -98,11 +112,12 @@ export function LoginForm() {
               </div>
             </div>
 
+            <Turnstile onToken={setCaptcha} />
             {error && (
               <p className="text-sm text-[var(--pt-red)] bg-[var(--pt-red-50)] px-3 py-2 rounded-lg">{error}</p>
             )}
 
-            <Button type="submit" disabled={pending}
+            <Button type="submit" disabled={pending || (turnstileEnabled && !captcha)}
               className="w-full h-11 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white font-semibold mt-2">
               {pending ? "Signing in…" : "Sign in"}
             </Button>
