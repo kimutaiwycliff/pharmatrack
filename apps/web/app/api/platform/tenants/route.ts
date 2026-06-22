@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { randomBytes, randomUUID } from "node:crypto"
-import { eq, inArray, sql } from "drizzle-orm"
-import {
-  dbAdmin, organization, branch, subscription, plan, member,
-  staff_profile, appointment_service,
-} from "@pharmatrack/db"
+import { randomBytes } from "node:crypto"
+import { inArray, sql } from "drizzle-orm"
+import { dbAdmin, organization, branch, subscription, plan, member } from "@pharmatrack/db"
 import { isPlatformAdmin } from "@/lib/auth/helpers"
 import { auth } from "@/lib/auth/server"
+import { provisionTenant } from "@/lib/provisioning"
 
 // Operator console: list tenants + provision a new one. Operator-only; all
 // queries via dbAdmin (cross-tenant, bypasses RLS).
@@ -56,60 +54,36 @@ const provisionSchema = z.object({
   trial_days: z.number().int().min(0).max(120).default(14),
 })
 
-const DEFAULT_SERVICES: Array<[string, string, number | null, number]> = [
-  ["family_planning_depo", "Family Planning — Depo-Provera", 12, 0],
-  ["vaccination", "Vaccination / Immunization", null, 1],
-  ["injection", "Injection (other)", null, 2],
-  ["consultation", "Consultation", null, 3],
-  ["other", "Other", null, 4],
-]
-
 export async function POST(request: NextRequest) {
   if (!(await isPlatformAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   const parsed = provisionSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
   const d = parsed.data
-  const db = dbAdmin()
 
-  const orgId = randomUUID()
-  const trialEnds = new Date(Date.now() + d.trial_days * 86_400_000)
-  const [planRow] = await db.select().from(plan).where(eq(plan.code, d.plan_code ?? "starter")).limit(1)
-
-  // 1) Org + branch + subscription + default services (service-level, no tenant ctx).
-  await db.insert(organization).values({ id: orgId, name: d.pharmacy_name, createdAt: new Date() })
-  const [b] = await db.insert(branch).values({ organization_id: orgId, name: d.branch_name || "Main Branch" }).returning()
-  await db.insert(subscription).values({
-    organization_id: orgId,
-    plan_id: planRow?.id ?? null,
-    status: d.trial_days > 0 ? "trialing" : "active",
-    trial_ends_at: d.trial_days > 0 ? trialEnds : null,
-    current_period_end: trialEnds,
-  })
-  await db.insert(appointment_service).values(
-    DEFAULT_SERVICES.map(([slug, label, recurrence_weeks, sort_order]) => ({
-      organization_id: orgId, slug, label, recurrence_weeks, sort_order,
-    })),
-  )
-
-  // 2) Create the owner via Better Auth, link membership + staff profile, then
-  //    email them a "set your password" link.
+  let orgId: string
   try {
-    const created = await auth.api.signUpEmail({
-      body: { email: d.owner_email, password: randomBytes(24).toString("base64url"), name: d.owner_name },
+    // Operator provisioning: owner gets a random password + a "set your password"
+    // email, so they choose their own. autoSignIn is off, so this never touches
+    // the operator's session.
+    const res = await provisionTenant({
+      pharmacyName: d.pharmacy_name,
+      ownerEmail: d.owner_email,
+      ownerName: d.owner_name,
+      ownerPassword: randomBytes(24).toString("base64url"),
+      branchName: d.branch_name,
+      planCode: d.plan_code,
+      trialDays: d.trial_days,
     })
-    const ownerId = created.user.id
-    await db.insert(member).values({ id: randomUUID(), organizationId: orgId, userId: ownerId, role: "owner" })
-    await db.insert(staff_profile).values({ user_id: ownerId, organization_id: orgId, role: "owner", branch_id: b?.id ?? null })
-    try {
-      await auth.api.requestPasswordReset({
-        body: { email: d.owner_email, redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/set-password` },
-      })
-    } catch { /* email send is best-effort; owner can use "forgot password" */ }
+    orgId = res.organizationId
   } catch (e) {
-    // Roll back the tenant so a failed owner setup doesn't orphan an org.
-    await db.delete(organization).where(eq(organization.id, orgId))
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to create owner" }, { status: 500 })
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to provision tenant" }, { status: 500 })
   }
+
+  try {
+    await auth.api.requestPasswordReset({
+      body: { email: d.owner_email, redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/set-password` },
+    })
+  } catch { /* email send is best-effort; owner can use "forgot password" */ }
 
   return NextResponse.json({ ok: true, organization_id: orgId }, { status: 201 })
 }

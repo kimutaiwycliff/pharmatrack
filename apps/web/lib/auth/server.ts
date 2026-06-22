@@ -24,6 +24,12 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    // Don't auto-create a session on sign-up. With the nextCookies plugin a
+    // server-side signUpEmail would otherwise write the NEW user's session
+    // cookie onto the caller's response — which would log an operator in as the
+    // tenant they just provisioned. Setup and self-serve signup sign in
+    // explicitly after creating the account.
+    autoSignIn: false,
     sendResetPassword: async ({ user, url }) => {
       await sendEmail(
         user.email,
