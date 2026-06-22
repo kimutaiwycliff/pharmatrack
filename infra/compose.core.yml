@@ -33,7 +33,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    # Redis is a cache + rate-limit/OTP store here, not the source of truth.
+    # stop-writes-on-bgsave-error=no keeps it serving writes even if a snapshot
+    # fails (e.g. disk pressure) instead of disabling the whole app's Redis path.
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--stop-writes-on-bgsave-error", "no"]
     volumes:
       - redis-data:/data
     ports:

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import { eq } from "drizzle-orm"
+import { dbAdmin, user } from "@pharmatrack/db"
 import { provisionTenant } from "@/lib/provisioning"
 import { auth } from "@/lib/auth/server"
 import { rateLimit, clientIp } from "@/lib/rate-limit"
+import { verifySignupOtp } from "@/lib/email-otp"
 
 function tooMany(retryAfter: number) {
   return NextResponse.json(
@@ -11,15 +14,17 @@ function tooMany(retryAfter: number) {
   )
 }
 
-// Self-serve trial signup. Creates the tenant + owner, signs the owner in (so
-// they land straight in their dashboard) and fires a verification email. Better
-// Auth applies its own rate limiting to the underlying sign-up/sign-in calls.
+// Self-serve trial signup (step 2). The caller must first verify their email via
+// /api/signup/send-otp; the code proves email ownership before a tenant is
+// created. Creates the tenant + owner, marks the email verified, and signs the
+// owner in so they land straight in their dashboard.
 
 const schema = z.object({
   pharmacy_name: z.string().trim().min(2, "Enter your pharmacy name").max(120),
   owner_name: z.string().trim().min(2, "Enter your name").max(120),
   email: z.string().trim().email("Enter a valid email"),
   password: z.string().min(8, "Use at least 8 characters"),
+  otp: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code"),
 })
 
 export async function POST(request: NextRequest) {
@@ -39,18 +44,25 @@ export async function POST(request: NextRequest) {
   const d = parsed.data
 
   // Also cap repeated attempts for the same email (cheap abuse / typo loops).
-  const perEmail = await rateLimit(`signup:email:${d.email.toLowerCase()}`, 3, 3600)
+  const perEmail = await rateLimit(`signup:email:${d.email.toLowerCase()}`, 5, 3600)
   if (!perEmail.ok) return tooMany(perEmail.retryAfter)
 
+  // Verify email ownership before creating anything (consumes the code).
+  if (!(await verifySignupOtp(d.email, d.otp))) {
+    return NextResponse.json({ error: "That code is invalid or has expired. Request a new one." }, { status: 400 })
+  }
+
   // Provision tenant + owner (autoSignIn off → no session yet).
+  let ownerId: string
   try {
-    await provisionTenant({
+    const res = await provisionTenant({
       pharmacyName: d.pharmacy_name,
       ownerEmail: d.email,
       ownerName: d.owner_name,
       ownerPassword: d.password,
       trialDays: 14,
     })
+    ownerId = res.ownerId
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not create your account"
     // Surface the common "email taken" case cleanly (without matching DB errors
@@ -61,18 +73,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: friendly }, { status: 400 })
   }
 
+  // Email is OTP-verified — reflect that on the owner record.
+  try {
+    await dbAdmin().update(user).set({ emailVerified: true, updatedAt: new Date() }).where(eq(user.id, ownerId))
+  } catch { /* non-fatal */ }
+
   // Sign the owner in — nextCookies writes the session cookie onto this response.
   try {
     await auth.api.signInEmail({ body: { email: d.email, password: d.password } })
   } catch {
-    // Account exists but sign-in failed for some reason — let them use /login.
+    // Account created but sign-in failed for some reason — let them use /login.
     return NextResponse.json({ ok: true, signedIn: false }, { status: 201 })
   }
-
-  // Best-effort email verification (non-blocking for trial start).
-  try {
-    await auth.api.sendVerificationEmail({ body: { email: d.email } })
-  } catch { /* ignore */ }
 
   return NextResponse.json({ ok: true, signedIn: true }, { status: 201 })
 }
