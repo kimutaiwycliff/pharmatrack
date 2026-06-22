@@ -22,6 +22,23 @@ export const auth = betterAuth({
     provider: "pg",
     schema: { user, session, account, verification, organization: organizationTable, member, invitation },
   }),
+  // Built-in rate limiting for all /api/auth/* endpoints. Enabled in production
+  // by default; stricter per-path rules guard the credential + email-sending
+  // routes against brute force and spam. (In-memory per instance — adequate for
+  // the single-VM deploy; switch to database/secondary storage if scaling out.)
+  rateLimit: {
+    window: 60,
+    max: 100,
+    customRules: {
+      "/sign-in/email": { window: 300, max: 10 },        // password login
+      "/sign-in/pin": { window: 300, max: 10 },          // till PIN login
+      "/sign-up/email": { window: 3600, max: 5 },        // direct Better Auth signup
+      "/request-password-reset": { window: 3600, max: 5 },
+      "/forget-password": { window: 3600, max: 5 },
+      "/reset-password": { window: 3600, max: 10 },
+      "/send-verification-email": { window: 3600, max: 5 },
+    },
+  },
   emailAndPassword: {
     enabled: true,
     // Don't auto-create a session on sign-up. With the nextCookies plugin a

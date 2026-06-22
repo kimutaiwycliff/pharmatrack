@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { provisionTenant } from "@/lib/provisioning"
 import { auth } from "@/lib/auth/server"
+import { rateLimit, clientIp } from "@/lib/rate-limit"
+
+function tooMany(retryAfter: number) {
+  return NextResponse.json(
+    { error: "Too many signups from this network. Please try again later." },
+    { status: 429, headers: { "retry-after": String(Math.max(1, retryAfter)) } },
+  )
+}
 
 // Self-serve trial signup. Creates the tenant + owner, signs the owner in (so
 // they land straight in their dashboard) and fires a verification email. Better
@@ -15,11 +23,24 @@ const schema = z.object({
 })
 
 export async function POST(request: NextRequest) {
+  // Throttle the trial-creation vector: 5 per hour per IP, with a 20/day ceiling.
+  const ip = clientIp(request)
+  const [burst, daily] = await Promise.all([
+    rateLimit(`signup:ip:${ip}`, 5, 3600),
+    rateLimit(`signup:ip:day:${ip}`, 20, 86_400),
+  ])
+  if (!burst.ok) return tooMany(burst.retryAfter)
+  if (!daily.ok) return tooMany(daily.retryAfter)
+
   const parsed = schema.safeParse(await request.json().catch(() => undefined))
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid details" }, { status: 400 })
   }
   const d = parsed.data
+
+  // Also cap repeated attempts for the same email (cheap abuse / typo loops).
+  const perEmail = await rateLimit(`signup:email:${d.email.toLowerCase()}`, 3, 3600)
+  if (!perEmail.ok) return tooMany(perEmail.retryAfter)
 
   // Provision tenant + owner (autoSignIn off → no session yet).
   try {
