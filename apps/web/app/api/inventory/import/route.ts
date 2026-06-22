@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq } from "drizzle-orm"
-import { withTenant, branch as branchTable, product, product_batch } from "@pharmatrack/db"
+import { withTenant, branch as branchTable, product, product_batch, category as categoryTable } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 
 const MAX_ROWS = 2000
@@ -21,6 +21,8 @@ const rowSchema = z
     strength: z.string().trim().optional(),
     dosage_form: z.string().trim().optional(),
     base_unit: z.string().trim().optional(),
+    category: z.string().trim().optional(),
+    subcategory: z.string().trim().optional(),
     pack_label: z.string().trim().optional(),
     units_per_pack: z.coerce.number().int().positive().optional(),
     cost_price: z.coerce.number().nonnegative().optional(),
@@ -38,6 +40,7 @@ const rowSchema = z
       ...r,
       brand_name: clean(r.brand_name), manufacturer: clean(r.manufacturer), gtin: clean(r.gtin),
       strength: clean(r.strength), dosage_form: clean(r.dosage_form), base_unit: clean(r.base_unit),
+      category: clean(r.category), subcategory: clean(r.subcategory),
       pack_label: clean(r.pack_label), batch_number: clean(r.batch_number), expiry_date: clean(r.expiry_date),
     }
   })
@@ -67,6 +70,35 @@ export async function POST(request: NextRequest) {
     branchId = b.id
   }
 
+  // Category resolver — materialises a two-level taxonomy (department > sub) the
+  // same way Quick Start does, cached across rows. Created categories are
+  // committed in their own tx, so the cache stays consistent for later rows.
+  const existingCats = await withTenant(ctx.organizationId, (db) =>
+    db.select({ id: categoryTable.id, name: categoryTable.name, parent_id: categoryTable.parent_id }).from(categoryTable),
+  )
+  const parentByName = new Map(existingCats.filter((c) => !c.parent_id).map((c) => [c.name, c.id]))
+  const childKey = (pid: string, name: string) => `${pid}::${name}`
+  const childByKey = new Map(existingCats.filter((c) => c.parent_id).map((c) => [childKey(c.parent_id!, c.name), c.id]))
+
+  async function resolveCategoryId(catName?: string, subName?: string): Promise<string | null> {
+    if (!catName) return null
+    let pid = parentByName.get(catName)
+    if (!pid) {
+      const [ins] = await withTenant(ctx!.organizationId, (db) =>
+        db.insert(categoryTable).values({ organization_id: ctx!.organizationId, name: catName }).returning({ id: categoryTable.id }))
+      pid = ins!.id; parentByName.set(catName, pid)
+    }
+    if (!subName) return pid
+    const key = childKey(pid, subName)
+    let cid = childByKey.get(key)
+    if (!cid) {
+      const [ins] = await withTenant(ctx!.organizationId, (db) =>
+        db.insert(categoryTable).values({ organization_id: ctx!.organizationId, name: subName, parent_id: pid! }).returning({ id: categoryTable.id }))
+      cid = ins!.id; childByKey.set(key, cid)
+    }
+    return cid
+  }
+
   let created = 0, stockBatches = 0
   const errors: Array<{ row: number; name: string; error: string }> = []
 
@@ -80,10 +112,11 @@ export async function POST(request: NextRequest) {
     }
     const r = result.data
     try {
+      const categoryId = await resolveCategoryId(r.category, r.subcategory)
       // Independent transaction per row so one failure doesn't roll back the rest.
       const newId = await withTenant(ctx.organizationId, async (db) => {
         const [p] = await db.insert(product).values({
-          organization_id: ctx.organizationId, created_by: ctx.userId,
+          organization_id: ctx.organizationId, created_by: ctx.userId, category_id: categoryId,
           name: r.name, brand_name: r.brand_name ?? null, manufacturer: r.manufacturer ?? null,
           gtin: r.gtin ?? null, strength: r.strength ?? null, dosage_form: r.dosage_form ?? null,
           base_unit: r.base_unit ?? "unit", pack_label: r.pack_label ?? null, units_per_pack: r.units_per_pack ?? 1,

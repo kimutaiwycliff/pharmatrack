@@ -67,16 +67,42 @@ export async function POST(request: NextRequest) {
   if (catalogRows.length === 0) return NextResponse.json({ seeded: 0, updated: 0, alreadyPresent: 0 })
 
   const result = await withTenant(ctx.organizationId, async (db) => {
-    // Materialise top-level department categories for this org (idempotent by name).
-    const wantNames = [...new Set(catalogRows.map((c) => c.category!).filter(Boolean))]
-    const existingCats = await db.select({ id: category.id, name: category.name }).from(category)
-    const catByName = new Map(existingCats.map((c) => [c.name, c.id]))
-    const missingCats = wantNames.filter((n) => !catByName.has(n))
-    if (missingCats.length) {
+    // Materialise a two-level taxonomy for this org: top-level departments
+    // (parent_id NULL) and their subcategories (parent_id = department). Products
+    // link to the leaf (subcategory) when present, else the department. Idempotent.
+    const existingCats = await db.select({ id: category.id, name: category.name, parent_id: category.parent_id }).from(category)
+    const parentByName = new Map(existingCats.filter((c) => !c.parent_id).map((c) => [c.name, c.id]))
+    const childKey = (pid: string, name: string) => `${pid}::${name}`
+    const childByKey = new Map(existingCats.filter((c) => c.parent_id).map((c) => [childKey(c.parent_id!, c.name), c.id]))
+
+    // 1. departments
+    const wantParents = [...new Set(catalogRows.map((c) => c.category).filter(Boolean) as string[])]
+    const missingParents = wantParents.filter((n) => !parentByName.has(n))
+    if (missingParents.length) {
       const inserted = await db.insert(category)
-        .values(missingCats.map((name) => ({ organization_id: ctx.organizationId, name })))
+        .values(missingParents.map((name) => ({ organization_id: ctx.organizationId, name })))
         .returning({ id: category.id, name: category.name })
-      for (const c of inserted) catByName.set(c.name, c.id)
+      for (const c of inserted) parentByName.set(c.name, c.id)
+    }
+    // 2. subcategories (unique per department)
+    const wantChildren = [...new Map(
+      catalogRows.filter((c) => c.category && c.subcategory)
+        .map((c) => [`${c.category}::${c.subcategory}`, { parent: c.category!, name: c.subcategory! }]),
+    ).values()]
+    const missingChildren = wantChildren.filter((ch) => {
+      const pid = parentByName.get(ch.parent); return pid && !childByKey.has(childKey(pid, ch.name))
+    })
+    if (missingChildren.length) {
+      const inserted = await db.insert(category)
+        .values(missingChildren.map((ch) => ({ organization_id: ctx.organizationId, name: ch.name, parent_id: parentByName.get(ch.parent)! })))
+        .returning({ id: category.id, name: category.name, parent_id: category.parent_id })
+      for (const c of inserted) childByKey.set(childKey(c.parent_id!, c.name), c.id)
+    }
+    // Resolve a catalog row to its leaf category id.
+    const catIdFor = (c: typeof catalogRows[number]): string | null => {
+      const pid = c.category ? parentByName.get(c.category) ?? null : null
+      if (c.category && c.subcategory && pid) return childByKey.get(childKey(pid, c.subcategory)) ?? pid
+      return pid
     }
 
     // Split catalog into new vs already-seeded.
@@ -88,7 +114,7 @@ export async function POST(request: NextRequest) {
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       catalog_id: c.id,
-      category_id: c.category ? catByName.get(c.category) ?? null : null,
+      category_id: catIdFor(c),
       name: c.name,
       brand_name: c.brand_name,
       manufacturer: c.manufacturer,
@@ -118,7 +144,7 @@ export async function POST(request: NextRequest) {
         cost_price: c.default_cost_price,
         pack_label: c.default_pack_label,
         units_per_pack: c.default_units_per_pack ?? 1,
-        category_id: c.category ? catByName.get(c.category) ?? null : null,
+        category_id: catIdFor(c),
         updated_at: new Date(),
       }).where(eq(product.id, p!.id))
       updated++

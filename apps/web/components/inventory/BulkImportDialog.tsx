@@ -22,6 +22,8 @@ const FIELDS: Array<{ key: string; label: string; required?: boolean; hint?: str
   { key: "strength", label: "Strength" },
   { key: "dosage_form", label: "Dosage form" },
   { key: "base_unit", label: "Base unit", hint: "tablet, ml, bottle… (default: unit)" },
+  { key: "category", label: "Department", hint: "e.g. OTC Medicines" },
+  { key: "subcategory", label: "Subcategory", hint: "e.g. Pain & Fever" },
   { key: "units_per_pack", label: "Units per pack" },
   { key: "cost_price", label: "Cost price", hint: "per unit, KES" },
   { key: "reorder_level", label: "Reorder level" },
@@ -34,12 +36,12 @@ const FIELDS: Array<{ key: string; label: string; required?: boolean; hint?: str
 
 const TEMPLATE_HEADERS = [
   "name", "brand_name", "manufacturer", "gtin", "strength", "dosage_form",
-  "base_unit", "units_per_pack", "cost_price", "selling_price", "reorder_level",
+  "base_unit", "category", "subcategory", "units_per_pack", "cost_price", "selling_price", "reorder_level",
   "is_controlled", "requires_prescription", "opening_qty", "batch_number", "expiry_date",
 ]
 const TEMPLATE_EXAMPLE = [
   "Paracetamol", "Panadol", "GSK", "", "500mg", "Tablet",
-  "tablet", "1000", "1.50", "3.00", "100",
+  "tablet", "OTC Medicines", "Pain & Fever", "1000", "1.50", "3.00", "100",
   "no", "no", "500", "B-2026-01", "2027-06-30",
 ]
 
@@ -92,6 +94,8 @@ function autoMap(header: string): string | "" {
     strength: "strength", dose: "strength",
     dosageform: "dosage_form", form: "dosage_form",
     baseunit: "base_unit", unit: "base_unit", uom: "base_unit",
+    category: "category", department: "category", dept: "category",
+    subcategory: "subcategory", subcat: "subcategory", subdepartment: "subcategory",
     unitsperpack: "units_per_pack", packsize: "units_per_pack",
     costprice: "cost_price", cost: "cost_price", buyprice: "cost_price",
     sellingprice: "selling_price", price: "selling_price", sellprice: "selling_price", retail: "selling_price",
