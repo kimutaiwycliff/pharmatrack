@@ -31,6 +31,17 @@ export const drug_catalog = pgTable("drug_catalog", {
   base_unit: text("base_unit").notNull().default("tablet"),
   is_controlled: boolean("is_controlled").notNull().default(false),
   requires_prescription: boolean("requires_prescription").notNull().default(false),
+  // Onboarding enrichment (migration 009): department + reference pricing/pack.
+  // default_*_price are PER BASE UNIT (matches POS line pricing).
+  category: text("category"),
+  subcategory: text("subcategory"),
+  is_otc: boolean("is_otc").notNull().default(false),
+  therapeutic_class: text("therapeutic_class"),
+  default_pack_label: text("default_pack_label"),
+  default_units_per_pack: integer("default_units_per_pack").notNull().default(1),
+  default_cost_price: numeric("default_cost_price", { precision: 12, scale: 2 }),
+  default_selling_price: numeric("default_selling_price", { precision: 12, scale: 2 }),
+  image_url: text("image_url"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ uq: unique("uq_drug_catalog").on(t.name, t.strength, t.dosage_form).nullsNotDistinct() }))
 
