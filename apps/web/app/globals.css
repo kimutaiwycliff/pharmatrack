@@ -219,3 +219,53 @@
 body {
   padding-bottom: env(safe-area-inset-bottom);
 }
+/* ────────────────────────────────────────────────────────────────────────────
+   Marketing site — "modern apothecary" aesthetic. Scoped under .marketing-root.
+   ──────────────────────────────────────────────────────────────────────────── */
+.marketing-root {
+  /* a softer, warmer paper background than the app's grey */
+  --mk-paper: color-mix(in srgb, var(--pt-green-50) 35%, var(--pt-surface));
+}
+
+/* Layered green gradient-mesh used behind the hero + CTA. */
+.mk-mesh {
+  background-color: var(--pt-bg);
+  background-image:
+    radial-gradient(60% 55% at 78% 8%, color-mix(in srgb, var(--pt-green) 22%, transparent), transparent 70%),
+    radial-gradient(50% 50% at 8% 18%, color-mix(in srgb, var(--pt-green) 14%, transparent), transparent 70%),
+    radial-gradient(45% 45% at 50% 100%, color-mix(in srgb, var(--pt-green) 10%, transparent), transparent 70%);
+}
+
+/* Subtle film grain to add tactility over flat fills. */
+.mk-grain::before {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  opacity: 0.5; mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+}
+
+/* Faint apothecary-cross grid texture. */
+.mk-crosses {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--pt-green) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--pt-green) 8%, transparent) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 75%);
+}
+
+@keyframes mk-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes mk-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+.mk-rise { opacity: 0; animation: mk-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.mk-float { animation: mk-float 5s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-rise { animation: none; opacity: 1; }
+  .mk-float { animation: none; }
+}

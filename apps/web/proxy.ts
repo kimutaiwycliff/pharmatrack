@@ -8,14 +8,18 @@ import { getSessionCookie } from "better-auth/cookies"
 //
 // Public routes need no session: auth pages, Better Auth's own endpoints, the
 // first-run setup, health, and provider webhooks/callbacks (which self-authenticate).
+// Prefix-matched public routes (auth pages, Better Auth endpoints, first-run
+// setup, health, provider webhooks/callbacks, and public marketing/signup).
 const PUBLIC_ROUTES = [
-  "/login", "/setup", "/auth",
-  "/api/auth", "/api/health", "/api/webhooks", "/api/mpesa", "/api/cron", "/api/setup",
+  "/login", "/signup", "/setup", "/auth",
+  "/api/auth", "/api/health", "/api/webhooks", "/api/mpesa", "/api/cron", "/api/setup", "/api/signup",
 ]
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const isPublic = PUBLIC_ROUTES.some((r) => pathname.startsWith(r))
+  // `/` is the public marketing landing — match it exactly (a prefix match on "/"
+  // would make every route public).
+  const isPublic = pathname === "/" || PUBLIC_ROUTES.some((r) => pathname.startsWith(r))
   const hasSession = !!getSessionCookie(request)
 
   if (!hasSession && !isPublic) {
@@ -23,9 +27,10 @@ export function proxy(request: NextRequest) {
     loginUrl.pathname = "/login"
     return NextResponse.redirect(loginUrl)
   }
+  // Signed-in users who hit /login go to their app home (not the landing).
   if (hasSession && pathname === "/login") {
     const home = request.nextUrl.clone()
-    home.pathname = "/"
+    home.pathname = "/home"
     return NextResponse.redirect(home)
   }
   return NextResponse.next()

@@ -29,7 +29,7 @@ export function LoginForm() {
       return
     }
     // Session cookie set; root routes by role.
-    window.location.href = "/"
+    window.location.href = "/home"
   }
 
   async function onPinSubmit(e: React.FormEvent) {
@@ -48,7 +48,7 @@ export function LoginForm() {
       setPending(false)
       return
     }
-    window.location.href = "/"
+    window.location.href = "/home"
   }
 
   return (

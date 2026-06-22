@@ -3,9 +3,11 @@ import { getSession, getTenantContext, isPlatformAdmin } from "@/lib/auth/helper
 
 export const dynamic = "force-dynamic"
 
-// Route by identity: no session → /login; platform operator → /platform;
-// cashier/pharmacist → /pos; owner/manager → /dashboard.
-export default async function RootPage() {
+// Authenticated entry point — routes by identity. Login and the marketing
+// "Go to app" link land here; `/` itself is the public marketing landing.
+// No session → /login; platform operator → /platform; cashier/pharmacist →
+// /pos; owner/manager → /dashboard.
+export default async function HomeRouter() {
   const session = await getSession()
   if (!session?.user) redirect("/login")
 
