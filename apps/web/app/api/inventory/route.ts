@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { and, eq, or, ilike, asc } from "drizzle-orm"
+import { and, eq, or, ilike, asc, sql } from "drizzle-orm"
 import { withTenant, product_stock } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
 
@@ -43,7 +43,12 @@ export async function GET(request: NextRequest) {
     eq(product_stock.branch_id, branchId),
     eq(product_stock.is_active, true),
     q.length >= 2
-      ? or(ilike(product_stock.name, `%${q}%`), ilike(product_stock.brand_name, `%${q}%`), ilike(product_stock.strength, `%${q}%`), ilike(product_stock.gtin, `%${q}%`))
+      ? or(
+          ilike(product_stock.name, `%${q}%`), ilike(product_stock.brand_name, `%${q}%`),
+          ilike(product_stock.strength, `%${q}%`), ilike(product_stock.gtin, `%${q}%`),
+          // Typo-tolerance via pg_trgm (e.g. "amoxicilin" → "Amoxicillin").
+          sql`${product_stock.name} % ${q}`, sql`${product_stock.brand_name} % ${q}`,
+        )
       : undefined,
   )
 
