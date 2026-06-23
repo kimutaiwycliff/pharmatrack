@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   const fromUtc = from ? new Date(new Date(from).getTime() - TZ_OFFSET_MS) : null
   const toUtcExclusive = to ? new Date(new Date(to).getTime() - TZ_OFFSET_MS + 86_400_000) : null
 
-  return withTenant(ctx.organizationId, async (db) => {
+  return withTenant(ctx, async (db) => {
     if (report === "sales") {
       const sales = await db.select({
         id: sale.id, created_at: sale.created_at, receipt_number: sale.receipt_number,

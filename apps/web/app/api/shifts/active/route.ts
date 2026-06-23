@@ -9,7 +9,7 @@ export async function GET() {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const row = await withTenant(ctx.organizationId, async (db) => {
+  const row = await withTenant(ctx, async (db) => {
     const [s] = await db.select().from(shift)
       .where(and(eq(shift.cashier_id, ctx.userId), isNull(shift.closed_at)))
       .orderBy(desc(shift.opened_at)).limit(1)

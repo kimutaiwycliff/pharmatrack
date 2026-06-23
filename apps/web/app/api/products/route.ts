@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     ? or(ilike(product.name, `%${q}%`), ilike(product.brand_name, `%${q}%`), ilike(product.gtin, `%${q}%`), ilike(product.strength, `%${q}%`))
     : undefined
 
-  const { rows, total } = await withTenant(ctx.organizationId, async (db) => {
+  const { rows, total } = await withTenant(ctx, async (db) => {
     const rows = await db.select().from(product).where(where).orderBy(asc(product.name)).limit(limit).offset(offset)
     const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(product).where(where)
     return { rows, total: c?.n ?? 0 }
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   const d = parsed.data
   const num = (v: number | null | undefined) => (v == null ? null : String(v))
 
-  const created = await withTenant(ctx.organizationId, (db) =>
+  const created = await withTenant(ctx, (db) =>
     db.insert(product).values({
       organization_id: ctx.organizationId,
       created_by: ctx.userId,

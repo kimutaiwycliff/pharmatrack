@@ -19,7 +19,7 @@ export async function POST() {
   const email = session?.user?.email
   if (!email) return NextResponse.json({ error: "No email on file" }, { status: 400 })
 
-  const planRow = await withTenant(ctx.organizationId, async (db) => {
+  const planRow = await withTenant(ctx, async (db) => {
     const [sub] = await db.select({ name: plan.name, price_kes: plan.price_kes, interval: plan.interval })
       .from(subscription).leftJoin(plan, eq(plan.id, subscription.plan_id))
       .where(eq(subscription.organization_id, ctx.organizationId)).limit(1)

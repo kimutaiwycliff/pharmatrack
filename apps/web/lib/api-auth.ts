@@ -17,7 +17,7 @@ export interface ApiContext {
  *
  *   const ctx = await getApiContext({ roles: ["owner", "manager"] })
  *   if ("error" in ctx) return ctx.error
- *   await withTenant(ctx.organizationId, (db) => ...)
+ *   await withTenant(ctx, (db) => ...)  // passes role+branch → RLS branch lock
  */
 export async function getApiContext(
   opts?: { roles?: Role[] },

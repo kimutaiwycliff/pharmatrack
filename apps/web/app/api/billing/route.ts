@@ -9,7 +9,7 @@ export async function GET() {
   const ctx = await getApiContext()
   if ("error" in ctx) return ctx.error
 
-  return withTenant(ctx.organizationId, async (db) => {
+  return withTenant(ctx, async (db) => {
     const [sub] = await db.select({
       row: subscription, plan_name: plan.name, plan_price: plan.price_kes, plan_interval: plan.interval,
     }).from(subscription).leftJoin(plan, eq(plan.id, subscription.plan_id))

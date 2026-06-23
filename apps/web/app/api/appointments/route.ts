@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  return withTenant(ctx.organizationId, async (db) => {
+  return withTenant(ctx, async (db) => {
     const rows = await db.select(apptCols).from(appointment)
       .leftJoin(customer, eq(customer.id, appointment.customer_id))
       .leftJoin(user, eq(user.id, appointment.assigned_to))
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const d = parsed.data
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     // ── Resolve the customer (find existing by phone, else create) ──
     let customerId = d.customer_id ?? null
     if (!customerId) {

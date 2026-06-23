@@ -24,7 +24,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const parsed = updateSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ id: appointment_service.id }).from(appointment_service).where(eq(appointment_service.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Service not found" } }
     const [service] = await db.update(appointment_service).set(parsed.data).where(eq(appointment_service.id, id)).returning(cols)
@@ -38,7 +38,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const ctx = await getApiContext({ roles: ["owner", "manager"] })
   if ("error" in ctx) return ctx.error
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ id: appointment_service.id, slug: appointment_service.slug }).from(appointment_service).where(eq(appointment_service.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Service not found" } }
 

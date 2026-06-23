@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const rows = await withTenant(ctx.organizationId, (db) =>
+  const rows = await withTenant(ctx, (db) =>
     db.select({
       id: stock_adjustment.id, delta: stock_adjustment.delta,
       quantity_before: stock_adjustment.quantity_before, quantity_after: stock_adjustment.quantity_after,
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return zodErrorResponse(parsed.error)
   const { batch_id, mode, value, reason, note } = parsed.data
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [b] = await db.select({
       id: product_batch.id, product_id: product_batch.product_id, branch_id: product_batch.branch_id,
       batch_number: product_batch.batch_number, quantity_remaining: product_batch.quantity_remaining,

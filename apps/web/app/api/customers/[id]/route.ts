@@ -9,7 +9,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const ctx = await getApiContext()
   if ("error" in ctx) return ctx.error
 
-  return withTenant(ctx.organizationId, async (db) => {
+  return withTenant(ctx, async (db) => {
     const [cust] = await db.select().from(customer).where(eq(customer.id, id)).limit(1)
     if (!cust) return NextResponse.json({ error: "Patient not found" }, { status: 404 })
 
@@ -50,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const d = parsed.data
   const set: Partial<typeof customer.$inferInsert> = { ...d, ...(d.email === "" ? { email: null } : {}) }
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ id: customer.id }).from(customer).where(eq(customer.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Patient not found" } }
     const [row] = await db.update(customer).set(set).where(eq(customer.id, id)).returning()

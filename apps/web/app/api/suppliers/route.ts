@@ -19,7 +19,7 @@ export async function GET(_request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const rows = await withTenant(ctx.organizationId, (db) =>
+  const rows = await withTenant(ctx, (db) =>
     db.select().from(supplier).orderBy(asc(supplier.name)))
   return NextResponse.json({ suppliers: rows.map(serializeSupplier) })
 }
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const { name, phone, email } = parsed.data
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     // Friendly duplicate guard within the org (case-insensitive).
     const [dup] = await db.select({ id: supplier.id }).from(supplier).where(ilike(supplier.name, name)).limit(1)
     if (dup) return { status: 409 as const, body: { error: `"${name}" already exists` } }

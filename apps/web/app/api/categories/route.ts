@@ -16,7 +16,7 @@ export async function GET() {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const rows = await withTenant(ctx.organizationId, (db) =>
+  const rows = await withTenant(ctx, (db) =>
     db.select({ id: category.id, name: category.name, parent_id: category.parent_id })
       .from(category).orderBy(asc(category.name)))
   return NextResponse.json({ categories: rows })
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const { name, parent_id } = parsed.data
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     // Enforce two-level depth: parent must exist in-org and itself be top-level.
     if (parent_id) {
       const [parent] = await db.select({ parent_id: category.parent_id }).from(category).where(eq(category.id, parent_id)).limit(1)

@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const parsed = updateSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ id: branch.id }).from(branch).where(eq(branch.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Branch not found" } }
     const [updated] = await db.update(branch).set(parsed.data).where(eq(branch.id, id)).returning()

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const chartEnd = new Date(`${last7[6]}T23:59:59.999+03:00`)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000)
 
-  return withTenant(ctx.organizationId, async (db) => {
+  return withTenant(ctx, async (db) => {
     const sales = await db.select({
       id: sale.id, total_amount: sale.total_amount, payment_method: sale.payment_method,
       created_at: sale.created_at, receipt_number: sale.receipt_number,

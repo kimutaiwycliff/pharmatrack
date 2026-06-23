@@ -9,7 +9,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  return withTenant(ctx.organizationId, async (db) => {
+  return withTenant(ctx, async (db) => {
     const [found] = await db.select({ row: shift, full_name: user.name, role: staff_profile.role })
       .from(shift)
       .leftJoin(user, eq(user.id, shift.cashier_id))

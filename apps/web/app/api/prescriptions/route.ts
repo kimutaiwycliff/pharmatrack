@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   const ctx = await getApiContext()
   if ("error" in ctx) return ctx.error
 
-  const rows = await withTenant(ctx.organizationId, (db) =>
+  const rows = await withTenant(ctx, (db) =>
     fetchPrescriptions(db, and(
       customerId ? eq(prescription.customer_id, customerId) : undefined,
       status && status !== "all" ? eq(prescription.status, status) : undefined,
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const d = parsed.data
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     // Resolve patient (existing id, find by phone, or create).
     let customerId = d.customer_id ?? null
     if (!customerId) {

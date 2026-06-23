@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
   // Validate the target branch belongs to this org (opening stock needs it).
   let branchId: string | null = null
   if (parsed.data.branch_id) {
-    const [b] = await withTenant(ctx.organizationId, (db) =>
+    const [b] = await withTenant(ctx, (db) =>
       db.select({ id: branchTable.id }).from(branchTable).where(and(eq(branchTable.id, parsed.data.branch_id!), eq(branchTable.organization_id, ctx.organizationId))).limit(1),
     )
     if (!b) return NextResponse.json({ error: "Branch not found in your organization" }, { status: 400 })
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
   // Category resolver — materialises a two-level taxonomy (department > sub) the
   // same way Quick Start does, cached across rows. Created categories are
   // committed in their own tx, so the cache stays consistent for later rows.
-  const existingCats = await withTenant(ctx.organizationId, (db) =>
+  const existingCats = await withTenant(ctx, (db) =>
     db.select({ id: categoryTable.id, name: categoryTable.name, parent_id: categoryTable.parent_id }).from(categoryTable),
   )
   const parentByName = new Map(existingCats.filter((c) => !c.parent_id).map((c) => [c.name, c.id]))
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     try {
       const categoryId = await resolveCategoryId(r.category, r.subcategory)
       // Independent transaction per row so one failure doesn't roll back the rest.
-      const newId = await withTenant(ctx.organizationId, async (db) => {
+      const newId = await withTenant(ctx, async (db) => {
         const [p] = await db.insert(product).values({
           organization_id: ctx.organizationId, created_by: ctx.userId, category_id: categoryId,
           name: r.name, brand_name: r.brand_name ?? null, manufacturer: r.manufacturer ?? null,
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       if (r.opening_qty && r.opening_qty > 0) {
         if (!branchId) { errors.push({ row: rowNum, name: r.name, error: "Product created, but opening stock skipped (no branch selected)" }); continue }
         if (!r.expiry_date) { errors.push({ row: rowNum, name: r.name, error: "Product created, but opening stock skipped (missing expiry_date)" }); continue }
-        await withTenant(ctx.organizationId, (db) => db.insert(product_batch).values({
+        await withTenant(ctx, (db) => db.insert(product_batch).values({
           organization_id: ctx.organizationId, product_id: newId, branch_id: branchId!,
           batch_number: r.batch_number ?? "OPENING", expiry_date: r.expiry_date!,
           quantity_received: r.opening_qty!, quantity_remaining: r.opening_qty!,

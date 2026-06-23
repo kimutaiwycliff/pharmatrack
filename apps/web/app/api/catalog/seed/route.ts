@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
   )
   if (catalogRows.length === 0) return NextResponse.json({ seeded: 0, updated: 0, alreadyPresent: 0 })
 
-  const result = await withTenant(ctx.organizationId, async (db) => {
+  const result = await withTenant(ctx, async (db) => {
     // Materialise a two-level taxonomy for this org: top-level departments
     // (parent_id NULL) and their subcategories (parent_id = department). Products
     // link to the leaf (subcategory) when present, else the department. Idempotent.
@@ -164,7 +164,7 @@ export async function DELETE() {
   if ("error" in r) return r.error
   const { ctx } = r
 
-  const result = await withTenant(ctx.organizationId, async (db) => {
+  const result = await withTenant(ctx, async (db) => {
     const seeded = await db.select({ id: product.id }).from(product).where(isNotNull(product.catalog_id))
     const ids = seeded.map((p) => p.id)
     if (ids.length === 0) return { removed: 0, kept: 0 }

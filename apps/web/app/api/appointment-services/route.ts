@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   const ctx = await getApiContext()
   if ("error" in ctx) return ctx.error
 
-  const rows = await withTenant(ctx.organizationId, (db) =>
+  const rows = await withTenant(ctx, (db) =>
     db.select(cols).from(appointment_service)
       .where(includeInactive ? undefined : eq(appointment_service.is_active, true))
       .orderBy(asc(appointment_service.sort_order), asc(appointment_service.label)))
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const { label } = parsed.data
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     let slug = slugify(label)
     // Ensure slug is unique within the org (append a suffix if needed).
     const clashes = await db.select({ slug: appointment_service.slug }).from(appointment_service).where(like(appointment_service.slug, `${slug}%`))

@@ -32,7 +32,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (parsed.data.units_per_pack !== undefined) set.unit_count = parsed.data.units_per_pack
   if (parsed.data.selling_price !== undefined) set.selling_price = String(parsed.data.selling_price)
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     if (Object.keys(set).length === 0) {
       const [row] = await db.select().from(product_pack_size).where(eq(product_pack_size.id, sizeId)).limit(1)
       if (!row) return { status: 404 as const, body: { error: "Pack size not found" } }
@@ -51,6 +51,6 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (!canWrite(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  await withTenant(ctx.organizationId, (db) => db.delete(product_pack_size).where(eq(product_pack_size.id, sizeId)))
+  await withTenant(ctx, (db) => db.delete(product_pack_size).where(eq(product_pack_size.id, sizeId)))
   return NextResponse.json({ success: true })
 }

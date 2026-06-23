@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
 
-  const batches = await withTenant(ctx.organizationId, (db) =>
+  const batches = await withTenant(ctx, (db) =>
     db.select().from(product_batch)
       .where(and(eq(product_batch.product_id, productId), eq(product_batch.branch_id, branchId)))
       .orderBy(asc(product_batch.expiry_date)),
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return zodErrorResponse(parsed.error)
   const d = parsed.data
 
-  const batch = await withTenant(ctx.organizationId, async (db) => {
+  const batch = await withTenant(ctx, async (db) => {
     const [b] = await db.insert(product_batch).values({
       organization_id: ctx.organizationId,
       product_id: d.product_id,
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
   // Best-effort cache invalidation for this product's barcodes at this branch.
   if (redis) {
     try {
-      const [p] = await withTenant(ctx.organizationId, (db) =>
+      const [p] = await withTenant(ctx, (db) =>
         db.select({ gtin: product.gtin, barcode_raw: product.barcode_raw }).from(product).where(eq(product.id, d.product_id)).limit(1),
       )
       const keys = [p?.gtin, p?.barcode_raw].filter(Boolean) as string[]
@@ -102,7 +102,7 @@ export async function PATCH(request: NextRequest) {
   if (d.batch_number !== undefined) set.batch_number = d.batch_number
   if (d.cost_price !== undefined) set.cost_price = d.cost_price === null ? null : String(d.cost_price)
 
-  const [updated] = await withTenant(ctx.organizationId, (db) =>
+  const [updated] = await withTenant(ctx, (db) =>
     db.update(product_batch).set(set).where(eq(product_batch.id, d.id)).returning(),
   )
   if (!updated) return apiError("Batch not found", 404)
@@ -110,7 +110,7 @@ export async function PATCH(request: NextRequest) {
   // Cost/expiry feed barcode-lookup responses — clear that product's cache.
   if (redis) {
     try {
-      const [p] = await withTenant(ctx.organizationId, (db) =>
+      const [p] = await withTenant(ctx, (db) =>
         db.select({ gtin: product.gtin, barcode_raw: product.barcode_raw }).from(product).where(eq(product.id, updated.product_id)).limit(1),
       )
       const keys = [p?.gtin, p?.barcode_raw].filter(Boolean) as string[]

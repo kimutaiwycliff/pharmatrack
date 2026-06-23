@@ -32,7 +32,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (d.phone !== undefined) set.phone = d.phone === "" ? null : d.phone
   if (d.email !== undefined) set.email = d.email === "" ? null : d.email
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ id: supplier.id }).from(supplier).where(eq(supplier.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Supplier not found" } }
     const row = Object.keys(set).length > 0

@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
   let out
   try {
-    out = await withTenant(ctx.organizationId, async (db) => {
+    out = await withTenant(ctx, async (db) => {
     // ── Idempotency: a re-synced offline sale must not duplicate ──────────────
     if (data.offline_reference) {
       const [dupe] = await db.select().from(sale).where(eq(sale.offline_reference, data.offline_reference)).limit(1)

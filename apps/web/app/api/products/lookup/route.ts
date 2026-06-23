@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     } catch { /* miss */ }
   }
 
-  const productWithStock = await withTenant(ctx.organizationId, async (db) => {
+  const productWithStock = await withTenant(ctx, async (db) => {
     const [p] = await db.select().from(product)
       .where(and(eq(product.is_active, true), or(eq(product.gtin, barcode), eq(product.barcode_raw, barcode))))
       .limit(1)

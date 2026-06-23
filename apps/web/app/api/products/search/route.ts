@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   )
 
   const thr = searchThreshold(searchParams.get("threshold"))
-  const rows = await withTenant(ctx.organizationId, async (db) => {
+  const rows = await withTenant(ctx, async (db) => {
     // Tune the trigram `%` fuzziness for this query (SET LOCAL = transaction-scoped).
     if (searching) await db.execute(sql`SET LOCAL pg_trgm.similarity_threshold = ${sql.raw(String(thr))}`)
     return db.select().from(product_stock).where(where)

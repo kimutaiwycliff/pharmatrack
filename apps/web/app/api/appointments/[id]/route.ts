@@ -29,7 +29,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
   const d = parsed.data
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ id: appointment.id, service: appointment.service, scheduled_at: appointment.scheduled_at })
       .from(appointment).where(eq(appointment.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Appointment not found" } }
@@ -76,7 +76,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ id: appointment.id }).from(appointment).where(eq(appointment.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Appointment not found" } }
     await db.delete(appointment).where(eq(appointment.id, id))

@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  return withTenant(ctx.organizationId, async (db) => {
+  return withTenant(ctx, async (db) => {
     const where = and(
       eq(shift.branch_id, branchId),
       ctx.role === "cashier" ? eq(shift.cashier_id, ctx.userId) : undefined,
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
   const branchId = parsed.data.branch_id ?? ctx.branchId
   if (!branchId) return NextResponse.json({ error: "No branch assigned to this account" }, { status: 400 })
 
-  const row = await withTenant(ctx.organizationId, async (db) => {
+  const row = await withTenant(ctx, async (db) => {
     const [s] = await db.insert(shift).values({
       organization_id: ctx.organizationId, branch_id: branchId,
       cashier_id: ctx.userId, opening_float: String(parsed.data.opening_float),
@@ -106,7 +106,7 @@ export async function PATCH(req: NextRequest) {
   const parsed = clockOutSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 })
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select().from(shift)
       .where(and(eq(shift.id, parsed.data.shift_id), isNull(shift.closed_at))).limit(1)
     if (!existing || existing.cashier_id !== ctx.userId) return { status: 404 as const, body: { error: "Shift not found or already closed" } }

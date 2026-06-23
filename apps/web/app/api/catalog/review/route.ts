@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   const branchId = new URL(request.url).searchParams.get("branch_id")
   if (!branchId) return NextResponse.json({ error: "branch_id required" }, { status: 400 })
 
-  const rows = await withTenant(ctx.organizationId, (db) =>
+  const rows = await withTenant(ctx, (db) =>
     db.select().from(product_stock)
       .where(and(eq(product_stock.branch_id, branchId), isNotNull(product_stock.catalog_id)))
       .orderBy(asc(product_stock.name)),
@@ -74,7 +74,7 @@ export async function PATCH(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   const { branch_id, items } = parsed.data
 
-  const result = await withTenant(ctx.organizationId, async (db) => {
+  const result = await withTenant(ctx, async (db) => {
     let priced = 0, stocked = 0
     for (const it of items) {
       const set: Record<string, unknown> = { updated_at: new Date() }

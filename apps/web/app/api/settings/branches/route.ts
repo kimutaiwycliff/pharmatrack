@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   const parsed = branchSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
-  const [row] = await withTenant(ctx.organizationId, (db) =>
+  const [row] = await withTenant(ctx, (db) =>
     db.insert(branch).values({
       organization_id: ctx.organizationId, name: parsed.data.name,
       address: parsed.data.address ?? null, phone: parsed.data.phone ?? null,

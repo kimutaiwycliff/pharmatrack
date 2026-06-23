@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const ctx = await getApiContext()
   if ("error" in ctx) return ctx.error
 
-  const rows = await withTenant(ctx.organizationId, (db) =>
+  const rows = await withTenant(ctx, (db) =>
     db.select({ id: customer.id, full_name: customer.full_name, phone: customer.phone, email: customer.email, reminders_opt_in: customer.reminders_opt_in })
       .from(customer)
       .where(q ? or(ilike(customer.full_name, `%${q}%`), ilike(customer.phone, `%${q}%`)) : undefined)
