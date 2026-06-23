@@ -4,6 +4,8 @@ import { isUuid } from "@/lib/utils"
 export interface SyncResult {
   synced: number
   dropped: number
+  /** Server rejected permanently (e.g. 409 insufficient stock) — removed from the queue. */
+  rejected: number
 }
 
 /**
@@ -16,6 +18,7 @@ export async function syncOfflineSales(): Promise<SyncResult> {
   const sales = await getUnsyncedSales()
   let synced = 0
   let dropped = 0
+  let rejected = 0
 
   for (const s of sales) {
     // Drop records that would always fail server validation.
@@ -48,13 +51,22 @@ export async function syncOfflineSales(): Promise<SyncResult> {
           offline_reference: s.saleId, // server can dedupe on this
         }),
       })
-      if (!res.ok) break
-      if (s.id != null) await markSaleSynced(s.id)
-      synced++
+      if (res.ok) {
+        if (s.id != null) await markSaleSynced(s.id)
+        synced++
+      } else if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+        // Permanent rejection (e.g. 409 insufficient stock, 400 invalid) — it can
+        // never succeed on retry, so drop it instead of blocking the queue.
+        if (s.id != null) await deleteOfflineSale(s.id)
+        rejected++
+      } else {
+        // 5xx / 429 / transient — stop and keep the rest queued for next time.
+        break
+      }
     } catch {
       break
     }
   }
 
-  return { synced, dropped }
+  return { synced, dropped, rejected }
 }

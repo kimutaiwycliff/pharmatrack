@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { and, eq, gt, asc, sql } from "drizzle-orm"
+import { and, eq, gt, asc, inArray, sql } from "drizzle-orm"
 import {
   withTenant, product_batch, sale, sale_item, payment, controlled_substance_log,
 } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
+
+interface Shortfall { product_id: string; product_name: string; requested: number; available: number }
+// Thrown to roll back the sale transaction when stock is insufficient.
+class InsufficientStockError extends Error {
+  constructor(public shortfalls: Shortfall[]) { super("Insufficient stock") }
+}
 
 const cartItemSchema = z.object({
   product_id: zUuid(),
@@ -50,7 +56,31 @@ export async function POST(request: NextRequest) {
   const subtotal = Number(data.items.reduce((s, i) => s + i.line_total, 0).toFixed(2))
   const totalAmount = Math.max(0, Number((subtotal - data.discount_amount).toFixed(2)))
 
-  const out = await withTenant(ctx.organizationId, async (db) => {
+  let out
+  try {
+    out = await withTenant(ctx.organizationId, async (db) => {
+    // ── Stock guard: never sell more than is on hand for this branch ──────────
+    const productIds = [...new Set(data.items.map((i) => i.product_id))]
+    const availRows = await db.select({
+      pid: product_batch.product_id,
+      avail: sql<number>`coalesce(sum(${product_batch.quantity_remaining}), 0)::int`,
+    }).from(product_batch)
+      .where(and(eq(product_batch.branch_id, data.branch_id), inArray(product_batch.product_id, productIds), gt(product_batch.quantity_remaining, 0)))
+      .groupBy(product_batch.product_id)
+    const availMap = new Map(availRows.map((r) => [r.pid, Number(r.avail)]))
+
+    const requested = new Map<string, number>()
+    for (const i of data.items) requested.set(i.product_id, (requested.get(i.product_id) ?? 0) + i.quantity)
+
+    const shortfalls: Shortfall[] = []
+    for (const [pid, qty] of requested) {
+      const avail = availMap.get(pid) ?? 0
+      if (qty > avail) {
+        shortfalls.push({ product_id: pid, product_name: data.items.find((i) => i.product_id === pid)?.product_name ?? "Item", requested: qty, available: avail })
+      }
+    }
+    if (shortfalls.length > 0) throw new InsufficientStockError(shortfalls)
+
     const seqRows = (await db.execute(sql`select nextval('receipt_number_seq')::int as n`)) as unknown as Array<{ n: number }>
     const receipt = receiptNumber(seqRows[0]!.n)
 
@@ -98,15 +128,14 @@ export async function POST(request: NextRequest) {
         remaining -= take
       }
 
-      // Out-of-stock tail — record without a batch so the sale still completes.
+      // Pre-checked above, but a concurrent sale may have depleted a batch
+      // between the check and our optimistic decrement — reject rather than
+      // record an unbacked (oversold) line.
       if (remaining > 0) {
-        rows.push({
-          sale_id: saleRow!.id, product_id: item.product_id, batch_id: null,
-          product_name: item.product_name, quantity: remaining, unit_price: String(item.unit_price),
-          discount_percent: String(item.discount_percent),
-          line_total: String(Number((remaining * item.unit_price * (1 - item.discount_percent / 100)).toFixed(2))),
-        })
-        meta.push({ base_unit: item.base_unit, product_strength: item.product_strength, controlled: false, batch_number: null })
+        throw new InsufficientStockError([{
+          product_id: item.product_id, product_name: item.product_name,
+          requested: item.quantity, available: item.quantity - remaining,
+        }])
       }
     }
 
@@ -146,7 +175,19 @@ export async function POST(request: NextRequest) {
       mpesa_reference: data.mpesa_reference, customer_name: data.customer_name, customer_phone: data.customer_phone,
     }
     return { sale: saleOut, items }
-  })
+    })
+  } catch (e) {
+    if (e instanceof InsufficientStockError) {
+      const names = e.shortfalls.map((s) => `${s.product_name} (have ${s.available}, need ${s.requested})`).join(", ")
+      // `error` carries the user-facing text (postJson surfaces it to a toast);
+      // `code` + `shortfalls` are for programmatic handling (offline sync).
+      return NextResponse.json(
+        { error: `Not enough stock: ${names}`, code: "insufficient_stock", shortfalls: e.shortfalls },
+        { status: 409 },
+      )
+    }
+    throw e
+  }
 
   return NextResponse.json(out, { status: 201 })
 }

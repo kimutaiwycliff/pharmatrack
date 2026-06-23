@@ -2,6 +2,7 @@
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
+import { toast } from "sonner"
 import type { CartItem, ProductWithStock } from "@pharmatrack/types"
 
 interface CartStore {
@@ -30,20 +31,31 @@ export const useCartStore = create<CartStore>()(
           // "" is what fails UUID validation at checkout.
           const pid = product.product_id || (product as { id?: string }).id
           if (!pid) return state
+          // Cap the cart at on-hand stock — never sell more than we have.
+          const stock = Number(product.stock_on_hand ?? 0)
+          const name = product.name ?? "Item"
           const existing = state.items.find((i) => i.product_id === pid)
           if (existing) {
+            if (existing.quantity + 1 > stock) {
+              toast.error(stock > 0 ? `Only ${stock} of ${name} in stock` : `${name} is out of stock`)
+              return state
+            }
             return {
               items: state.items.map((i) => {
                 if (i.product_id !== pid) return i
                 const q = i.quantity + 1
-                return { ...i, quantity: q, line_total: q * i.unit_price }
+                return { ...i, quantity: q, line_total: q * i.unit_price, stock_on_hand: stock }
               }),
             }
+          }
+          if (stock <= 0) {
+            toast.error(`${name} is out of stock`)
+            return state
           }
           const price = product.selling_price ?? 0
           const item: CartItem = {
             product_id: pid,
-            product_name: product.name ?? "",
+            product_name: name,
             product_strength: product.strength ?? null,
             batch_id: null,
             quantity: 1,
@@ -53,6 +65,7 @@ export const useCartStore = create<CartStore>()(
             base_unit: product.base_unit ?? "unit",
             is_controlled: product.is_controlled ?? false,
             max_discount_percent: product.max_discount_percent ?? null,
+            stock_on_hand: stock,
           }
           return { items: [...state.items, item] }
         }),
@@ -64,7 +77,12 @@ export const useCartStore = create<CartStore>()(
         set((state) => ({
           items: state.items.map((i) => {
             if (i.product_id !== productId) return i
-            const q = Math.max(1, i.quantity + delta)
+            const target = i.quantity + delta
+            if (delta > 0 && target > i.stock_on_hand) {
+              toast.error(i.stock_on_hand > 0 ? `Only ${i.stock_on_hand} of ${i.product_name} in stock` : `${i.product_name} is out of stock`)
+              return i
+            }
+            const q = Math.max(1, target)
             return { ...i, quantity: q, line_total: q * i.unit_price }
           }),
         })),
@@ -75,9 +93,9 @@ export const useCartStore = create<CartStore>()(
     }),
     {
       name: "pt-cart",
-      // Bumped to 1 to discard carts persisted before the product_id fix — a
-      // stale item with a bad product_id would otherwise keep failing checkout.
-      version: 1,
+      // Bumped to 2 so carts persisted before `stock_on_hand` existed are
+      // discarded (v1 = product_id fix; v0 = pre-id).
+      version: 2,
       storage: createJSONStorage(() => {
         if (typeof window === "undefined") return localStorage
         return sessionStorage

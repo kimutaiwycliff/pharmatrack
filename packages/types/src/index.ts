@@ -260,6 +260,8 @@ export interface CartItem {
   base_unit: string
   is_controlled: boolean
   max_discount_percent: number | null
+  /** On-hand stock captured at add time; the cart caps quantity at this. */
+  stock_on_hand: number
 }
 
 // ─── Appointments / booking ──────────────────────────────────

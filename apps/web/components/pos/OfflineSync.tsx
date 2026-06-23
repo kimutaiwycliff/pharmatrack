@@ -13,11 +13,16 @@ export function OfflineSync() {
       if (running.current) return
       running.current = true
       try {
-        const { synced, dropped } = await syncOfflineSales()
+        const { synced, dropped, rejected } = await syncOfflineSales()
         if (synced > 0) toast.success(`Synced ${synced} offline sale${synced > 1 ? "s" : ""}`)
         if (dropped > 0) {
           toast.error(
             `Discarded ${dropped} invalid offline sale${dropped > 1 ? "s" : ""} that couldn't be synced.`,
+          )
+        }
+        if (rejected > 0) {
+          toast.error(
+            `${rejected} offline sale${rejected > 1 ? "s" : ""} couldn't sync — insufficient stock. Removed from the queue.`,
           )
         }
       } finally {
