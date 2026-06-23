@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ClockInDialog } from "./ClockInDialog"
 import { ClockOutDialog } from "./ClockOutDialog"
 import { OfflineSync } from "./OfflineSync"
+import { OfflineQueueBadge } from "./OfflineQueueBadge"
 import { ThemeToggle } from "@/components/theme/ThemeToggle"
 import { useOnline } from "@/lib/offline/useOnline"
 import { WifiOff } from "lucide-react"
@@ -66,12 +67,13 @@ export function PosShell({ userId, children }: { userId: string; children: React
 
         <div className="flex-1" />
 
-        {/* Offline indicator */}
+        {/* Offline + queued-sales indicators */}
         {!online && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-semibold">
             <WifiOff size={13} /> Offline
           </div>
         )}
+        <OfflineQueueBadge />
 
         {/* Shift indicator */}
         {shift && (
