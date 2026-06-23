@@ -15,7 +15,7 @@ import { useCartStore, cartTotal, formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useActiveShift } from "@/lib/hooks/useActiveShift"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useOnline } from "@/lib/offline/useOnline"
 import { queueOfflineSale } from "@/lib/offline/db"
 import { postJson } from "@/lib/api/fetcher"
@@ -40,6 +40,7 @@ export default function PosPage() {
   const [newProductOpen, setNewProductOpen] = useState(false)
   const [cartOpen, setCartOpen] = useState(false) // mobile cart sheet
 
+  const qc = useQueryClient()
   const profile = useSessionStore((s) => s.profile)
   const branches = useSessionStore((s) => s.branches)
   const activeBranchId = useUIStore((s) => s.activeBranchId)
@@ -149,6 +150,10 @@ export default function PosPage() {
         orgName: "PharmaTrack",
       })
       setPayModal(null)
+      // Stock changed on the server — refetch the POS product list (and re-warm
+      // the offline cache) so on-hand reflects the sale without a manual refresh.
+      qc.invalidateQueries({ queryKey: ["productSearch"] })
+      qc.invalidateQueries({ queryKey: ["branchCatalogPrefetch"] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sale failed")
     } finally {

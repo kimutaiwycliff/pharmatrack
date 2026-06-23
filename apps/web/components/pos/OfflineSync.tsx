@@ -18,7 +18,10 @@ export function OfflineSync() {
         const { synced, dropped, rejected } = await syncOfflineSales()
         if (synced > 0) {
           toast.success(`Synced ${synced} offline sale${synced > 1 ? "s" : ""}`)
-          // Server stock changed — refresh inventory / dashboard / reports views.
+          // Server stock changed — refresh the POS product list + inventory /
+          // dashboard / reports views.
+          qc.invalidateQueries({ queryKey: ["productSearch"] })
+          qc.invalidateQueries({ queryKey: ["branchCatalogPrefetch"] })
           qc.invalidateQueries({ queryKey: ["inventory"] })
           qc.invalidateQueries({ queryKey: ["dashboard"] })
           qc.invalidateQueries({ queryKey: ["reports"] })
