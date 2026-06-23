@@ -16,7 +16,10 @@ interface OfflineSale {
   mpesaAmount: number | null
   customerPhone: string | null
   createdAt: string
-  synced: boolean
+  // 0 = queued, 1 = synced. NUMBER, not boolean: IndexedDB cannot index booleans,
+  // so a boolean `synced` is excluded from the `synced` index and the unsynced
+  // query (`.where("synced").equals(0)`) would never find it → sales never sync.
+  synced: 0 | 1
 }
 
 interface CachedProduct extends ProductWithStock {
@@ -32,6 +35,17 @@ class PharmaTrackDB extends Dexie {
     this.version(1).stores({
       products: "product_id, gtin, barcode_raw, branch_id, cachedAt",
       offlineSales: "++id, saleId, branchId, synced, createdAt",
+    })
+    // v2: migrate any existing queue rows whose `synced` was stored as a boolean
+    // (and were therefore invisible to the `synced` index) to 0/1 so they can
+    // finally sync. Same store shape — just rewrites the values.
+    this.version(2).stores({
+      products: "product_id, gtin, barcode_raw, branch_id, cachedAt",
+      offlineSales: "++id, saleId, branchId, synced, createdAt",
+    }).upgrade(async (tx) => {
+      await tx.table("offlineSales").toCollection().modify((s: OfflineSale) => {
+        s.synced = s.synced ? 1 : 0
+      })
     })
   }
 }
@@ -89,7 +103,7 @@ export async function getUnsyncedSales(): Promise<OfflineSale[]> {
 }
 
 export async function markSaleSynced(id: number) {
-  return posDB.offlineSales.update(id, { synced: true })
+  return posDB.offlineSales.update(id, { synced: 1 })
 }
 
 /** Remove a queued sale that can never sync (e.g. malformed payload). */

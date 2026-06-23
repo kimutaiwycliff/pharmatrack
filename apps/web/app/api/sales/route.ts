@@ -37,6 +37,9 @@ const saleSchema = z.object({
   mpesa_reference: z.string().nullable(),
   customer_name: z.string().nullable(),
   customer_phone: z.string().nullable(),
+  // Idempotency key for offline sales — the server dedupes on it so a re-synced
+  // sale never creates a duplicate.
+  offline_reference: z.string().nullable().optional(),
 })
 
 function receiptNumber(seq: number): string {
@@ -59,6 +62,12 @@ export async function POST(request: NextRequest) {
   let out
   try {
     out = await withTenant(ctx.organizationId, async (db) => {
+    // ── Idempotency: a re-synced offline sale must not duplicate ──────────────
+    if (data.offline_reference) {
+      const [dupe] = await db.select().from(sale).where(eq(sale.offline_reference, data.offline_reference)).limit(1)
+      if (dupe) return { sale: dupe, items: [], deduped: true }
+    }
+
     // ── Stock guard: never sell more than is on hand for this branch ──────────
     const productIds = [...new Set(data.items.map((i) => i.product_id))]
     const availRows = await db.select({
@@ -96,6 +105,7 @@ export async function POST(request: NextRequest) {
       tax_amount: "0",
       total_amount: String(totalAmount),
       payment_method: data.payment_method,
+      offline_reference: data.offline_reference ?? null,
     }).returning()
 
     // Build sale_item rows with FEFO batch deduction. `meta` runs parallel to the
@@ -185,6 +195,11 @@ export async function POST(request: NextRequest) {
         { error: `Not enough stock: ${names}`, code: "insufficient_stock", shortfalls: e.shortfalls },
         { status: 409 },
       )
+    }
+    // Concurrent re-sync of the same offline sale hit the offline_reference unique
+    // constraint — it's already recorded, so treat as success (idempotent).
+    if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "23505") {
+      return NextResponse.json({ deduped: true }, { status: 200 })
     }
     throw e
   }

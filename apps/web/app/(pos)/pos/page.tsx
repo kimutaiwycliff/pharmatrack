@@ -117,7 +117,7 @@ export default function PosPage() {
         mpesaAmount: null,
         customerPhone: params.customerPhone ?? null,
         createdAt: new Date().toISOString(),
-        synced: false,
+        synced: 0,
       })
       toast.success("Saved offline — it will sync when you reconnect. Give the customer a manual receipt.")
       clearCart()
