@@ -14,6 +14,12 @@ apps/web/.env.*.local
 # Root .env (contains secrets: DB passwords, BETTER_AUTH_SECRET, API keys)
 /.env
 
+# SSH / private keys — NEVER commit (e.g. the EC2 deploy key)
+*.pem
+*.key
+*_rsa
+id_*
+
 # Build outputs
 dist/
 build/

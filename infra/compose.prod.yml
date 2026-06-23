@@ -1,0 +1,37 @@
+# Production override for the single-VM EC2 deploy. Layer ON TOP of
+# compose.core.yml so the app server PULLS the published image instead of
+# building on-box (a Next build needs ~3GB and must not run on the app server).
+#
+#   docker compose -p pharmatrack --env-file .env \
+#     -f infra/compose.core.yml -f infra/compose.prod.yml \
+#     --profile app --profile edge pull
+#   ... up -d
+#
+# Also hardens host port exposure: only Caddy (80/443) faces the internet.
+# Postgres/MinIO bind to localhost (reach them via an SSH tunnel); Redis and the
+# raw web port aren't published at all (Caddy reaches web:3000 over the compose
+# network). `infra/deploy.sh` wraps the full flow.
+
+services:
+  web:
+    # Drop the build config so `up` never tries to build on the server.
+    build: !reset null
+    image: kimutaiwycliff/pharmatrack-web:latest
+    pull_policy: always
+    ports: !reset []          # internet reaches the app only through Caddy
+
+  worker:
+    image: kimutaiwycliff/pharmatrack-web:latest
+    pull_policy: always
+
+  postgres:
+    ports: !reset
+      - "127.0.0.1:55432:5432"   # localhost only (SSH-tunnel for admin)
+
+  redis:
+    ports: !reset []
+
+  minio:
+    ports: !reset
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"

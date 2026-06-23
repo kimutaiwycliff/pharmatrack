@@ -215,6 +215,101 @@ confirmation/validation URL. It must be public HTTPS (Caddy provides this).
 - **Update:** `git pull && make db-migrate && make up-prod` (or `make up-app` if you run your own proxy).
 - **Rollback:** redeploy the previous image tag and `make db-rollback` if a migration must be reverted.
 
+---
+
+## C. Deploy to AWS EC2 + Cloudflare (pull-based — recommended for small hosts)
+
+Section B builds the image on the box. On a small VM that won't work (a Next
+build needs ~3 GB). Instead **pull the published image** with
+`infra/compose.prod.yml` + `infra/deploy.sh`. The image is built once in CI / on
+a dev machine (`docker build --build-arg NEXT_PUBLIC_APP_URL=https://pharmatrack.co.ke …`)
+and pushed to `kimutaiwycliff/pharmatrack-web`.
+
+> `NEXT_PUBLIC_APP_URL` is **baked into the browser bundle at build time**. The
+> published image must be built with the production URL — rebuild + repush if the
+> domain changes.
+
+### C.0 EC2 prerequisites
+- **Size:** ≥ 4 GB RAM (8 GB recommended). 2 GB will OOM under load.
+- **Elastic IP:** allocate + associate one **before** resizing — stopping the
+  instance to change type otherwise changes the public IP (breaking DNS + SSH).
+- **Security group inbound:** `22` (SSH, ideally your IP only), `80` and `443`
+  (Caddy). Do **not** open 5432 / 6379 / 9000 / 9001 — `compose.prod.yml` binds
+  those to localhost, reach them via an SSH tunnel.
+- **Swap:** add ~4 GB so memory spikes don't OOM:
+  ```bash
+  sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+  sudo mkswap /swapfile && sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  ```
+
+### C.1 Install Docker
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER   # re-login after this
+```
+
+### C.2 Stage the deploy files
+The server needs the repo's `infra/`, root `Caddyfile`, and `.env` (not the app
+source — the app ships as the image). From your laptop:
+```bash
+rsync -av --exclude node_modules --exclude .next --exclude .git \
+  ./ ubuntu@<elastic-ip>:~/pharmatrack/
+```
+(or `git clone` the repo on the box with a deploy token.)
+
+### C.3 Production `.env`
+On the server, in `~/pharmatrack/.env` — generate strong secrets:
+```bash
+openssl rand -base64 24   # use for each password/secret below
+```
+Required:
+```env
+NODE_ENV=production
+APP_DOMAIN=pharmatrack.co.ke
+NEXT_PUBLIC_APP_URL=https://pharmatrack.co.ke
+BETTER_AUTH_URL=https://pharmatrack.co.ke
+BETTER_AUTH_SECRET=<32+ random chars>
+POSTGRES_DB=pharmatrack
+POSTGRES_PASSWORD=<random>
+APP_OWNER_PASSWORD=<random>
+APP_AUTHENTICATED_PASSWORD=<random>
+REDIS_URL=redis://redis:6379
+MINIO_ACCESS_KEY=<random>
+MINIO_SECRET_KEY=<random>
+MINIO_BUCKET_PRODUCTS=pharmatrack-products
+RESEND_API_KEY=<real>          # required for invites / OTP / password reset
+RESEND_FROM=PharmaTrack <no-reply@pharmatrack.co.ke>
+CRON_SECRET=<random>
+PLATFORM_NOTIFY_EMAIL=you@pharmatrack.co.ke
+```
+Optional (features stay off until set): `GOOGLE_CLIENT_ID/SECRET`,
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (note the site key is
+build-time — needs a rebuilt image), `MPESA_*`, `PAYSTACK_*`, `AFRICASTALKING_*`.
+
+> The container's DB/Redis/MinIO hostnames are set to the in-network service
+> names by `compose.core.yml`, so the `.env` values are used by the deploy
+> script (dbmate, MinIO bucket) — keep the passwords consistent.
+
+### C.4 Cloudflare DNS + TLS
+Add an **A record**: `pharmatrack.co.ke → <elastic-ip>` (and a `www` CNAME/A if
+wanted). Then pick a TLS mode:
+- **DNS-only (grey cloud) — simplest, recommended first:** proxy **off**. Caddy
+  obtains a real Let's Encrypt cert via HTTP-01 (needs port 80 reachable). The
+  repo `Caddyfile` works as-is.
+- **Proxied (orange cloud):** set Cloudflare SSL to **Full (strict)**, create a
+  Cloudflare **Origin Certificate**, and point Caddy at it
+  (`tls /path/cert.pem /path/key.pem`) — Caddy can't use HTTP-01 behind the proxy.
+
+### C.5 Deploy
+```bash
+cd ~/pharmatrack && ./infra/deploy.sh
+```
+It pulls the image, starts the data plane, applies migrations, ensures the MinIO
+bucket, then starts web + worker + Caddy and health-checks. Re-run it to update
+(it re-pulls `:latest`). Then open `https://pharmatrack.co.ke` → `/setup` to
+create the platform operator.
+
 ## Notes
 
 - The **worker** (`apps/worker/server.js`) is a small dependency-free scheduler
