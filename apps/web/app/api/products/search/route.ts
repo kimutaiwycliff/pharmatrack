@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, asc, desc, eq, or, ilike, sql } from "drizzle-orm"
 import { withTenant, product_stock } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
+import { searchThreshold } from "@/lib/search"
 
 const num = (v: string | number | null) => (v == null ? null : Number(v))
 
@@ -36,11 +37,14 @@ export async function GET(request: NextRequest) {
       : undefined,
   )
 
-  const rows = await withTenant(ctx.organizationId, (db) =>
-    db.select().from(product_stock).where(where)
+  const thr = searchThreshold(searchParams.get("threshold"))
+  const rows = await withTenant(ctx.organizationId, async (db) => {
+    // Tune the trigram `%` fuzziness for this query (SET LOCAL = transaction-scoped).
+    if (searching) await db.execute(sql`SET LOCAL pg_trgm.similarity_threshold = ${sql.raw(String(thr))}`)
+    return db.select().from(product_stock).where(where)
       .orderBy(searching ? desc(relevance) : asc(product_stock.name))
-      .limit(all ? 5000 : 20),
-  )
+      .limit(all ? 5000 : 20)
+  })
 
   // PostgREST returned numerics as numbers; Drizzle/postgres.js returns strings.
   const products = rows.map((p) => ({

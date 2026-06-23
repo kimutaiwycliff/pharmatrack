@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, eq, or, ilike, asc, sql } from "drizzle-orm"
 import { withTenant, product_stock } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
+import { searchThreshold } from "@/lib/search"
 
 const EXPIRY_WARN_DAYS = 90
 const num = (v: string | number | null) => (v == null ? null : Number(v))
@@ -52,9 +53,11 @@ export async function GET(request: NextRequest) {
       : undefined,
   )
 
-  const all = await withTenant(ctx.organizationId, (db) =>
-    db.select().from(product_stock).where(where).orderBy(asc(product_stock.name)),
-  )
+  const thr = searchThreshold(searchParams.get("threshold"))
+  const all = await withTenant(ctx.organizationId, async (db) => {
+    if (q.length >= 2) await db.execute(sql`SET LOCAL pg_trgm.similarity_threshold = ${sql.raw(String(thr))}`)
+    return db.select().from(product_stock).where(where).orderBy(asc(product_stock.name))
+  })
   // PostgREST returned numerics as numbers; Drizzle/postgres.js returns strings — coerce.
   const products = all.map((p) => ({
     ...p,
