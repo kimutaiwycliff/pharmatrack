@@ -8,7 +8,7 @@ const QA = [
   { q: "Does it really work offline?", a: "Yes. The POS caches your full branch catalogue on the device and queues sales while offline — with no time limit. When the connection returns, sales sync automatically and the server removes any duplicates." },
   { q: "Can I move my existing data in?", a: "Import products and opening stock from a CSV (up to 2,000 rows) with column auto-mapping and a preview before anything is created. We'll help with migration on Growth and Enterprise." },
   { q: "Is M-Pesa included?", a: "Yes — M-Pesa STK Push runs at checkout and confirmation callbacks are matched to the sale automatically. Cash, card and split payments are supported too." },
-  { q: "What about KRA eTIMS and SHA claims?", a: "They're optional and switch on per pharmacy when you need them — no eTIMS or SHA fields clutter your workflow until you turn them on." },
+  { q: "Can I run more than one branch?", a: "Yes. Growth covers up to three branches and Enterprise is unlimited, each with its own stock, staff and reports — owners and managers switch between them, while cashiers are locked to their own branch." },
   { q: "Do I own my data?", a: "Always. You can self-host the entire platform on your own server, or we host it for you. There's no lock-in either way, and you can export your data." },
   { q: "Is it compliant with PPB?", a: "The controlled-substances register is built in and fills itself from every dispensed controlled sale, ready to export in a PPB-friendly format." },
 ]

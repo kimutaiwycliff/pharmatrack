@@ -65,7 +65,7 @@ export function MarketingFooter() {
           <div className="flex items-center gap-5">
             <Link href="#" className="hover:text-[var(--pt-text-secondary)]">Privacy</Link>
             <Link href="#" className="hover:text-[var(--pt-text-secondary)]">Terms</Link>
-            <span>PPB-ready · KRA eTIMS-ready</span>
+            <span>PPB-ready · Offline-capable</span>
           </div>
         </div>
       </div>

@@ -1,21 +1,22 @@
 import Link from "next/link"
 import { Check } from "lucide-react"
 
-// Placeholder tiers — wire to the `plan` table when finalising prices.
+// Tiers mirror the entitlements catalog (packages/core/entitlements.ts) and the
+// `plan` table prices. Keep features/limits in sync with PLAN_MATRIX.
 const PLANS = [
   {
     name: "Starter", price: "2,500", tagline: "Single pharmacy finding its feet.",
-    features: ["1 branch", "Up to 5 staff", "POS, inventory & M-Pesa", "Offline POS", "Email support"],
+    features: ["1 branch", "Up to 5 staff", "POS, inventory & M-Pesa", "Offline POS", "Owner dashboard", "Email support"],
     cta: "Start free trial", highlight: false,
   },
   {
-    name: "Growth", price: "4,500", tagline: "Busy shops & small chains.",
-    features: ["Up to 3 branches", "Unlimited staff", "Everything in Starter", "Appointments & reminders", "Reports & dashboards", "Priority support"],
+    name: "Growth", price: "6,000", tagline: "Busy shops & small chains.",
+    features: ["Up to 3 branches", "Unlimited staff", "Everything in Starter", "Appointments & reminders", "Prescriptions & DUR", "Reports & analytics", "Priority support"],
     cta: "Start free trial", highlight: true,
   },
   {
     name: "Enterprise", price: "Custom", tagline: "Multi-branch groups.",
-    features: ["Unlimited branches", "Self-hosted option", "eTIMS & SHA add-ons", "Centralised reporting", "Onboarding & training", "Dedicated manager"],
+    features: ["Unlimited branches", "Everything in Growth", "Centralised reporting", "Self-hosted option", "Onboarding & training", "Dedicated account manager"],
     cta: "Talk to sales", highlight: false,
   },
 ]

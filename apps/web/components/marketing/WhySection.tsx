@@ -22,8 +22,8 @@ const PILLARS = [
   {
     icon: ShieldCheck,
     title: "Compliance without the paperwork",
-    body: "The PPB controlled-substances register fills itself from every dispensed sale. KRA eTIMS and SHA claims switch on per pharmacy only when you want them.",
-    proof: "PPB now · eTIMS/SHA on demand",
+    body: "The PPB controlled-substances register fills itself from every dispensed sale — dispensing pharmacist, prescriber and batch captured automatically, ready to export in a PPB-friendly format.",
+    proof: "PPB register, automated",
   },
 ]
 

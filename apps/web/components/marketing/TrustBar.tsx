@@ -1,4 +1,4 @@
-const BADGES = ["M-Pesa", "KRA eTIMS-ready", "SHA / NHIF", "PPB compliant", "Paystack", "Africa's Talking"]
+const BADGES = ["M-Pesa", "PPB compliant", "Paystack", "Africa's Talking", "Offline-capable"]
 
 export function TrustBar() {
   return (

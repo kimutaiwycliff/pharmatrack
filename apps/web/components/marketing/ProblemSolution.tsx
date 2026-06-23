@@ -6,7 +6,7 @@ const ITEMS = [
   { icon: ShieldAlert, problem: "Cash leakage at the till", solution: "Shift floats with automatic variance and an audit log on every change." },
   { icon: Receipt, problem: "Slow, manual M-Pesa reconciliation", solution: "STK Push at checkout with callbacks matched to the sale automatically." },
   { icon: Building2, problem: "No visibility across branches", solution: "One dashboard for every branch — sales, stock and staff in real time." },
-  { icon: FileCheck2, problem: "Compliance headaches (PPB, KRA)", solution: "PPB controlled-substances register built in; eTIMS ready when you need it." },
+  { icon: FileCheck2, problem: "PPB compliance paperwork", solution: "The controlled-substances register fills itself from every dispensed sale, ready to export." },
 ]
 
 export function ProblemSolution() {

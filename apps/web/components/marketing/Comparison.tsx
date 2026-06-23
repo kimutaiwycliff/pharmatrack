@@ -7,7 +7,6 @@ const ROWS: { label: string; us: boolean | string; them: boolean | string }[] = 
   { label: "Multi-branch on one server", us: true, them: "Add-on" },
   { label: "M-Pesa STK Push at checkout", us: true, them: true },
   { label: "PPB controlled-substances register", us: true, them: "Partial" },
-  { label: "KRA eTIMS — optional, per pharmacy", us: true, them: "Forced" },
   { label: "Appointment reminders (SMS/WhatsApp)", us: true, them: false },
   { label: "Transparent pricing", us: true, them: "Varies" },
 ]

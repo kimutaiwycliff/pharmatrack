@@ -10,7 +10,7 @@ export function Hero() {
         <div>
           <span className="mk-rise inline-flex items-center gap-2 rounded-full border border-[var(--pt-green-100)] bg-[var(--pt-surface)]/70 backdrop-blur px-3 py-1.5 text-xs font-semibold text-[var(--pt-green-700)]" style={{ animationDelay: "0ms" }}>
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--pt-green)] animate-pulse" />
-            Built for Kenyan pharmacies · PPB &amp; KRA eTIMS-ready
+            Built for Kenyan pharmacies · PPB-compliant
           </span>
 
           <h1 className="mk-rise font-[family-name:var(--font-display)] font-extrabold tracking-tight text-[var(--pt-text)] mt-5 text-[2.6rem] leading-[1.05] sm:text-6xl sm:leading-[1.02]" style={{ animationDelay: "70ms" }}>

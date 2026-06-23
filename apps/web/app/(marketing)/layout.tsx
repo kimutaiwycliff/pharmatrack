@@ -14,7 +14,7 @@ const display = Bricolage_Grotesque({
 export const metadata: Metadata = {
   title: "PharmaTrack — All-in-one pharmacy management for Kenya",
   description:
-    "POS, inventory, M-Pesa, appointments and Kenyan compliance (PPB, eTIMS-ready, SHA) in one offline-capable platform. Start a 14-day free trial.",
+    "POS, inventory, M-Pesa, appointments and PPB compliance in one offline-capable platform built for Kenyan pharmacies. Start a 14-day free trial.",
   openGraph: {
     title: "PharmaTrack — Run your whole pharmacy in one place",
     description:
