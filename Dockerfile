@@ -30,8 +30,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # be present here (not just at runtime). Passed as build args from compose/.env.
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_GLITCHTIP_DSN
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
-    NEXT_PUBLIC_GLITCHTIP_DSN=$NEXT_PUBLIC_GLITCHTIP_DSN
+    NEXT_PUBLIC_GLITCHTIP_DSN=$NEXT_PUBLIC_GLITCHTIP_DSN \
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY
 # Build-only placeholders. next build's "collect page data" step imports route
 # modules, some of which construct the DB client / Better Auth at module top
 # level (auth/server.ts calls dbAdmin()). postgres-js connects lazily, so a dummy
