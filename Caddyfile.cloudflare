@@ -1,0 +1,21 @@
+# Orange-cloud (Cloudflare-proxied) reverse proxy.
+#
+# Use this instead of ./Caddyfile when the DNS record is PROXIED (orange) and
+# Cloudflare SSL mode is "Full (strict)". Caddy can't run public ACME behind the
+# proxy, so it serves a Cloudflare ORIGIN CERTIFICATE you install at
+# infra/certs/origin.pem + origin.key (gitignored).
+#
+# Activate by setting in .env:   CADDYFILE=../Caddyfile.cloudflare
+# then redeploy. See DEPLOYMENT.md §C.4.
+
+{$APP_DOMAIN} {
+	encode gzip
+	# Explicit cert => Caddy does NOT attempt Let's Encrypt.
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+
+	reverse_proxy web:3000 {
+		# Behind Cloudflare, X-Forwarded-For chains CF nodes; surface the real
+		# client IP (used by rate limiting / Turnstile / logs).
+		header_up X-Forwarded-For {http.request.header.Cf-Connecting-Ip}
+	}
+}

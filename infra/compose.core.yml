@@ -111,7 +111,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ../Caddyfile:/etc/caddy/Caddyfile:ro
+      # CADDYFILE selects the TLS mode: default ../Caddyfile (grey cloud / Let's
+      # Encrypt); set CADDYFILE=../Caddyfile.cloudflare in .env for orange cloud
+      # (Cloudflare Origin Cert). Origin cert + key go in infra/certs/ (gitignored).
+      - ${CADDYFILE:-../Caddyfile}:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
       - caddy-data:/data       # Let's Encrypt certs live here — keep this volume
       - caddy-config:/config
     depends_on:

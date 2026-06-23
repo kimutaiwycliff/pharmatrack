@@ -293,13 +293,29 @@ build-time — needs a rebuilt image), `MPESA_*`, `PAYSTACK_*`, `AFRICASTALKING_
 
 ### C.4 Cloudflare DNS + TLS
 Add an **A record**: `pharmatrack.co.ke → <elastic-ip>` (and a `www` CNAME/A if
-wanted). Then pick a TLS mode:
-- **DNS-only (grey cloud) — simplest, recommended first:** proxy **off**. Caddy
-  obtains a real Let's Encrypt cert via HTTP-01 (needs port 80 reachable). The
-  repo `Caddyfile` works as-is.
-- **Proxied (orange cloud):** set Cloudflare SSL to **Full (strict)**, create a
-  Cloudflare **Origin Certificate**, and point Caddy at it
-  (`tls /path/cert.pem /path/key.pem`) — Caddy can't use HTTP-01 behind the proxy.
+wanted). The TLS mode is selected by the `CADDYFILE` env var — both are wired in.
+
+**Grey cloud (DNS-only) — recommended first, zero config:**
+1. DNS record **Proxy status: DNS only** (grey).
+2. Security group: open **80** + **443** (Caddy needs 80 for the ACME challenge).
+3. Leave `CADDYFILE` unset → the default `Caddyfile` is used; Caddy fetches and
+   renews a Let's Encrypt cert automatically.
+4. Deploy once DNS resolves to the box.
+
+**Orange cloud (proxied) — CDN/DDoS, one flip:**
+1. Cloudflare → SSL/TLS → set mode to **Full (strict)**.
+2. SSL/TLS → Origin Server → **Create Certificate** (hostnames `pharmatrack.co.ke`,
+   `*.pharmatrack.co.ke`). Save the cert + key to `infra/certs/origin.pem` and
+   `infra/certs/origin.key` on the server (`chmod 600` the key; both are gitignored).
+3. In `.env` set: `CADDYFILE=../Caddyfile.cloudflare`
+4. DNS record **Proxy status: Proxied** (orange). Security group: keep **443**
+   open (optionally restrict to Cloudflare IP ranges); 80 can be closed.
+5. Re-run `./infra/deploy.sh`.
+
+`Caddyfile.cloudflare` serves the Origin Certificate (no ACME) and forwards the
+real client IP from Cloudflare's `CF-Connecting-IP` header so rate limiting /
+Turnstile / logs see the actual visitor, not a Cloudflare node. Switch back to
+grey by unsetting `CADDYFILE` and redeploying.
 
 ### C.5 Deploy
 ```bash
