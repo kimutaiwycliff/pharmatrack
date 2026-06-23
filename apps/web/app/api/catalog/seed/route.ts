@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
       units_per_pack: c.default_units_per_pack ?? 1,
       cost_price: c.default_cost_price,
       selling_price: c.default_selling_price ?? "0",
+      reorder_level: 3, // sensible low-stock default for seeded products
       is_controlled: c.is_controlled,
       requires_prescription: c.requires_prescription,
       is_active: true,
@@ -144,6 +145,7 @@ export async function POST(request: NextRequest) {
         cost_price: c.default_cost_price,
         pack_label: c.default_pack_label,
         units_per_pack: c.default_units_per_pack ?? 1,
+        reorder_level: 3,
         category_id: catIdFor(c),
         updated_at: new Date(),
       }).where(eq(product.id, p!.id))
