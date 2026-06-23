@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Clock } from "lucide-react"
+import { Clock, ArrowLeft } from "lucide-react"
 
 interface ClockInDialogProps {
   onSuccess: () => void
@@ -99,6 +100,13 @@ export function ClockInDialog({ onSuccess }: ClockInDialogProps) {
           >
             {isPending ? "Starting shift…" : "Start shift"}
           </Button>
+
+          <Link
+            href="/dashboard"
+            className="w-full h-11 flex items-center justify-center gap-1.5 rounded-md border border-[var(--pt-border)] text-sm font-medium text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+          >
+            <ArrowLeft size={15} /> Back to dashboard
+          </Link>
         </div>
       </div>
     </div>
