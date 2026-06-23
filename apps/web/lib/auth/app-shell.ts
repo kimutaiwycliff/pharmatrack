@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm"
-import { dbAdmin, staff_profile, branch as branchTable, subscription } from "@pharmatrack/db"
+import { dbAdmin, staff_profile, branch as branchTable, subscription, plan } from "@pharmatrack/db"
+import { planOf, type PlanCode } from "@pharmatrack/core"
 import type { Profile, Branch, UserRole } from "@pharmatrack/types"
 import { getSession } from "./helpers"
 
@@ -9,6 +10,7 @@ export interface AppShell {
   profile: Profile
   branches: Branch[]
   subStatus: string | null
+  planCode: PlanCode
 }
 
 // Loads everything the authenticated app shell (dashboard + POS layouts) needs:
@@ -34,7 +36,8 @@ export async function loadAppShell(): Promise<AppShell | null> {
     created_at: sp.created_at.toISOString(),
   }
 
-  const [sub] = await db.select({ status: subscription.status }).from(subscription)
+  const [sub] = await db.select({ status: subscription.status, planCode: plan.code }).from(subscription)
+    .leftJoin(plan, eq(plan.id, subscription.plan_id))
     .where(eq(subscription.organization_id, sp.organization_id)).limit(1)
 
   const branchRows = await db.select().from(branchTable)
@@ -45,5 +48,5 @@ export async function loadAppShell(): Promise<AppShell | null> {
     address: b.address, phone: b.phone, is_active: b.is_active, created_at: b.created_at.toISOString(),
   }))
 
-  return { userId: session.user.id, email: session.user.email ?? "", profile, branches, subStatus: sub?.status ?? null }
+  return { userId: session.user.id, email: session.user.email ?? "", profile, branches, subStatus: sub?.status ?? null, planCode: planOf(sub?.planCode) }
 }

@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
+import { hasFeature, type Feature } from "@pharmatrack/core"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { signOut } from "@/app/(auth)/login/actions"
@@ -29,20 +30,22 @@ interface NavItem {
   href: string
   icon: React.ComponentType<{ size?: number; className?: string }>
   roles: UserRole[]
+  // When set, the item is hidden unless the org's plan includes this feature.
+  feature?: Feature
 }
 
 const NAV: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["owner", "manager", "pharmacist"] },
-  { label: "POS Terminal", href: "/pos", icon: ShoppingCart, roles: ["owner", "manager", "pharmacist", "cashier"] },
-  { label: "Inventory", href: "/inventory", icon: Package, roles: ["owner", "manager", "pharmacist"] },
-  { label: "Products", href: "/products", icon: Pill, roles: ["owner", "manager", "pharmacist"] },
-  { label: "Stock Receive", href: "/inventory/receive", icon: PackagePlus, roles: ["owner", "manager", "pharmacist"] },
-  { label: "Suppliers", href: "/suppliers", icon: Truck, roles: ["owner", "manager", "pharmacist"] },
-  { label: "Appointments", href: "/appointments", icon: CalendarClock, roles: ["owner", "manager", "pharmacist"] },
-  { label: "Prescriptions", href: "/prescriptions", icon: ClipboardList, roles: ["owner", "manager", "pharmacist"] },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["owner", "manager", "pharmacist"], feature: "dashboard" },
+  { label: "POS Terminal", href: "/pos", icon: ShoppingCart, roles: ["owner", "manager", "pharmacist", "cashier"], feature: "pos" },
+  { label: "Inventory", href: "/inventory", icon: Package, roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
+  { label: "Products", href: "/products", icon: Pill, roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
+  { label: "Stock Receive", href: "/inventory/receive", icon: PackagePlus, roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
+  { label: "Suppliers", href: "/suppliers", icon: Truck, roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
+  { label: "Appointments", href: "/appointments", icon: CalendarClock, roles: ["owner", "manager", "pharmacist"], feature: "appointments" },
+  { label: "Prescriptions", href: "/prescriptions", icon: ClipboardList, roles: ["owner", "manager", "pharmacist"], feature: "prescriptions" },
   { label: "Staff", href: "/staff", icon: Users, roles: ["owner", "manager"] },
   { label: "Shifts", href: "/shifts", icon: Clock, roles: ["owner", "manager"] },
-  { label: "Reports", href: "/reports", icon: BarChart3, roles: ["owner", "manager"] },
+  { label: "Reports", href: "/reports", icon: BarChart3, roles: ["owner", "manager"], feature: "reports" },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
 ]
 
@@ -62,9 +65,13 @@ export function Sidebar() {
   const mobileNavOpen = useUIStore((s) => s.mobileNavOpen)
   const setMobileNavOpen = useUIStore((s) => s.setMobileNavOpen)
   const profile = useSessionStore((s) => s.profile)
+  const planCode = useSessionStore((s) => s.planCode)
   const role = (profile?.role ?? "cashier") as UserRole
 
-  const visibleNav = NAV.filter((item) => item.roles.includes(role))
+  // Show an item only when the role allows it AND the plan includes its feature.
+  const visibleNav = NAV.filter(
+    (item) => item.roles.includes(role) && (!item.feature || hasFeature(planCode, item.feature)),
+  )
 
   return (
     <>

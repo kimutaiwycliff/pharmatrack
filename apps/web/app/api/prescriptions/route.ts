@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm"
 import { withTenant, customer, prescription, prescription_item } from "@pharmatrack/db"
 import { zUuid } from "@/lib/api/validation"
 import { getApiContext } from "@/lib/api-auth"
+import { requireFeatureApi } from "@/lib/entitlements"
 import { runDur } from "@/lib/prescriptions/dur"
 import { fetchPrescriptions, fetchPrescription } from "@/lib/prescriptions/serialize"
 
@@ -35,6 +36,8 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getApiContext()
   if ("error" in ctx) return ctx.error
+  const locked = await requireFeatureApi(ctx.organizationId, "prescriptions")
+  if (locked) return locked
 
   const rows = await withTenant(ctx, (db) =>
     fetchPrescriptions(db, and(
@@ -47,6 +50,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ctx = await getApiContext({ roles: ["owner", "manager", "pharmacist"] })
   if ("error" in ctx) return ctx.error
+  const locked = await requireFeatureApi(ctx.organizationId, "prescriptions")
+  if (locked) return locked
 
   const parsed = createSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })

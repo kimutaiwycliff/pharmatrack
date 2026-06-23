@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, desc, eq, gte, inArray, lt, asc } from "drizzle-orm"
 import { withTenant, sale, sale_item, product, product_batch, product_stock, user, branch } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { requireFeatureApi } from "@/lib/entitlements"
 
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
 function toNairobiDate(d: Date): string {
@@ -18,6 +19,8 @@ export async function GET(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (!(["owner", "manager"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const locked = await requireFeatureApi(ctx.organizationId, "reports")
+  if (locked) return locked
 
   // Nairobi date strings → UTC instants. RLS already scopes to the org, so when no
   // branch is given we simply omit the branch filter (all org branches).

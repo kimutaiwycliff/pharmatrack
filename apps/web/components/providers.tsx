@@ -3,12 +3,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useRef } from "react"
 import type { Profile, Branch } from "@pharmatrack/types"
+import type { PlanCode } from "@pharmatrack/core"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
 
-function SessionInit({ profile, branches }: { profile: Profile; branches: Branch[] }) {
+function SessionInit({ profile, branches, planCode }: { profile: Profile; branches: Branch[]; planCode: PlanCode }) {
   const setProfile = useSessionStore((s) => s.setProfile)
   const setBranches = useSessionStore((s) => s.setBranches)
+  const setPlanCode = useSessionStore((s) => s.setPlanCode)
   const setActiveBranch = useUIStore((s) => s.setActiveBranch)
   const initialized = useRef(false)
 
@@ -18,6 +20,7 @@ function SessionInit({ profile, branches }: { profile: Profile; branches: Branch
     initialized.current = true
     setProfile(profile)
     setBranches(branches)
+    setPlanCode(planCode)
     // Default active branch: user's own branch, or first org branch for owners
     const defaultBranch = profile.branch_id ?? branches[0]?.id ?? null
     setActiveBranch(defaultBranch)
@@ -42,15 +45,17 @@ export function Providers({
   children,
   profile,
   branches,
+  planCode,
 }: {
   children: React.ReactNode
   profile: Profile
   branches: Branch[]
+  planCode: PlanCode
 }) {
   const client = getQueryClient()
   return (
     <QueryClientProvider client={client}>
-      <SessionInit profile={profile} branches={branches} />
+      <SessionInit profile={profile} branches={branches} planCode={planCode} />
       {children}
     </QueryClientProvider>
   )

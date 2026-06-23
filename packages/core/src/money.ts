@@ -9,11 +9,13 @@ export function toCents(amount: string | number): Cents {
   const s = typeof amount === "number" ? amount.toString() : amount.trim()
   if (!/^-?\d+(\.\d+)?$/.test(s)) throw new Error(`Invalid money value: ${amount}`)
   const neg = s.startsWith("-")
-  const [whole, frac = ""] = s.replace("-", "").split(".")
-  const cents = BigInt(whole) * 100n + BigInt((frac + "00").slice(0, 2))
+  const parts = s.replace("-", "").split(".")
+  const whole = parts[0] ?? "0"
+  const frac = parts[1] ?? ""
+  const cents = BigInt(whole) * BigInt(100) + BigInt((frac + "00").slice(0, 2))
   // round on a 3rd fractional digit if present
   const third = frac.length >= 3 ? Number(frac[2]) : 0
-  const rounded = cents + (third >= 5 ? 1n : 0n)
+  const rounded = cents + (third >= 5 ? BigInt(1) : BigInt(0))
   const n = Number(rounded)
   return neg ? -n : n
 }
@@ -28,7 +30,9 @@ export function fromCents(cents: Cents): string {
 
 /** Display as KES, e.g. 12345600 -> "KES 123,456.00". */
 export function formatKES(cents: Cents): string {
-  const [whole, frac] = fromCents(Math.abs(cents)).split(".")
+  const parts = fromCents(Math.abs(cents)).split(".")
+  const whole = parts[0] ?? "0"
+  const frac = parts[1] ?? "00"
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
   return `${cents < 0 ? "-" : ""}KES ${grouped}.${frac}`
 }

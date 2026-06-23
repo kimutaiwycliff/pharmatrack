@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth/server"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { normalizeKePhone } from "@/lib/auth/phone"
+import { requireCapacityApi } from "@/lib/entitlements"
 
 const inviteSchema = z.object({
   email: z.string().email(),
@@ -46,6 +47,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const d = parsed.data
   const db = dbAdmin()
+
+  // Plan limit: Starter = 5 staff, Growth/Enterprise = unlimited.
+  const capped = await requireCapacityApi(ctx.organizationId, "staff")
+  if (capped) return capped
 
   // Create the staff user via Better Auth, link membership + profile, then email
   // a "set your password" link (mirrors tenant owner provisioning).

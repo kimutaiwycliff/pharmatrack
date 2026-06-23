@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import { sql } from "drizzle-orm"
 import { withTenant, branch } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
+import { requireCapacityApi } from "@/lib/entitlements"
 
 const branchSchema = z.object({
   name: z.string().min(2),
@@ -16,6 +18,12 @@ export async function POST(request: NextRequest) {
 
   const parsed = branchSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
+
+  // Plan limit: Starter = 1 branch, Growth = 3, Enterprise = unlimited.
+  const counted = await withTenant(ctx, (db) =>
+    db.select({ n: sql<number>`count(*)::int` }).from(branch))
+  const capped = await requireCapacityApi(ctx.organizationId, "branches", counted[0]?.n ?? 0)
+  if (capped) return capped
 
   const [row] = await withTenant(ctx, (db) =>
     db.insert(branch).values({

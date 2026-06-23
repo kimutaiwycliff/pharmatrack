@@ -3,6 +3,7 @@ import { z } from "zod"
 import { and, asc, eq, gte, lte } from "drizzle-orm"
 import { withTenant, appointment, customer, user } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { requireFeatureApi } from "@/lib/entitlements"
 import { zUuid } from "@/lib/api/validation"
 import { queueReminders } from "@/lib/appointments/queue"
 import { apptCols, shapeAppt, fetchAppointment } from "@/lib/appointments/serialize"
@@ -32,6 +33,8 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const locked = await requireFeatureApi(ctx.organizationId, "appointments")
+  if (locked) return locked
 
   return withTenant(ctx, async (db) => {
     const rows = await db.select(apptCols).from(appointment)
@@ -57,6 +60,8 @@ export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const locked = await requireFeatureApi(ctx.organizationId, "appointments")
+  if (locked) return locked
 
   const parsed = createSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
