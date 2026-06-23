@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Layers, X, SlidersHorizontal, History, Loader2 } from "lucide-react"
+import { Layers, X, SlidersHorizontal, History, Loader2, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
@@ -205,6 +205,74 @@ function AdjustPanel({
   )
 }
 
+function EditBatchPanel({ batch, productId, branchId, onDone }: {
+  batch: ProductBatch
+  productId: string
+  branchId: string
+  onDone: () => void
+}) {
+  const qc = useQueryClient()
+  const origExpiry = (batch.expiry_date ?? "").slice(0, 10)
+  const origCost = batch.cost_price != null ? Number(batch.cost_price) : null
+  const [expiry, setExpiry] = useState(origExpiry)
+  const [batchNo, setBatchNo] = useState(batch.batch_number ?? "")
+  const [cost, setCost] = useState(origCost != null ? String(origCost) : "")
+
+  const labelCls = "block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1"
+  const inputCls = "w-full h-9 px-3 border border-[var(--pt-border)] rounded-lg text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = { id: batch.id }
+      if (expiry && expiry !== origExpiry) body.expiry_date = expiry
+      if (batchNo.trim() && batchNo.trim() !== batch.batch_number) body.batch_number = batchNo.trim()
+      const costNum = cost.trim() === "" ? null : Number(cost)
+      if (costNum !== origCost) body.cost_price = costNum
+      if (Object.keys(body).length === 1) return // nothing changed
+      const res = await fetch("/api/batches", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      const json = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(json.error ?? "Update failed")
+    },
+    onSuccess: () => {
+      toast.success("Batch updated")
+      void qc.invalidateQueries({ queryKey: ["batches", productId, branchId] })
+      void qc.invalidateQueries({ queryKey: ["inventory"] })
+      onDone()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--pt-border)] bg-[var(--pt-muted)] p-4 space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Expiry date</label>
+          <input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>Batch number</label>
+          <input type="text" value={batchNo} onChange={(e) => setBatchNo(e.target.value)} className={`${inputCls} font-mono`} />
+        </div>
+      </div>
+      <div>
+        <label className={labelCls}>Cost / unit (KES) <span className="font-normal normal-case text-[var(--pt-text-tertiary)]">(optional)</span></label>
+        <input type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="—" className={`${inputCls} tabular-nums`} />
+      </div>
+      <div className="flex gap-2">
+        <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !expiry || !batchNo.trim()}
+          className="h-9 flex-1 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white font-semibold">
+          {mutation.isPending ? "Saving…" : "Save changes"}
+        </Button>
+        <Button variant="outline" onClick={onDone} disabled={mutation.isPending} className="h-9">Cancel</Button>
+      </div>
+    </div>
+  )
+}
+
 function AdjustmentHistory({ productId }: { productId: string }) {
   const { data, isLoading } = useQuery<AdjustmentRow[]>({
     queryKey: ["stock-adjustments", productId],
@@ -258,8 +326,10 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
   const { data: batches, isLoading } = useBatches(product?.product_id ?? null, branchId)
   const role = useSessionStore((s) => s.profile?.role)
   const canAdjust = role === "owner" || role === "manager"
+  const canEdit = role === "owner" || role === "manager" || role === "pharmacist"
 
   const [adjustingId, setAdjustingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
 
   // Reset transient panels whenever a different product opens.
@@ -394,22 +464,30 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
                       </div>
                     </div>
 
-                    {canAdjust && (
-                      adjustingId === b.id ? (
-                        <AdjustPanel
-                          batch={b}
-                          productId={productId!}
-                          branchId={branchId}
-                          onDone={() => setAdjustingId(null)}
-                        />
-                      ) : (
-                        <button
-                          onClick={() => setAdjustingId(b.id)}
-                          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)] transition-colors"
-                        >
-                          <SlidersHorizontal size={13} />
-                          Adjust stock
-                        </button>
+                    {editingId === b.id ? (
+                      <EditBatchPanel batch={b} productId={productId!} branchId={branchId} onDone={() => setEditingId(null)} />
+                    ) : adjustingId === b.id ? (
+                      <AdjustPanel batch={b} productId={productId!} branchId={branchId} onDone={() => setAdjustingId(null)} />
+                    ) : (
+                      (canEdit || canAdjust) && (
+                        <div className="mt-3 flex items-center gap-5">
+                          {canEdit && (
+                            <button
+                              onClick={() => { setEditingId(b.id); setAdjustingId(null) }}
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)] transition-colors"
+                            >
+                              <Pencil size={13} /> Edit details
+                            </button>
+                          )}
+                          {canAdjust && (
+                            <button
+                              onClick={() => { setAdjustingId(b.id); setEditingId(null) }}
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)] transition-colors"
+                            >
+                              <SlidersHorizontal size={13} /> Adjust stock
+                            </button>
+                          )}
+                        </div>
                       )
                     )}
                   </div>

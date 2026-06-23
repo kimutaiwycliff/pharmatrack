@@ -19,6 +19,16 @@ const createBatchSchema = z.object({
   notes: z.string().optional(),
 })
 
+const updateBatchSchema = z.object({
+  id: zUuid(),
+  expiry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format").optional(),
+  batch_number: z.string().trim().min(1).optional(),
+  cost_price: z.number().nonnegative().nullable().optional(),
+}).refine(
+  (d) => d.expiry_date !== undefined || d.batch_number !== undefined || d.cost_price !== undefined,
+  { message: "Nothing to update" },
+)
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const productId = searchParams.get("product_id")
@@ -73,4 +83,40 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ batch }, { status: 201 })
+}
+
+// Edit a batch's metadata (expiry date, batch number, cost). Quantity is NOT
+// editable here — stock changes go through /api/inventory/adjust for the audit
+// trail. RLS scopes the update to the caller's org.
+export async function PATCH(request: NextRequest) {
+  const ctx = await getTenantContext()
+  if (!ctx) return apiError("Unauthorized", 401)
+  if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) return apiError("Forbidden", 403)
+
+  const parsed = updateBatchSchema.safeParse(await request.json())
+  if (!parsed.success) return zodErrorResponse(parsed.error)
+  const d = parsed.data
+
+  const set: Partial<typeof product_batch.$inferInsert> = {}
+  if (d.expiry_date !== undefined) set.expiry_date = d.expiry_date
+  if (d.batch_number !== undefined) set.batch_number = d.batch_number
+  if (d.cost_price !== undefined) set.cost_price = d.cost_price === null ? null : String(d.cost_price)
+
+  const [updated] = await withTenant(ctx.organizationId, (db) =>
+    db.update(product_batch).set(set).where(eq(product_batch.id, d.id)).returning(),
+  )
+  if (!updated) return apiError("Batch not found", 404)
+
+  // Cost/expiry feed barcode-lookup responses — clear that product's cache.
+  if (redis) {
+    try {
+      const [p] = await withTenant(ctx.organizationId, (db) =>
+        db.select({ gtin: product.gtin, barcode_raw: product.barcode_raw }).from(product).where(eq(product.id, updated.product_id)).limit(1),
+      )
+      const keys = [p?.gtin, p?.barcode_raw].filter(Boolean) as string[]
+      for (const k of keys) await redis.del(`product:${ctx.organizationId}:${updated.branch_id}:${k}`)
+    } catch {}
+  }
+
+  return NextResponse.json({ batch: updated })
 }
