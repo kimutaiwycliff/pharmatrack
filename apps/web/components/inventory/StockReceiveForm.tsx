@@ -1,11 +1,13 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { ScanLine, Trash2, CheckCircle2, Info, Plus } from "lucide-react"
+import { ScanLine, Trash2, CheckCircle2, Info, Plus, Search } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
 import { useProductLookup } from "@/lib/hooks/useProductLookup"
+import { useDebounce } from "@/lib/hooks/useDebounce"
 import { formatKES } from "@/lib/store/cartStore"
 import type { ProductWithStock } from "@pharmatrack/types"
 
@@ -83,6 +85,32 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
   const [pendingCost, setPendingCost] = useState<string>("")
 
   const { data: lookupData, isFetching } = useProductLookup(scannedBarcode, branchId)
+
+  // Search products by name/brand (alternative to scanning).
+  const [searchText, setSearchText] = useState("")
+  const q = useDebounce(searchText, 250)
+  const { data: searchResults } = useQuery<ProductWithStock[]>({
+    queryKey: ["receiveSearch", q, branchId],
+    queryFn: async () => {
+      const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&branch_id=${branchId}`)
+      if (!res.ok) return []
+      const json = (await res.json()) as { products: ProductWithStock[] }
+      return json.products
+    },
+    enabled: q.trim().length >= 2,
+    staleTime: 30_000,
+  })
+
+  // Select a searched product into the pending-receive card (mirrors a scan).
+  const selectProduct = useCallback((p: ProductWithStock) => {
+    setPendingProduct(p)
+    setScannedBarcode(null)
+    setPendingBatch(p.gtin ? `BN-${Date.now().toString().slice(-6)}` : "")
+    setPendingExpiry("")
+    setPendingQty(1)
+    setPendingCost(p.cost_price != null ? String(p.cost_price) : "")
+    setSearchText("")
+  }, [])
 
   // When a scanned product resolves, prefill the receive form once per barcode.
   const prevBarcode = useRef<string | null>(null)
@@ -230,6 +258,48 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
               {receiveList.length} item{receiveList.length !== 1 ? "s" : ""} added to this session
             </p>
           </div>
+
+          {/* Search product (no barcode needed) */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1.5">
+              Or search by name
+            </label>
+            <div className="relative">
+              <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--pt-text-tertiary)] pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search product name or brand…"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="w-full h-11 pl-10 pr-3 text-sm border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
+              />
+            </div>
+            {q.trim().length >= 2 && searchResults && (
+              searchResults.length > 0 ? (
+                <div className="mt-2 max-h-60 overflow-y-auto rounded-lg border border-[var(--pt-border)] divide-y divide-[var(--pt-border)]">
+                  {searchResults.map((p) => (
+                    <button
+                      key={p.product_id}
+                      onClick={() => selectProduct(p)}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-[var(--pt-muted)] transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {p.name}{p.strength ? ` ${p.strength}` : ""}
+                        </p>
+                        <p className="text-xs text-[var(--pt-text-tertiary)] truncate">
+                          {[p.brand_name, p.dosage_form].filter(Boolean).join(" · ") || p.base_unit} · {p.stock_on_hand ?? 0} in stock
+                        </p>
+                      </div>
+                      <Plus size={16} className="text-[var(--pt-green-600)] shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--pt-text-tertiary)] mt-2">No products match “{q}”.</p>
+              )
+            )}
+          </div>
         </div>
 
         {/* Scanned product card */}
@@ -237,7 +307,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           <div className="bg-[var(--pt-surface)] rounded-xl border-2 border-[var(--pt-green)] overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--pt-green-50)] text-[var(--pt-green-600)] text-xs font-semibold">
               <CheckCircle2 size={13} />
-              Product found · Auto-detected
+              Product selected
             </div>
             <div className="p-5 space-y-4">
               <div className="flex items-start gap-4">
