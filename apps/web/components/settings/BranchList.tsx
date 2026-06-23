@@ -82,7 +82,7 @@ function BranchRow({
   if (editing) {
     return (
       <div className="px-5 py-4 space-y-3 border-b border-[var(--pt-border)] last:border-b-0">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Input
             placeholder="Branch name"
             value={form.name}
@@ -189,7 +189,7 @@ function AddBranchRow({ onAdded }: { onAdded: () => void }) {
   return (
     <div className="px-5 py-4 border-t border-[var(--pt-border)] space-y-3">
       <p className="text-xs font-bold text-[var(--pt-text-secondary)] uppercase tracking-wide">New Branch</p>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <Input
           placeholder="Branch name *"
           value={form.name}

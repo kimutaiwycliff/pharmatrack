@@ -571,7 +571,7 @@ export default function ReportsPage() {
   return (
     <div className="flex flex-col h-full bg-[var(--pt-bg)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] shrink-0 flex-wrap gap-3">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-4 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] shrink-0 flex-wrap gap-3">
         <div>
           <h1 className="text-[17px] font-bold text-[var(--pt-text)]">Reports</h1>
           <p className="text-[13px] text-[var(--pt-text-secondary)] mt-0.5">Analytics and performance data</p>
@@ -604,13 +604,13 @@ export default function ReportsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 px-6 pt-4 pb-0 bg-[var(--pt-bg)] border-b border-[var(--pt-border)] shrink-0">
+      <div className="flex gap-1 px-4 sm:px-6 pt-4 pb-0 bg-[var(--pt-bg)] border-b border-[var(--pt-border)] shrink-0 overflow-x-auto">
         {TABS.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={[
-              "flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px",
+              "flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px shrink-0 whitespace-nowrap",
               tab === t.id
                 ? "border-[var(--pt-green-600)] text-[var(--pt-green-600)]"
                 : "border-transparent text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)]",
@@ -623,7 +623,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto px-6 py-6">
+      <div className="flex-1 overflow-auto px-4 sm:px-6 py-6">
         {tab === "sales"     && <SalesTab from={from} to={to} branchId={branchId} />}
         {tab === "inventory" && <InventoryTab branchId={branchId} />}
         {tab === "financial" && <FinancialTab from={from} to={to} branchId={branchId} />}

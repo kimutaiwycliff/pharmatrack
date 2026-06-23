@@ -158,7 +158,7 @@ function AddSupplierRow({ onAdded }: { onAdded: () => void }) {
   return (
     <div className="px-5 py-4 border-t border-[var(--pt-border)] space-y-3">
       <p className="text-xs font-bold text-[var(--pt-text-secondary)] uppercase tracking-wide">New Supplier</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Input placeholder="Supplier name *" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-9" autoFocus />
         <Input placeholder="Phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className="h-9" />
         <Input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className="h-9" />

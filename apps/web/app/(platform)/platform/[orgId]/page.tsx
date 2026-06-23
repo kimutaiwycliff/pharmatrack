@@ -143,7 +143,7 @@ export default function TenantDetailPage() {
             <Input type="date" value={trialEnds} onChange={(e) => setTrialEnds(e.target.value)} className="mt-1.5 h-10" />
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-4">
+        <div className="flex flex-wrap items-center gap-2 mt-4">
           <Button onClick={saveSubscription} disabled={saving} className="gap-1.5">{saving && <Loader2 size={14} className="animate-spin" />} Save</Button>
           {status !== "suspended"
             ? <Button variant="outline" onClick={() => setStatus("suspended")} className="text-[var(--pt-red)] border-[var(--pt-red)]">Suspend…</Button>

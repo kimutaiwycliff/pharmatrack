@@ -92,7 +92,7 @@ export default function ProductsPage() {
   return (
     <div className="flex flex-col h-full bg-[var(--pt-bg)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] shrink-0">
         <div>
           <h1 className="text-[17px] font-bold text-[var(--pt-text)]">Products</h1>
           <p className="text-[13px] text-[var(--pt-text-secondary)] mt-0.5">
@@ -118,7 +118,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 px-6 py-3 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] shrink-0">
+      <div className="flex flex-wrap items-center gap-3 px-4 sm:px-6 py-3 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] shrink-0">
         <div className="relative flex-1 max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--pt-text-tertiary)]" />
           <input
@@ -150,7 +150,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
         {isLoading ? (
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
             {Array.from({ length: 10 }).map((_, i) => (

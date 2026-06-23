@@ -72,12 +72,12 @@ export default function SettingsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-[var(--pt-border)]">
+      <div className="flex gap-1 mb-6 border-b border-[var(--pt-border)] overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px shrink-0 whitespace-nowrap transition-colors ${
               tab === key
                 ? "border-[var(--pt-green)] text-[var(--pt-green-600)]"
                 : "border-transparent text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)]"

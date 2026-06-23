@@ -95,12 +95,12 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-[var(--pt-border)]">
+      <div className="flex gap-1 mb-5 border-b border-[var(--pt-border)] overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
         {TABS.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px shrink-0 whitespace-nowrap transition-colors ${
               tab === key
                 ? "border-[var(--pt-green)] text-[var(--pt-green-600)]"
                 : "border-transparent text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)]"

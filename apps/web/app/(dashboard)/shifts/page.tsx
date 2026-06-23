@@ -91,7 +91,7 @@ export default function ShiftsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Shifts</h1>
           <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
