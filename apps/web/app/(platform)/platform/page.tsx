@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { Plus, Building2 } from "lucide-react"
+import { Plus, Building2, Download } from "lucide-react"
 import { ProvisionDialog } from "@/components/platform/ProvisionDialog"
 import type { TenantSummary, SubscriptionStatus } from "@pharmatrack/types"
 
@@ -59,6 +59,32 @@ export default function PlatformTenantsPage() {
             <p className="text-xl font-bold tabular-nums mt-0.5">{val}</p>
           </div>
         ))}
+      </div>
+
+      {/* Cross-tenant data export for analytics / ML */}
+      <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Download size={16} className="text-[var(--pt-text-secondary)]" />
+          <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-text-secondary)]">Data export</h2>
+        </div>
+        <p className="text-xs text-[var(--pt-text-secondary)] mb-3">
+          Cross-tenant CSV for analytics &amp; ML — sale line items, the product catalogue, and per-tenant stats.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {([
+            ["sales", "Sales (line items)"],
+            ["products", "Products"],
+            ["stats", "Tenant stats"],
+          ] as const).map(([ds, label]) => (
+            <a
+              key={ds}
+              href={`/api/platform/export?dataset=${ds}&format=csv`}
+              className="inline-flex items-center gap-2 px-3.5 h-9 rounded-lg border border-[var(--pt-border)] text-sm font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
+            >
+              <Download size={14} /> {label} CSV
+            </a>
+          ))}
+        </div>
       </div>
 
       <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">

@@ -148,7 +148,10 @@ export default function TenantDetailPage() {
           {status !== "suspended"
             ? <Button variant="outline" onClick={() => setStatus("suspended")} className="text-[var(--pt-red)] border-[var(--pt-red)]">Suspend…</Button>
             : <Button variant="outline" onClick={() => setStatus("active")}>Reactivate…</Button>}
-          <span className="text-xs text-[var(--pt-text-tertiary)]">remember to Save</span>
+          {status !== "cancelled"
+            ? <Button variant="outline" onClick={() => setStatus("cancelled")} className="text-[var(--pt-red)] border-[var(--pt-red)]">Ban…</Button>
+            : <Button variant="outline" onClick={() => setStatus("active")}>Restore…</Button>}
+          <span className="text-xs text-[var(--pt-text-tertiary)]">choose a state, then Save</span>
         </div>
       </section>
 

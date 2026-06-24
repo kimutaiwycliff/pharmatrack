@@ -1,10 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, UserCheck, UserX, Pencil, KeyRound, Loader2 } from "lucide-react"
+import { MoreHorizontal, UserCheck, UserX, Pencil, KeyRound, Lock, Send, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
 import { SetPinDialog } from "./SetPinDialog"
+import { SetPasswordDialog } from "./SetPasswordDialog"
 import type { Branch } from "@pharmatrack/types"
 
 interface StaffMember {
@@ -44,9 +45,25 @@ function ActionMenu({
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showPin, setShowPin] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const queryClient = useQueryClient()
 
   if (member.id === currentUserId || member.role === "owner") return null
+
+  async function resendInvite() {
+    setLoading(true)
+    setOpen(false)
+    try {
+      const res = await fetch(`/api/staff/${member.id}/resend`, { method: "POST" })
+      const json = (await res.json()) as { error?: string; email?: string }
+      if (!res.ok) throw new Error(json.error ?? "Failed to resend invite")
+      toast.success(`Invite re-sent${json.email ? ` to ${json.email}` : ""}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function patch(payload: Record<string, unknown>) {
     setLoading(true)
@@ -102,6 +119,20 @@ function ActionMenu({
               <KeyRound size={13} className="text-[var(--pt-text-tertiary)]" />
               Set Login PIN
             </button>
+            <button
+              onClick={() => { setShowPassword(true); setOpen(false) }}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
+            >
+              <Lock size={13} className="text-[var(--pt-text-tertiary)]" />
+              Set Login Password
+            </button>
+            <button
+              onClick={resendInvite}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
+            >
+              <Send size={13} className="text-[var(--pt-text-tertiary)]" />
+              Resend Invite
+            </button>
             <div className="border-t border-[var(--pt-border)] my-1" />
             <button
               onClick={() => patch({ is_active: !member.is_active })}
@@ -127,6 +158,13 @@ function ActionMenu({
         <SetPinDialog
           member={{ id: member.id, full_name: member.full_name, phone: member.phone }}
           onClose={() => setShowPin(false)}
+        />
+      )}
+
+      {showPassword && (
+        <SetPasswordDialog
+          member={{ id: member.id, full_name: member.full_name }}
+          onClose={() => setShowPassword(false)}
         />
       )}
     </div>

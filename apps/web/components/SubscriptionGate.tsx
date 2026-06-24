@@ -1,5 +1,6 @@
-import { ShieldAlert, LogOut } from "lucide-react"
+import { ShieldAlert, LogOut, Mail, MessageCircle } from "lucide-react"
 import { signOut } from "@/app/(auth)/login/actions"
+import { platformContact } from "@/lib/platform-contact"
 
 const MESSAGES: Record<string, string> = {
   past_due: "Your subscription payment is overdue.",
@@ -9,6 +10,8 @@ const MESSAGES: Record<string, string> = {
 }
 
 export function SubscriptionGate({ status, isOwner, orgName }: { status: string; isOwner: boolean; orgName?: string }) {
+  const contact = platformContact()
+  const hasContact = !!(contact.mailtoLink || contact.whatsappLink)
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--pt-bg)] text-[var(--pt-text)] p-6">
       <div className="max-w-md w-full bg-[var(--pt-surface)] rounded-2xl border border-[var(--pt-border)] p-8 text-center">
@@ -23,6 +26,31 @@ export function SubscriptionGate({ status, isOwner, orgName }: { status: string;
             ? "Please contact PharmaTrack to restore access for your pharmacy."
             : "Please ask your pharmacy owner to renew the PharmaTrack subscription."}
         </p>
+
+        {/* Contact the platform operator (env-configurable) */}
+        {hasContact && (
+          <div className="mt-5 flex flex-col sm:flex-row gap-2 justify-center">
+            {contact.whatsappLink && (
+              <a
+                href={contact.whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-lg bg-[var(--pt-green)] text-white text-sm font-semibold hover:bg-[var(--pt-green-600)] transition-colors"
+              >
+                <MessageCircle size={15} /> WhatsApp us
+              </a>
+            )}
+            {contact.mailtoLink && (
+              <a
+                href={contact.mailtoLink}
+                className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-lg border border-[var(--pt-border)] text-sm font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
+              >
+                <Mail size={15} /> Email us
+              </a>
+            )}
+          </div>
+        )}
+
         <form action={signOut} className="mt-6">
           <button type="submit" className="inline-flex items-center gap-2 px-4 h-10 rounded-lg border border-[var(--pt-border)] text-sm font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors">
             <LogOut size={15} /> Sign out

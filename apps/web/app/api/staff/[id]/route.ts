@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, user } from "@pharmatrack/db"
+import { auth } from "@/lib/auth/server"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { hashPin, validatePin } from "@/lib/auth/pin"
@@ -13,6 +14,9 @@ const updateSchema = z.object({
   phone: z.string().optional(),
   is_active: z.boolean().optional(),
   pin: z.string().optional(),
+  // Owner/manager can set a staff member's dashboard login password directly
+  // (their email is the username). 8+ chars; no email round-trip needed.
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
 })
 
 const WRITE_ROLES: Role[] = ["owner", "manager"]
@@ -56,6 +60,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (normalizedPhone !== undefined) set.phone = normalizedPhone
   if (parsed.data.is_active !== undefined) set.is_active = parsed.data.is_active
   if (pin_hash !== undefined) set.pin_hash = pin_hash
+
+  // Set the login password directly (updates the existing credential account).
+  if (parsed.data.password !== undefined) {
+    try {
+      const c = await auth.$context
+      const hashed = await c.password.hash(parsed.data.password)
+      await c.internalAdapter.updatePassword(id, hashed)
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to set password" }, { status: 500 })
+    }
+  }
 
   const [updated] = Object.keys(set).length > 0
     ? await db.update(staff_profile).set(set).where(eq(staff_profile.user_id, id)).returning()
