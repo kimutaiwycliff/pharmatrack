@@ -98,12 +98,11 @@ export default function PosPage() {
       return
     }
 
-    // Offline: only cash can be recorded (M-Pesa/card need connectivity).
+    // Offline: cash + manual M-Pesa + split all queue locally (non-prompting —
+    // the customer confirms the M-Pesa payment on their own phone). STK push is
+    // the only thing that needs connectivity, so the modals fall back to manual
+    // confirm while offline. The M-Pesa code is optional either way.
     if (!online) {
-      if (params.paymentMethod !== "cash") {
-        toast.error("You're offline — only cash sales can be recorded until you reconnect")
-        return
-      }
       await queueOfflineSale({
         saleId: crypto.randomUUID(),
         branchId: activeBranch.id,
@@ -111,11 +110,11 @@ export default function PosPage() {
         shiftId: shift?.id ?? null,
         items,
         discount,
-        paymentMethod: "cash",
+        paymentMethod: params.paymentMethod,
         amountTendered: params.amountTendered,
-        mpesaReference: null,
-        cashAmount: null,
-        mpesaAmount: null,
+        mpesaReference: params.mpesaReference,
+        cashAmount: params.cashAmount ?? null,
+        mpesaAmount: params.mpesaAmount ?? null,
         customerPhone: params.customerPhone ?? null,
         createdAt: new Date().toISOString(),
         synced: 0,
@@ -264,6 +263,7 @@ export default function PosPage() {
       <MpesaModal
         open={payModal === "mpesa"}
         total={total}
+        online={online}
         onClose={() => setPayModal(null)}
         onConfirm={(ref) =>
           submitSale({
@@ -277,6 +277,7 @@ export default function PosPage() {
       <SplitModal
         open={payModal === "split"}
         total={total}
+        online={online}
         onClose={() => setPayModal(null)}
         onConfirm={(cashAmt, mpesaAmt, ref) =>
           submitSale({

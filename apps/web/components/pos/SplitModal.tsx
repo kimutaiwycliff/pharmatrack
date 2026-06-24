@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Banknote, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -11,31 +11,42 @@ type MpesaMode = "prompt" | "manual"
 interface Props {
   open: boolean
   total: number
+  /** When offline, STK push can't reach the server — force manual confirm. */
+  online?: boolean
   onClose: () => void
   onConfirm: (cashAmt: number, mpesaAmt: number, mpesaRef: string | null) => void
 }
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
 
-export function SplitModal({ open, total, onClose, onConfirm }: Props) {
+export function SplitModal({ open, total, online = true, onClose, onConfirm }: Props) {
   const [cash, setCash] = useState(() => Math.round(total * 0.4))
   const [phone, setPhone] = useState("")
   const [mpesaMode, setMpesaMode] = useState<MpesaMode>("prompt")
   const [code, setCode] = useState("")
   const [sending, setSending] = useState(false)
 
+  // Offline → STK push unavailable; confirm the M-Pesa portion manually.
+  useEffect(() => {
+    if (!online) setMpesaMode("manual")
+  }, [online])
+
   const mpesa = Math.max(0, total - cash)
   const cashPct = total > 0 ? Math.min(100, (cash / total) * 100) : 0
   const mpesaPct = total > 0 ? Math.min(100, (mpesa / total) * 100) : 0
-  const codeValid = CODE_RE.test(code.trim())
+  const trimmedCode = code.trim()
+  // The M-Pesa code is OPTIONAL; only block if something invalid was typed.
+  const codeValid = CODE_RE.test(trimmedCode)
+  const codeBlocks = trimmedCode.length > 0 && !codeValid
   const balanced = Math.abs(cash + mpesa - total) < 0.01
-  const canConfirm = cash > 0 && mpesa > 0 && balanced && (mpesaMode === "prompt" || codeValid)
+  const canConfirm =
+    cash > 0 && mpesa > 0 && balanced && (mpesaMode === "prompt" ? online : !codeBlocks)
 
   const setCashSafe = (v: number) => setCash(Math.min(total, Math.max(0, v)))
 
   async function handleConfirm() {
     if (mpesaMode === "manual") {
-      onConfirm(cash, mpesa, code.trim())
+      onConfirm(cash, mpesa, trimmedCode || null)
       return
     }
     setSending(true)
@@ -154,19 +165,23 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
             </div>
 
             <div className="flex gap-1.5 bg-[var(--pt-surface)] rounded-lg p-1">
-              {(["prompt", "manual"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setMpesaMode(m)}
-                  className={`flex-1 h-7 rounded-md text-xs font-semibold transition-colors ${
-                    mpesaMode === m
-                      ? "bg-[var(--pt-green)] text-white"
-                      : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"
-                  }`}
-                >
-                  {m === "prompt" ? "STK Push" : "Manual Confirm"}
-                </button>
-              ))}
+              {(["prompt", "manual"] as const).map((m) => {
+                const disabled = m === "prompt" && !online
+                return (
+                  <button
+                    key={m}
+                    onClick={() => !disabled && setMpesaMode(m)}
+                    disabled={disabled}
+                    className={`flex-1 h-7 rounded-md text-xs font-semibold transition-colors ${
+                      mpesaMode === m
+                        ? "bg-[var(--pt-green)] text-white"
+                        : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"
+                    } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                  >
+                    {m === "prompt" ? (online ? "STK Push" : "STK (offline)") : "Manual Confirm"}
+                  </button>
+                )
+              })}
             </div>
 
             {mpesaMode === "prompt" ? (
@@ -188,13 +203,13 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
                   type="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 10))}
-                  placeholder="M-Pesa code (e.g. RGQ45HTYS8)"
+                  placeholder="M-Pesa code (optional)"
                   className="w-full h-10 px-3 border border-[var(--pt-border)] rounded-lg bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent font-mono font-semibold tracking-widest uppercase text-sm"
                 />
                 <div className="flex justify-between mt-1 text-xs text-[var(--pt-text-secondary)]">
                   <span>Customer paid {formatKES(mpesa)} via Pay Bill / Send Money</span>
-                  <span className={codeValid ? "text-[var(--pt-green-600)] font-semibold" : ""}>
-                    {codeValid ? "✓ Valid" : `${code.length}/10`}
+                  <span className={codeBlocks ? "text-amber-600 font-semibold" : codeValid ? "text-[var(--pt-green-600)] font-semibold" : ""}>
+                    {codeBlocks ? "10 chars" : codeValid ? "✓ Valid" : "optional"}
                   </span>
                 </div>
               </div>
@@ -223,7 +238,7 @@ export function SplitModal({ open, total, onClose, onConfirm }: Props) {
             <Check size={18} />
             {mpesaMode === "prompt"
               ? "Take cash & send STK push"
-              : "Take cash & confirm M-Pesa code"}
+              : "Take cash & confirm M-Pesa"}
           </Button>
           <button
             onClick={onClose}

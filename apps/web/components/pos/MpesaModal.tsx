@@ -12,13 +12,15 @@ type Phase = "input" | "waiting"
 interface Props {
   open: boolean
   total: number
+  /** When offline, STK push can't reach the server — force manual confirm. */
+  online?: boolean
   onClose: () => void
   onConfirm: (mpesaRef: string | null) => void
 }
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
 
-export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
+export function MpesaModal({ open, total, online = true, onClose, onConfirm }: Props) {
   const [mode, setMode] = useState<Mode>("prompt")
   const [phase, setPhase] = useState<Phase>("input")
   const [phone, setPhone] = useState("")
@@ -26,7 +28,16 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
   const [timer, setTimer] = useState(60)
   const [sending, setSending] = useState(false)
 
-  const codeValid = CODE_RE.test(code.trim())
+  // Offline → STK push is unavailable; confirm manually instead.
+  useEffect(() => {
+    if (!online) setMode("manual")
+  }, [online])
+
+  const trimmedCode = code.trim()
+  // The code is OPTIONAL (customer already confirmed on their phone). Only block
+  // confirmation if something was typed but isn't a valid 10-char M-Pesa code.
+  const codeValid = CODE_RE.test(trimmedCode)
+  const codeBlocks = trimmedCode.length > 0 && !codeValid
 
   useEffect(() => {
     if (phase !== "waiting") return
@@ -96,33 +107,37 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
             <span className="text-2xl font-bold tabular-nums">{formatKES(total)}</span>
           </div>
 
-          {/* Mode toggle */}
+          {/* Mode toggle (STK push disabled while offline) */}
           <div className="grid grid-cols-2 gap-2">
             {(
               [
-                { id: "prompt" as const, label: "Send STK Push", desc: "Auto-prompt customer phone" },
+                { id: "prompt" as const, label: "Send STK Push", desc: online ? "Auto-prompt customer phone" : "Needs a connection" },
                 { id: "manual" as const, label: "Manual Confirm", desc: "Customer already paid" },
               ] as const
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => switchMode(opt.id)}
-                className={`text-left p-3 rounded-xl border transition-colors ${
-                  mode === opt.id
-                    ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]"
-                    : "border-[var(--pt-border)] bg-[var(--pt-surface)] hover:bg-[var(--pt-muted)]"
-                }`}
-              >
-                <p
-                  className={`text-sm font-semibold mb-0.5 ${
-                    mode === opt.id ? "text-[var(--pt-green-600)]" : "text-[var(--pt-text)]"
-                  }`}
+            ).map((opt) => {
+              const disabled = opt.id === "prompt" && !online
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => !disabled && switchMode(opt.id)}
+                  disabled={disabled}
+                  className={`text-left p-3 rounded-xl border transition-colors ${
+                    mode === opt.id
+                      ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]"
+                      : "border-[var(--pt-border)] bg-[var(--pt-surface)] hover:bg-[var(--pt-muted)]"
+                  } ${disabled ? "opacity-50 cursor-not-allowed hover:bg-[var(--pt-surface)]" : ""}`}
                 >
-                  {opt.label}
-                </p>
-                <p className="text-xs text-[var(--pt-text-secondary)]">{opt.desc}</p>
-              </button>
-            ))}
+                  <p
+                    className={`text-sm font-semibold mb-0.5 ${
+                      mode === opt.id ? "text-[var(--pt-green-600)]" : "text-[var(--pt-text)]"
+                    }`}
+                  >
+                    {opt.label}
+                  </p>
+                  <p className="text-xs text-[var(--pt-text-secondary)]">{opt.desc}</p>
+                </button>
+              )
+            })}
           </div>
 
           {/* PROMPT — input */}
@@ -206,13 +221,15 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
                 <Info size={14} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
                 <p className="text-xs text-blue-800 leading-relaxed">
                   Use when the customer paid via <strong>Pay Bill</strong> or{" "}
-                  <strong>Send Money</strong> on their own. Read the M-Pesa SMS code aloud —
-                  verify it matches the amount before confirming.
+                  <strong>Send Money</strong> on their own.{" "}
+                  {online
+                    ? "The code is optional — confirm once you've seen the payment."
+                    : "You're offline — confirm the customer's M-Pesa now; it syncs later."}
                 </p>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1.5">
-                  M-Pesa transaction code
+                  M-Pesa transaction code <span className="font-normal normal-case text-[var(--pt-text-tertiary)]">(optional)</span>
                 </label>
                 <input
                   type="text"
@@ -222,26 +239,28 @@ export function MpesaModal({ open, total, onClose, onConfirm }: Props) {
                   className="w-full h-11 px-3 border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent font-mono font-semibold tracking-widest uppercase text-sm"
                 />
                 <div className="flex justify-between mt-1.5 text-xs text-[var(--pt-text-secondary)]">
-                  <span>10 characters · letters & numbers</span>
-                  <span className={codeValid ? "text-[var(--pt-green-600)] font-semibold" : ""}>
-                    {codeValid ? "✓ Valid format" : `${code.length}/10`}
+                  <span>Leave blank if the customer already confirmed</span>
+                  <span className={codeBlocks ? "text-amber-600 font-semibold" : codeValid ? "text-[var(--pt-green-600)] font-semibold" : ""}>
+                    {codeBlocks ? "Must be 10 characters" : codeValid ? "✓ Valid format" : trimmedCode ? `${trimmedCode.length}/10` : ""}
                   </span>
                 </div>
               </div>
               <Button
-                onClick={() => onConfirm(code.trim())}
-                disabled={!codeValid}
+                onClick={() => onConfirm(trimmedCode || null)}
+                disabled={codeBlocks}
                 className="w-full h-12 gap-2 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white rounded-xl text-base font-semibold"
               >
                 <Check size={18} />
-                Confirm payment manually
+                {trimmedCode ? "Confirm payment" : "Confirm — customer paid"}
               </Button>
-              <button
-                onClick={() => switchMode("prompt")}
-                className="w-full text-center text-xs text-[var(--pt-green-600)] font-medium hover:underline"
-              >
-                ← Back to STK push
-              </button>
+              {online && (
+                <button
+                  onClick={() => switchMode("prompt")}
+                  className="w-full text-center text-xs text-[var(--pt-green-600)] font-medium hover:underline"
+                >
+                  ← Back to STK push
+                </button>
+              )}
             </div>
           )}
 
