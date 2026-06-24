@@ -153,6 +153,7 @@ export default function PosPage() {
       // the offline cache) so on-hand reflects the sale without a manual refresh.
       qc.invalidateQueries({ queryKey: ["productSearch"] })
       qc.invalidateQueries({ queryKey: ["branchCatalogPrefetch"] })
+      qc.invalidateQueries({ queryKey: ["topProducts"] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sale failed")
     } finally {

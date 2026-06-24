@@ -28,16 +28,11 @@ function ImageUploader({ value, onChange }: { value: string | null; onChange: (u
   async function handleFile(file: File) {
     setUploading(true)
     try {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg"
-      const res = await fetch("/api/uploads/product-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content_type: file.type || "image/jpeg", ext }),
-      })
-      const json = (await res.json()) as { uploadUrl?: string; publicUrl?: string; error?: string }
-      if (!res.ok || !json.uploadUrl || !json.publicUrl) throw new Error(json.error ?? "Could not start upload")
-      const put = await fetch(json.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "image/jpeg" }, body: file })
-      if (!put.ok) throw new Error("Upload failed")
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/uploads/product-image", { method: "POST", body: fd })
+      const json = (await res.json().catch(() => ({}))) as { publicUrl?: string; error?: string }
+      if (!res.ok || !json.publicUrl) throw new Error(json.error ?? "Upload failed")
       onChange(json.publicUrl)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed")

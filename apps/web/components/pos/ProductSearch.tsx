@@ -37,6 +37,9 @@ function useProductSearch(q: string, branchId: string) {
     enabled: branchId.length > 0,
     staleTime: 30_000,
     gcTime: 60_000,
+    // Run the queryFn even when offline (default "online" PAUSES queries with no
+    // network, which would skip the Dexie fallback above → offline search broken).
+    networkMode: "always",
   })
 }
 
@@ -54,6 +57,25 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   const { data: searchData, isFetching: searchFetching } = useProductSearch(searchText, branchId)
   const { data: featuredData } = useProductSearch("", branchId)
 
+  // Learned most-sold products for this branch → lead the quick-add grid.
+  const { data: topData } = useQuery<{ products: ProductWithStock[] }>({
+    queryKey: ["topProducts", branchId],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/products/top?branch_id=${branchId}`)
+        if (!res.ok) throw new Error("top failed")
+        const json = (await res.json()) as { products: ProductWithStock[] }
+        cacheProducts(json.products).catch(() => {})
+        return json
+      } catch {
+        return { products: [] } // offline → catalogue fills the grid below
+      }
+    },
+    enabled: branchId.length > 0,
+    staleTime: 5 * 60_000,
+    networkMode: "always",
+  })
+
   // Warm the offline cache with the WHOLE branch catalogue once on load (while
   // online), so a later outage can search/scan any product — not just ones the
   // cashier happened to open. Failures (e.g. already offline) are ignored.
@@ -70,6 +92,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
     retry: false,
+    networkMode: "always",
   })
 
   const handleProductAdd = useCallback(
@@ -111,7 +134,16 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   })
 
   const displayProducts = searchText.length >= 2 ? (searchData?.products ?? []) : []
-  const quickAdd = (featuredData?.products ?? []).slice(0, 6)
+  // Quick-add: most-sold first (learned), then fill from the catalogue, de-duped.
+  const quickAdd = (() => {
+    const seen = new Set<string>()
+    const out: ProductWithStock[] = []
+    for (const p of [...(topData?.products ?? []), ...(featuredData?.products ?? [])]) {
+      if (p.product_id && !seen.has(p.product_id)) { seen.add(p.product_id); out.push(p) }
+      if (out.length >= 8) break
+    }
+    return out
+  })()
   const isLoading = lookupFetching || searchFetching
 
   return (

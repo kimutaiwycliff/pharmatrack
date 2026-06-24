@@ -14,7 +14,7 @@ import { WifiOff } from "lucide-react"
 import { useActiveShift } from "@/lib/hooks/useActiveShift"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
-import { signOut } from "@/app/(auth)/login/actions"
+import { LogoutButton } from "@/components/LogoutButton"
 
 function formatDuration(from: string) {
   const ms = Date.now() - new Date(from).getTime()
@@ -124,11 +124,12 @@ export function PosShell({ userId, children }: { userId: string; children: React
         <ThemeToggle className="!w-8 !h-8" />
 
         {/* Sign out */}
-        <form action={signOut}>
-          <Button variant="ghost" size="icon" type="submit" title="Sign out" className="h-8 w-8">
-            <LogOut size={15} />
-          </Button>
-        </form>
+        <LogoutButton
+          title="Sign out"
+          className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+        >
+          <LogOut size={15} />
+        </LogoutButton>
       </header>
 
       {/* Background sync of any offline sales */}

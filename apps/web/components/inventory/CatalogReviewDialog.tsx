@@ -135,8 +135,8 @@ export function CatalogReviewDialog({
             <thead className="sticky top-0 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] z-10">
               <tr className="text-[11px] uppercase tracking-wide text-[var(--pt-text-secondary)]">
                 <th className="text-left font-semibold px-3 py-2">Product</th>
-                <th className="text-right font-semibold px-2 py-2 w-20">Cost</th>
-                <th className="text-right font-semibold px-2 py-2 w-20">Sell</th>
+                <th className="text-right font-semibold px-2 py-2 w-28">Cost</th>
+                <th className="text-right font-semibold px-2 py-2 w-28">Sell</th>
                 <th className="text-right font-semibold px-2 py-2 w-14">Margin</th>
                 <th className="text-right font-semibold px-2 py-2 w-24">Opening qty</th>
               </tr>

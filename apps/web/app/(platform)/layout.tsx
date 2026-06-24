@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { getSession, isPlatformAdmin } from "@/lib/auth/helpers"
-import { signOut } from "@/app/(auth)/login/actions"
+import { LogoutButton } from "@/components/LogoutButton"
 import { PlatformProviders } from "@/components/platform/PlatformProviders"
 import { LogOut, ShieldCheck } from "lucide-react"
 
@@ -22,11 +22,9 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           </Link>
           <div className="flex-1" />
           <span className="text-[13px] text-[var(--pt-text-secondary)] hidden sm:block">{user.email}</span>
-          <form action={signOut}>
-            <button type="submit" title="Sign out" className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted)] transition-colors">
-              <LogOut size={15} />
-            </button>
-          </form>
+          <LogoutButton title="Sign out" className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted)] transition-colors">
+            <LogOut size={15} />
+          </LogoutButton>
         </header>
         <main className="p-4 sm:p-6 lg:p-8">{children}</main>
       </div>

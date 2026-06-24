@@ -1,9 +1,10 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
 
 // ADR-004 — self-hosted MinIO (S3-compatible) for product images + backups.
-// Uploads go via a presigned PUT issued server-side; the object key is stored on
-// the product and served from the public bucket URL.
+// MinIO is NOT exposed to the internet (bound to localhost / the compose network),
+// so the browser can't talk to it directly. Uploads go through the app server
+// (which can reach minio:9000 internally) and images are served back through
+// `/api/media/<key>` — works behind Cloudflare with no MinIO exposure.
 
 let _client: S3Client | null = null
 function client(): S3Client {
@@ -24,26 +25,38 @@ function client(): S3Client {
 
 const PRODUCTS_BUCKET = () => process.env.MINIO_BUCKET_PRODUCTS ?? "pharmatrack-products"
 
-/** Public URL for an object in the products bucket (bucket is public-read). */
+/** App-relative URL that serves the object via /api/media/<key> (browser-reachable). */
 export function productImageUrl(key: string): string {
-  const base = process.env.NEXT_PUBLIC_MINIO_URL // e.g. https://cdn.yourdomain.com
-    ?? `http://${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT ?? "9000"}`
-  return `${base}/${PRODUCTS_BUCKET()}/${key}`
+  return `/api/media/${key}`
 }
 
-/** Issue a presigned PUT so the browser can upload an image directly. */
-export async function presignProductUpload(
+/** Upload an image to the products bucket (server-side). Returns its public URL. */
+export async function putProductImage(
   key: string,
+  body: Buffer | Uint8Array,
   contentType: string,
-  expiresIn = 60,
-): Promise<{ url: string; publicUrl: string }> {
-  const cmd = new PutObjectCommand({
+): Promise<string> {
+  await client().send(new PutObjectCommand({
     Bucket: PRODUCTS_BUCKET(),
     Key: key,
+    Body: body,
     ContentType: contentType,
-  })
-  const url = await getSignedUrl(client(), cmd, { expiresIn })
-  return { url, publicUrl: productImageUrl(key) }
+  }))
+  return productImageUrl(key)
+}
+
+/** Fetch an object from the products bucket (server-side). Null if missing. */
+export async function getProductObject(
+  key: string,
+): Promise<{ body: Uint8Array; contentType: string } | null> {
+  try {
+    const res = await client().send(new GetObjectCommand({ Bucket: PRODUCTS_BUCKET(), Key: key }))
+    if (!res.Body) return null
+    const body = await res.Body.transformToByteArray()
+    return { body, contentType: res.ContentType ?? "application/octet-stream" }
+  } catch {
+    return null
+  }
 }
 
 export async function deleteProductImage(key: string): Promise<void> {

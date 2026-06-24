@@ -39,5 +39,7 @@ export function useProductLookup(barcode: string | null, branchId?: string) {
     queryFn: () => lookupProduct(barcode!, branchId),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000,
+    // Run even when offline so the Dexie cache fallback in lookupProduct fires.
+    networkMode: "always",
   })
 }

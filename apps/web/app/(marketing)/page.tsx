@@ -8,20 +8,22 @@ import { RoiCalculator } from "@/components/marketing/RoiCalculator"
 import { Pricing } from "@/components/marketing/Pricing"
 import { Faq } from "@/components/marketing/Faq"
 import { FinalCta } from "@/components/marketing/FinalCta"
+import { Reveal } from "@/components/marketing/Reveal"
 
 export default function LandingPage() {
   return (
     <>
+      {/* Hero animates on load; the rest fade up as they scroll into view. */}
       <Hero />
-      <TrustBar />
-      <ProblemSolution />
-      <WhySection />
-      <Features />
-      <Comparison />
-      <RoiCalculator />
-      <Pricing />
-      <Faq />
-      <FinalCta />
+      <Reveal><TrustBar /></Reveal>
+      <Reveal><ProblemSolution /></Reveal>
+      <Reveal><WhySection /></Reveal>
+      <Reveal><Features /></Reveal>
+      <Reveal><Comparison /></Reveal>
+      <Reveal><RoiCalculator /></Reveal>
+      <Reveal><Pricing /></Reveal>
+      <Reveal><Faq /></Reveal>
+      <Reveal><FinalCta /></Reveal>
     </>
   )
 }

@@ -1,28 +1,34 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
-import { z } from "zod"
-import { presignProductUpload } from "@/lib/storage/minio"
+import { putProductImage } from "@/lib/storage/minio"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 
-const schema = z.object({
-  content_type: z.string().regex(/^image\/(png|jpe?g|webp|gif|avif)$/, "Unsupported image type"),
-  ext: z.string().regex(/^[a-z0-9]{1,5}$/i).optional(),
-})
-
 const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
+const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
+const ALLOWED = /^image\/(png|jpe?g|webp|gif|avif)$/
 
-// Issues a presigned PUT URL so the browser uploads the product image straight to
-// MinIO; returns the public URL to store on the product.
+// Receives the image file (multipart) and uploads it to MinIO server-side — the
+// browser can't reach MinIO directly, so this is the only reliable path. Returns
+// the app-served public URL to store on the product.
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const parsed = schema.safeParse(await request.json())
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
+  const form = await request.formData().catch(() => null)
+  const file = form?.get("file")
+  if (!(file instanceof File)) return NextResponse.json({ error: "No file uploaded" }, { status: 400 })
+  if (!ALLOWED.test(file.type)) return NextResponse.json({ error: "Unsupported image type" }, { status: 400 })
+  if (file.size > MAX_BYTES) return NextResponse.json({ error: "Image must be 5 MB or smaller" }, { status: 400 })
 
-  const ext = parsed.data.ext ?? parsed.data.content_type.split("/")[1] ?? "jpg"
+  const sub = file.type.split("/")[1]
+  const ext = sub === "jpeg" ? "jpg" : (sub ?? "jpg")
   const key = `${ctx.organizationId}/${randomUUID()}.${ext}`
-  const { url, publicUrl } = await presignProductUpload(key, parsed.data.content_type)
-  return NextResponse.json({ uploadUrl: url, publicUrl })
+  try {
+    const buf = Buffer.from(await file.arrayBuffer())
+    const publicUrl = await putProductImage(key, buf, file.type)
+    return NextResponse.json({ publicUrl })
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Upload failed" }, { status: 500 })
+  }
 }

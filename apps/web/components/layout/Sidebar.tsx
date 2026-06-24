@@ -22,7 +22,7 @@ import {
 import { hasFeature, type Feature } from "@pharmatrack/core"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
-import { signOut } from "@/app/(auth)/login/actions"
+import { LogoutButton } from "@/components/LogoutButton"
 import type { UserRole } from "@pharmatrack/types"
 
 interface NavItem {
@@ -154,15 +154,12 @@ export function Sidebar() {
               <p className="text-[13px] font-semibold truncate">{profile?.full_name}</p>
               <p className="text-[11px] text-[var(--pt-text-secondary)] capitalize">{profile?.role}</p>
             </div>
-            <form action={signOut}>
-              <button
-                type="submit"
-                title="Sign out"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)] transition-colors"
-              >
-                <LogOut size={15} />
-              </button>
-            </form>
+            <LogoutButton
+              title="Sign out"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+            >
+              <LogOut size={15} />
+            </LogoutButton>
           </div>
         </div>
       </aside>
