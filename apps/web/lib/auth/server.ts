@@ -91,16 +91,19 @@ export const auth = betterAuth({
     // no API key, password never leaves as plaintext). Applies to sign-up,
     // password change and reset — including our signup (provision → signUpEmail).
     haveIBeenPwned({ customPasswordCompromisedMessage: "This password has appeared in a known data breach. Please choose a different one." }),
-    // Cloudflare Turnstile on the browser credential endpoints that carry a
-    // widget. Token is sent as the `x-captcha-response` header (LoginForm). NOT
-    // the till PIN, and NOT /forget-password (the reset page has no widget, and
-    // captcha there would block resets). Internal auth.api calls (our /api/signup)
-    // bypass onRequest, so they're unaffected — verified.
+    // Cloudflare Turnstile on LOGIN only. The token is sent as the
+    // `x-captcha-response` header by LoginForm. We deliberately do NOT guard
+    // `/sign-up/email` here: the captcha plugin's onRequest fires for internal
+    // `auth.api.signUpEmail()` calls too, which would break the first-run
+    // operator at /setup and operator-invited owners (provisionTenant) — neither
+    // carries a widget. Public self-serve signup is instead bot-protected at
+    // `/api/signup/send-otp` (verifyTurnstile) + email-OTP verification + rate
+    // limiting, so sign-up is covered without tripping the internal callers.
     ...(turnstileConfigured
       ? [captcha({
           provider: "cloudflare-turnstile",
           secretKey: process.env.TURNSTILE_SECRET_KEY!,
-          endpoints: ["/sign-in/email", "/sign-up/email"],
+          endpoints: ["/sign-in/email"],
         })]
       : []),
     // MUST be last — applies Set-Cookie headers from auth.api.* calls made inside
