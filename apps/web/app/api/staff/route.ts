@@ -28,6 +28,7 @@ export async function GET(_request: NextRequest) {
     id: staff_profile.user_id, full_name: user.name, role: staff_profile.role,
     branch_id: staff_profile.branch_id, phone: staff_profile.phone, is_active: staff_profile.is_active,
     created_at: staff_profile.created_at, branch_name: branch.name,
+    banned: user.banned, ban_reason: user.banReason,
   }).from(staff_profile)
     .leftJoin(user, eq(user.id, staff_profile.user_id))
     .leftJoin(branch, eq(branch.id, staff_profile.branch_id))

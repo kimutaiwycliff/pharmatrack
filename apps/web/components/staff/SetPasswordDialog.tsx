@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, X, Lock } from "lucide-react"
+import { Loader2, Lock } from "lucide-react"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 
 interface Props {
   member: { id: string; full_name: string }
@@ -43,19 +44,11 @@ export function SetPasswordDialog({ member, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-[var(--pt-surface)] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <Lock size={17} className="text-[var(--pt-text-secondary)]" />
-            <h2 className="text-lg font-bold">Set Login Password</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]"
-          >
-            <X size={16} />
-          </button>
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-md p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Lock size={17} className="text-[var(--pt-text-secondary)]" />
+          <h2 className="text-lg font-bold">Set Login Password</h2>
         </div>
         <p className="text-sm text-[var(--pt-text-secondary)] mb-5">
           {member.full_name} can sign in with their email and this password. Share it with
@@ -103,7 +96,7 @@ export function SetPasswordDialog({ member, onClose }: Props) {
             Set Password
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

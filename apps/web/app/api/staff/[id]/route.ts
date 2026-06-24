@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { and, eq } from "drizzle-orm"
-import { dbAdmin, staff_profile, user } from "@pharmatrack/db"
+import { eq, sql } from "drizzle-orm"
+import { dbAdmin, staff_profile, user, member, session, sale } from "@pharmatrack/db"
 import { auth } from "@/lib/auth/server"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
@@ -17,9 +17,30 @@ const updateSchema = z.object({
   // Owner/manager can set a staff member's dashboard login password directly
   // (their email is the username). 8+ chars; no email round-trip needed.
   password: z.string().min(8, "Password must be at least 8 characters").optional(),
+  // Block (suspend/ban) or unblock. Enforced via Better Auth's `banned` flag,
+  // which rejects email sign-in; is_active mirrors it so PIN login is blocked
+  // too. block_reason is a label that distinguishes suspend vs ban in the UI.
+  blocked: z.boolean().optional(),
+  block_reason: z.enum(["suspended", "banned"]).optional(),
 })
 
 const WRITE_ROLES: Role[] = ["owner", "manager"]
+
+/** Shared guard: resolve the target staff member and check the caller may act on
+ *  them (same org; managers can't touch owners/managers). */
+async function resolveTarget(ctx: { organizationId: string; role: Role }, id: string) {
+  const db = dbAdmin()
+  const [target] = await db
+    .select({ organization_id: staff_profile.organization_id, role: staff_profile.role, phone: staff_profile.phone })
+    .from(staff_profile).where(eq(staff_profile.user_id, id)).limit(1)
+  if (!target || target.organization_id !== ctx.organizationId) {
+    return { error: NextResponse.json({ error: "Staff member not found" }, { status: 404 }) }
+  }
+  if (ctx.role === "manager" && ["owner", "manager"].includes(target.role)) {
+    return { error: NextResponse.json({ error: "Insufficient permissions" }, { status: 403 }) }
+  }
+  return { target }
+}
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -72,6 +93,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
   }
 
+  // Block / unblock: Better Auth `banned` is the real enforcement (blocks email
+  // sign-in); mirror it onto is_active for PIN login, and kill live sessions.
+  if (parsed.data.blocked !== undefined) {
+    const blocked = parsed.data.blocked
+    await db.update(user).set({
+      banned: blocked,
+      banReason: blocked ? (parsed.data.block_reason ?? "suspended") : null,
+      banExpires: null,
+      updatedAt: new Date(),
+    }).where(eq(user.id, id))
+    set.is_active = !blocked
+    if (blocked) await db.delete(session).where(eq(session.userId, id))
+  }
+
   const [updated] = Object.keys(set).length > 0
     ? await db.update(staff_profile).set(set).where(eq(staff_profile.user_id, id)).returning()
     : await db.select().from(staff_profile).where(eq(staff_profile.user_id, id)).limit(1)
@@ -81,4 +116,35 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     id, full_name: u?.name ?? "", role: updated!.role, branch_id: updated!.branch_id,
     phone: updated!.phone, is_active: updated!.is_active,
   } })
+}
+
+// Remove a staff member from the pharmacy. If they have no sales we fully delete
+// the user (cascades staff_profile, member, account, session) so the email can be
+// re-invited; if they have sales (referenced by sale.cashier_id) we keep the user
+// row for history but strip their org access + ban + kill sessions.
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (id === ctx.userId) return NextResponse.json({ error: "You can't delete your own account" }, { status: 400 })
+
+  const r = await resolveTarget(ctx, id)
+  if (r.error) return r.error
+
+  const db = dbAdmin()
+  const counted = await db.select({ n: sql<number>`count(*)::int` }).from(sale).where(eq(sale.cashier_id, id))
+  const n = counted[0]?.n ?? 0
+
+  if (n === 0) {
+    await db.delete(user).where(eq(user.id, id)) // cascades member, staff_profile, account, session
+    return NextResponse.json({ ok: true, deleted: "full" })
+  }
+
+  // Has sales → preserve the user for records; revoke access instead.
+  await db.delete(staff_profile).where(eq(staff_profile.user_id, id))
+  await db.delete(member).where(eq(member.userId, id))
+  await db.delete(session).where(eq(session.userId, id))
+  await db.update(user).set({ banned: true, banReason: "removed", updatedAt: new Date() }).where(eq(user.id, id))
+  return NextResponse.json({ ok: true, deleted: "revoked", note: "Member had sales history — access removed, records kept." })
 }

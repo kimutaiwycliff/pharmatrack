@@ -1,11 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, UserCheck, UserX, Pencil, KeyRound, Lock, Send, Loader2 } from "lucide-react"
+import { MoreHorizontal, UserCheck, Pencil, KeyRound, Lock, Send, PauseCircle, Ban, Trash2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
 import { SetPinDialog } from "./SetPinDialog"
 import { SetPasswordDialog } from "./SetPasswordDialog"
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 import type { Branch } from "@pharmatrack/types"
 
 interface StaffMember {
@@ -17,6 +20,8 @@ interface StaffMember {
   is_active: boolean
   created_at: string
   branches: { name: string } | null
+  banned?: boolean | null
+  ban_reason?: string | null
 }
 
 interface Props {
@@ -42,7 +47,6 @@ function ActionMenu({
   branches: Branch[]
   currentUserId: string
 }) {
-  const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showPin, setShowPin] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -50,33 +54,15 @@ function ActionMenu({
 
   if (member.id === currentUserId || member.role === "owner") return null
 
-  async function resendInvite() {
-    setLoading(true)
-    setOpen(false)
-    try {
-      const res = await fetch(`/api/staff/${member.id}/resend`, { method: "POST" })
-      const json = (await res.json()) as { error?: string; email?: string }
-      if (!res.ok) throw new Error(json.error ?? "Failed to resend invite")
-      toast.success(`Invite re-sent${json.email ? ` to ${json.email}` : ""}`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error")
-    } finally {
-      setLoading(false)
-    }
-  }
+  const blocked = !!member.banned
 
-  async function patch(payload: Record<string, unknown>) {
+  async function call(fn: () => Promise<Response>, okMsg: string) {
     setLoading(true)
-    setOpen(false)
     try {
-      const res = await fetch(`/api/staff/${member.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-      const json = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Failed to update")
-      toast.success("Updated")
+      const res = await fn()
+      const json = (await res.json().catch(() => ({}))) as { error?: string; email?: string; note?: string }
+      if (!res.ok) throw new Error(json.error ?? "Action failed")
+      toast.success(json.note ?? (json.email ? `${okMsg} ${json.email}` : okMsg))
       await queryClient.invalidateQueries({ queryKey: ["staff"] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
@@ -85,74 +71,72 @@ function ActionMenu({
     }
   }
 
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
-        disabled={loading}
-      >
-        {loading ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={15} />}
-      </button>
+  const patch = (payload: Record<string, unknown>, msg = "Updated") =>
+    call(() => fetch(`/api/staff/${member.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }), msg)
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-40 bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] shadow-lg py-1 min-w-[180px]">
-            {(["manager", "pharmacist", "cashier"] as const)
-              .filter((r) => r !== member.role)
-              .map((r) => (
-                <button
-                  key={r}
-                  onClick={() => patch({ role: r })}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
-                >
-                  <Pencil size={13} className="text-[var(--pt-text-tertiary)]" />
-                  Change to {r.charAt(0).toUpperCase() + r.slice(1)}
-                </button>
-              ))}
-            <div className="border-t border-[var(--pt-border)] my-1" />
-            <button
-              onClick={() => { setShowPin(true); setOpen(false) }}
-              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
-            >
-              <KeyRound size={13} className="text-[var(--pt-text-tertiary)]" />
-              Set Login PIN
-            </button>
-            <button
-              onClick={() => { setShowPassword(true); setOpen(false) }}
-              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
-            >
-              <Lock size={13} className="text-[var(--pt-text-tertiary)]" />
-              Set Login Password
-            </button>
-            <button
-              onClick={resendInvite}
-              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
-            >
-              <Send size={13} className="text-[var(--pt-text-tertiary)]" />
-              Resend Invite
-            </button>
-            <div className="border-t border-[var(--pt-border)] my-1" />
-            <button
-              onClick={() => patch({ is_active: !member.is_active })}
-              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--pt-muted)] flex items-center gap-2"
-            >
-              {member.is_active ? (
-                <>
-                  <UserX size={13} className="text-[var(--pt-red)]" />
-                  <span className="text-[var(--pt-red)]">Deactivate</span>
-                </>
-              ) : (
-                <>
-                  <UserCheck size={13} className="text-[var(--pt-green)]" />
-                  <span className="text-[var(--pt-green)]">Reactivate</span>
-                </>
-              )}
-            </button>
-          </div>
-        </>
-      )}
+  const resendInvite = () =>
+    call(() => fetch(`/api/staff/${member.id}/resend`, { method: "POST" }), "Invite re-sent to")
+
+  const remove = () => {
+    if (!confirm(`Delete ${member.full_name}? They lose all access immediately. This can't be undone.`)) return
+    call(() => fetch(`/api/staff/${member.id}`, { method: "DELETE" }), `${member.full_name} removed`)
+  }
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          disabled={loading}
+          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={15} />}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[200px]">
+          {(["manager", "pharmacist", "cashier"] as const)
+            .filter((r) => r !== member.role)
+            .map((r) => (
+              <DropdownMenuItem key={r} onClick={() => patch({ role: r })}>
+                <Pencil size={13} className="text-[var(--pt-text-tertiary)]" />
+                Change to {r.charAt(0).toUpperCase() + r.slice(1)}
+              </DropdownMenuItem>
+            ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setShowPin(true)}>
+            <KeyRound size={13} className="text-[var(--pt-text-tertiary)]" /> Set Login PIN
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setShowPassword(true)}>
+            <Lock size={13} className="text-[var(--pt-text-tertiary)]" /> Set Login Password
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={resendInvite}>
+            <Send size={13} className="text-[var(--pt-text-tertiary)]" /> Resend Invite
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {blocked ? (
+            <DropdownMenuItem onClick={() => patch({ blocked: false }, "Access restored")}>
+              <UserCheck size={13} className="text-[var(--pt-green)]" />
+              <span className="text-[var(--pt-green)]">Reactivate</span>
+            </DropdownMenuItem>
+          ) : (
+            <>
+              <DropdownMenuItem onClick={() => patch({ blocked: true, block_reason: "suspended" }, "Suspended")}>
+                <PauseCircle size={13} className="text-amber-600" />
+                <span className="text-amber-600">Suspend</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => patch({ blocked: true, block_reason: "banned" }, "Banned")}>
+                <Ban size={13} className="text-[var(--pt-red)]" />
+                <span className="text-[var(--pt-red)]">Ban</span>
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={remove}>
+            <Trash2 size={13} className="text-[var(--pt-red)]" />
+            <span className="text-[var(--pt-red)]">Delete</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {showPin && (
         <SetPinDialog
@@ -160,14 +144,13 @@ function ActionMenu({
           onClose={() => setShowPin(false)}
         />
       )}
-
       {showPassword && (
         <SetPasswordDialog
           member={{ id: member.id, full_name: member.full_name }}
           onClose={() => setShowPassword(false)}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -266,10 +249,21 @@ export function StaffTable({ staff, branches, isLoading, currentUserId }: Props)
                 </td>
 
                 <td className="px-4 py-3.5">
-                  <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${m.is_active ? "text-[var(--pt-green)]" : "text-[var(--pt-text-tertiary)]"}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${m.is_active ? "bg-[var(--pt-green)]" : "bg-[var(--pt-border-strong)]"}`} />
-                    {m.is_active ? "Active" : "Inactive"}
-                  </span>
+                  {(() => {
+                    const s = m.banned
+                      ? (m.ban_reason === "banned"
+                          ? { label: "Banned", text: "text-[var(--pt-red)]", dot: "bg-[var(--pt-red)]" }
+                          : { label: "Suspended", text: "text-amber-600", dot: "bg-amber-500" })
+                      : m.is_active
+                        ? { label: "Active", text: "text-[var(--pt-green)]", dot: "bg-[var(--pt-green)]" }
+                        : { label: "Inactive", text: "text-[var(--pt-text-tertiary)]", dot: "bg-[var(--pt-border-strong)]" }
+                    return (
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${s.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                        {s.label}
+                      </span>
+                    )
+                  })()}
                 </td>
 
                 <td className="px-4 py-3.5">
