@@ -318,13 +318,26 @@ Turnstile / logs see the actual visitor, not a Cloudflare node. Switch back to
 grey by unsetting `CADDYFILE` and redeploying.
 
 ### C.5 Deploy
+
+**One command, from your dev machine (recommended):**
+```bash
+./scripts/release.sh
+```
+It cross-builds `linux/amd64`, **verifies the push actually landed** (via the
+build metadata digest), **rsyncs `infra/` — including migrations — to the box**,
+runs the on-box deploy, and confirms the just-pushed image is the one running.
+This closes the three traps we hit: arm64 images on an amd64 host, a silent
+Docker-Hub push failure, and the image deploying ahead of its migrations.
+
+**On-box only (first run / manual):**
 ```bash
 cd ~/pharmatrack && ./infra/deploy.sh
 ```
 It pulls the image, starts the data plane, applies migrations, ensures the MinIO
-bucket, then starts web + worker + Caddy and health-checks. Re-run it to update
-(it re-pulls `:latest`). Then open `https://pharmatrack.co.ke` → `/setup` to
-create the platform operator.
+bucket, then starts web + worker + Caddy and health-checks. ⚠️ This does NOT ship
+new migration files — if you added migrations, `rsync` `infra/` to the box first
+(or just use `scripts/release.sh`). Then open `https://pharmatrack.co.ke` →
+`/setup` to create the platform operator.
 
 ## Notes
 
