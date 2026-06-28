@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
       category_id: catIdFor(c),
       name: c.name,
       brand_name: c.brand_name,
+      generic_name: c.generic_name,
       manufacturer: c.manufacturer,
       gtin: c.gtin,
       strength: c.strength,

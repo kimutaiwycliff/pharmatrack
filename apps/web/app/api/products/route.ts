@@ -4,10 +4,12 @@ import { and, or, ilike, asc, sql } from "drizzle-orm"
 import { withTenant, product } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
+import { deriveGenericName } from "@/lib/generic-name"
 
 const createProductSchema = z.object({
   name: z.string().min(1),
   brand_name: z.string().optional(),
+  generic_name: z.string().optional(),
   manufacturer: z.string().optional(),
   gtin: z.string().optional(),
   barcode_raw: z.string().optional(),
@@ -68,6 +70,7 @@ export async function POST(request: NextRequest) {
       created_by: ctx.userId,
       name: d.name,
       brand_name: d.brand_name ?? null,
+      generic_name: d.generic_name ?? deriveGenericName(d.name),
       manufacturer: d.manufacturer ?? null,
       gtin: d.gtin ?? null,
       barcode_raw: d.barcode_raw ?? null,

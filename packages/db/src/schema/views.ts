@@ -9,6 +9,7 @@ export const product_stock = pgView("product_stock", {
   branch_id: uuid("branch_id"),
   name: text("name"),
   brand_name: text("brand_name"),
+  generic_name: text("generic_name"),
   strength: text("strength"),
   dosage_form: text("dosage_form"),
   base_unit: text("base_unit"),

@@ -24,6 +24,8 @@ export const drug_catalog = pgTable("drug_catalog", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   brand_name: text("brand_name"),
+  // Molecule grouping for "related products" (variants share it). Migration 014.
+  generic_name: text("generic_name"),
   manufacturer: text("manufacturer"),
   gtin: text("gtin"),
   strength: text("strength"),
@@ -61,6 +63,8 @@ export const product = pgTable("product", {
   supplier_id: uuid("supplier_id").references(() => supplier.id),
   name: text("name").notNull(),
   brand_name: text("brand_name"),
+  // Molecule grouping for "related products" (variants share it). Migration 014.
+  generic_name: text("generic_name"),
   manufacturer: text("manufacturer"),
   gtin: text("gtin"),
   barcode_raw: text("barcode_raw"),
