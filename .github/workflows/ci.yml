@@ -5,6 +5,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch: # allow a manual re-deploy from the Actions tab
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -128,3 +129,79 @@ jobs:
 
       - name: RLS isolation suite
         run: pnpm --filter @pharmatrack/db test:rls
+
+  # ── Auto-deploy to production: only on push to main, after both gates pass ────
+  # Mirrors scripts/release.sh, but the amd64 runner builds natively (no cross-
+  # build). Builds + pushes the image, ships infra/, runs the on-box pull deploy,
+  # then verifies the running image and health.
+  deploy:
+    name: deploy to production
+    needs: [verify, rls]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production # never cancel an in-flight production deploy
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://pharmatrack.co.ke
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push image (linux/amd64)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: |
+            kimutaiwycliff/pharmatrack-web:latest
+            kimutaiwycliff/pharmatrack-web:prod
+            kimutaiwycliff/pharmatrack-web:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_APP_URL=https://pharmatrack.co.ke
+            NEXT_PUBLIC_TURNSTILE_SITE_KEY=${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+
+      - name: Deploy over SSH + verify
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          SSH="ssh -i $HOME/.ssh/deploy_key -o ConnectTimeout=20"
+
+          echo "==> shipping infra/ (migrations, compose, Caddyfiles) to the server"
+          rsync -az -e "$SSH" --exclude 'certs/*' --exclude 'backups/*' \
+            infra Caddyfile Caddyfile.cloudflare "$DEPLOY_USER@$DEPLOY_HOST:pharmatrack/"
+
+          echo "==> on-box deploy (pull -> dbmate -> up -> health)"
+          $SSH "$DEPLOY_USER@$DEPLOY_HOST" "cd pharmatrack && bash infra/deploy.sh"
+
+          echo "==> verifying the pushed image is the one running"
+          RUNNING=$($SSH "$DEPLOY_USER@$DEPLOY_HOST" "docker inspect pharmatrack-web-1 --format '{{.Image}}'")
+          echo "  running=$RUNNING"
+          echo "  pushed =$DIGEST"
+          if [ "$RUNNING" = "$DIGEST" ]; then
+            echo "  ✓ running image matches the pushed digest"
+          else
+            echo "::warning::running image ($RUNNING) != pushed digest ($DIGEST) — verify manually"
+          fi
+
+          curl -fsS --max-time 20 https://pharmatrack.co.ke/api/health >/dev/null && echo "  ✓ health OK"
