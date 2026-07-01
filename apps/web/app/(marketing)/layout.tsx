@@ -3,6 +3,7 @@ import { Bricolage_Grotesque } from "next/font/google"
 import { getSession } from "@/lib/auth/helpers"
 import { MarketingNav } from "@/components/marketing/MarketingNav"
 import { MarketingFooter } from "@/components/marketing/MarketingFooter"
+import { Analytics } from "@/components/marketing/Analytics"
 
 // Distinctive display face for headlines — paired with the app's Inter body.
 const display = Bricolage_Grotesque({
@@ -32,6 +33,7 @@ export default async function MarketingLayout({ children }: { children: React.Re
       <MarketingNav signedIn={signedIn} />
       <main>{children}</main>
       <MarketingFooter />
+      <Analytics />
     </div>
   )
 }

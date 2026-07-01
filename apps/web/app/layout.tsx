@@ -37,6 +37,16 @@ export const metadata: Metadata = {
   publisher: "PharmaTrack",
   category: "Business Software",
   alternates: { canonical: "/" },
+  // Optional HTML-tag verification for Search Console / Bing (env-gated; DNS
+  // verification needs nothing here).
+  verification: {
+    ...(process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+      ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+      : {}),
+    ...(process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION
+      ? { other: { "msvalidate.01": process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION } }
+      : {}),
+  },
   formatDetection: { telephone: false, address: false, email: false },
   appleWebApp: {
     capable: true,

@@ -6,9 +6,9 @@ import { Menu, X, Cross } from "lucide-react"
 
 const LINKS = [
   { href: "/#features", label: "Features" },
-  { href: "/#why", label: "Why PharmaTrack" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/#faq", label: "FAQ" },
+  { href: "/blog", label: "Blog" },
 ]
 
 export function MarketingNav({ signedIn }: { signedIn: boolean }) {
