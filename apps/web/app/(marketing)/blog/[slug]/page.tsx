@@ -53,7 +53,7 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
 
   return (
     <article className="mx-auto max-w-2xl px-5 py-14 md:py-20">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       <Link href="/blog" className="inline-flex items-center gap-1.5 text-sm text-[var(--pt-text-secondary)] hover:text-[var(--pt-green-600)] mb-6">
         <ArrowLeft size={15} /> All articles
       </Link>

@@ -13,6 +13,18 @@
 	# Explicit cert => Caddy does NOT attempt Let's Encrypt.
 	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
 
+	# Security headers (origin-level, so protection doesn't depend on Cloudflare
+	# config). camera=(self) keeps the barcode camera scanner working.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
+		Content-Security-Policy "frame-ancestors 'self'; base-uri 'self'; upgrade-insecure-requests"
+		-Server
+	}
+
 	reverse_proxy web:3000 {
 		# Behind Cloudflare, X-Forwarded-For chains CF nodes; surface the real
 		# client IP (used by rate limiting / Turnstile / logs).
