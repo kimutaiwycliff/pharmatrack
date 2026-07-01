@@ -4,6 +4,8 @@ import { useState, useRef, useCallback } from "react"
 import { Search, ScanBarcode, Plus, AlertCircle } from "lucide-react"
 import { useCartStore } from "@/lib/store/cartStore"
 import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
+import type { BarcodeScanEvent } from "@/lib/barcode/barcodeParser"
+import { CameraScanner } from "./CameraScanner"
 import { useProductLookup } from "@/lib/hooks/useProductLookup"
 import { useQuery } from "@tanstack/react-query"
 import { formatKES } from "@/lib/store/cartStore"
@@ -47,6 +49,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   const [searchText, setSearchText] = useState("")
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
+  const [cameraOpen, setCameraOpen] = useState(false)
   const addItem = useCartStore((s) => s.addItem)
 
   const { data: lookupData, isFetching: lookupFetching } = useProductLookup(
@@ -124,13 +127,16 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   }
   /* eslint-enable react-hooks/refs */
 
+  // Shared by the USB wedge and the camera scanner — both produce a parsed event.
+  const handleScannedEvent = useCallback((event: BarcodeScanEvent) => {
+    if (!event.gtin) return
+    setScannedBarcode(event.gtin)
+    setSearchText("")
+  }, [])
+
   useBarcodeScanner({
-    enabled: scannerEnabled,
-    onScan: (event) => {
-      if (!event.gtin) return
-      setScannedBarcode(event.gtin)
-      setSearchText("")
-    },
+    enabled: scannerEnabled && !cameraOpen,
+    onScan: handleScannedEvent,
   })
 
   const displayProducts = searchText.length >= 2 ? (searchData?.products ?? []) : []
@@ -164,11 +170,20 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
           placeholder="Scan barcode or search product…"
           className="w-full h-14 pl-12 pr-14 text-[15px] border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent bg-[var(--pt-surface)]"
         />
-        <ScanBarcode
-          size={18}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--pt-text-secondary)]"
-        />
+        <button
+          type="button"
+          onClick={() => setCameraOpen(true)}
+          aria-label="Scan with camera"
+          title="Scan with camera"
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-[var(--pt-text-secondary)] hover:text-[var(--pt-green-600)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+        >
+          <ScanBarcode size={18} />
+        </button>
       </div>
+
+      {cameraOpen && (
+        <CameraScanner onScan={handleScannedEvent} onClose={() => setCameraOpen(false)} />
+      )}
 
       {/* Scanner status */}
       <div className="shrink-0">
