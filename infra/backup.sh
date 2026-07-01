@@ -69,17 +69,23 @@ backup_db() {
 }
 
 backup_assets() {
-  # Product images: unencrypted (they're public assets) + incremental sync.
+  # Product images: unencrypted (public assets), incremental sync. MinIO isn't
+  # published to the host in prod, so reach it over the compose network from a
+  # containerised rclone (which also has internet egress to R2).
   local bucket="${MINIO_BUCKET_PRODUCTS:-pharmatrack-products}"
-  export RCLONE_CONFIG_MINIO_TYPE=s3
-  export RCLONE_CONFIG_MINIO_PROVIDER=Minio
-  export RCLONE_CONFIG_MINIO_ACCESS_KEY_ID="${MINIO_ACCESS_KEY:-minioadmin}"
-  export RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY:-minioadmin}"
-  export RCLONE_CONFIG_MINIO_ENDPOINT="http://localhost:${MINIO_PORT:-9000}"
-  export RCLONE_CONFIG_MINIO_FORCE_PATH_STYLE=true
-
   log "syncing MinIO images (${bucket}) → r2:${R2_BUCKET}/images"
-  rclone sync "minio:${bucket}" "r2:${R2_BUCKET}/images" || log "  (image sync skipped — MinIO unreachable?)"
+  docker run --rm --network "${PROJECT}_default" \
+    -e RCLONE_CONFIG_MINIO_TYPE=s3 -e RCLONE_CONFIG_MINIO_PROVIDER=Minio \
+    -e RCLONE_CONFIG_MINIO_ACCESS_KEY_ID="${MINIO_ACCESS_KEY:-minioadmin}" \
+    -e RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY:-minioadmin}" \
+    -e RCLONE_CONFIG_MINIO_ENDPOINT="http://minio:9000" \
+    -e RCLONE_CONFIG_MINIO_FORCE_PATH_STYLE=true \
+    -e RCLONE_CONFIG_R2_TYPE=s3 -e RCLONE_CONFIG_R2_PROVIDER=Cloudflare \
+    -e RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
+    -e RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+    -e RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+    -e RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true \
+    rclone/rclone sync "minio:${bucket}" "r2:${R2_BUCKET}/images" || log "  (image sync skipped — MinIO empty or unreachable)"
 
   # .env holds the config/secrets needed to boot the stack — encrypt + keep more.
   log "age-encrypting + uploading .env → r2:${R2_BUCKET}/config"
