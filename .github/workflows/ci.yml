@@ -204,4 +204,13 @@ jobs:
             echo "::warning::running image ($RUNNING) != pushed digest ($DIGEST) — verify manually"
           fi
 
-          curl -fsS --max-time 20 https://pharmatrack.co.ke/api/health >/dev/null && echo "  ✓ health OK"
+          # Health-check on the box, not via the public URL: Cloudflare returns 403
+          # to datacenter IPs (like GitHub runners), so an external curl is unreliable.
+          echo "==> health check (internal, bypassing Cloudflare)"
+          if $SSH "$DEPLOY_USER@$DEPLOY_HOST" \
+               "docker exec pharmatrack-web-1 wget -qO- http://127.0.0.1:3000/api/health >/dev/null"; then
+            echo "  ✓ app reports healthy on the box"
+          else
+            echo "::error::app did not report healthy after deploy"
+            exit 1
+          fi
