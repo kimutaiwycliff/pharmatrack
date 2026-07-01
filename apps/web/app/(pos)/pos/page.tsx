@@ -53,6 +53,16 @@ export default function PosPage() {
     null
 
   const online = useOnline()
+  // Whether STK push is offered (plan includes it + tenant configured M-Pesa).
+  const { data: mpesaAvail } = useQuery<{ available: boolean }>({
+    queryKey: ["mpesaAvailable"],
+    queryFn: async () => {
+      const r = await fetch("/api/mpesa/available")
+      return r.ok ? (r.json() as Promise<{ available: boolean }>) : { available: false }
+    },
+    staleTime: 5 * 60_000,
+  })
+  const stkAvailable = mpesaAvail?.available ?? false
   const { data: shift } = useActiveShift(profile?.id ?? "")
   const items = useCartStore((s) => s.items)
   const discount = useCartStore((s) => s.discount)
@@ -265,6 +275,7 @@ export default function PosPage() {
         open={payModal === "mpesa"}
         total={total}
         online={online}
+        stkAvailable={stkAvailable}
         onClose={() => setPayModal(null)}
         onConfirm={(ref) =>
           submitSale({
@@ -279,6 +290,7 @@ export default function PosPage() {
         open={payModal === "split"}
         total={total}
         online={online}
+        stkAvailable={stkAvailable}
         onClose={() => setPayModal(null)}
         onConfirm={(cashAmt, mpesaAmt, ref) =>
           submitSale({

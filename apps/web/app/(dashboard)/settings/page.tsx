@@ -2,12 +2,13 @@
 
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Building2, GitBranch, User, Palette, Syringe, CreditCard } from "lucide-react"
+import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone } from "lucide-react"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
 import { ProfileSettingsForm } from "@/components/settings/ProfileSettingsForm"
 import { AppointmentServiceList, SERVICES_MANAGE_KEY } from "@/components/settings/AppointmentServiceList"
 import { BillingPanel } from "@/components/settings/BillingPanel"
+import { MpesaSettings } from "@/components/settings/MpesaSettings"
 import { ThemeSegmented } from "@/components/theme/ThemeToggle"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import type { Organization, Branch, Profile, AppointmentService } from "@pharmatrack/types"
@@ -31,12 +32,13 @@ function useSettings() {
   })
 }
 
-type Tab = "org" | "branches" | "services" | "billing" | "profile" | "appearance"
+type Tab = "org" | "branches" | "services" | "payments" | "billing" | "profile" | "appearance"
 
-const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
+const TABS: { key: Tab; label: string; icon: React.ElementType; ownerOnly?: boolean }[] = [
   { key: "org",        label: "Organization", icon: Building2 },
   { key: "branches",   label: "Branches",     icon: GitBranch },
   { key: "services",   label: "Services",     icon: Syringe },
+  { key: "payments",   label: "Payments",     icon: Smartphone, ownerOnly: true },
   { key: "billing",    label: "Billing",      icon: CreditCard },
   { key: "profile",    label: "My Profile",   icon: User },
   { key: "appearance", label: "Appearance",   icon: Palette },
@@ -73,7 +75,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-[var(--pt-border)] overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-        {TABS.map(({ key, label, icon: Icon }) => (
+        {TABS.filter((t) => !t.ownerOnly || isOwner).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -111,6 +113,8 @@ export default function SettingsPage() {
         ) : (
           <AppointmentServiceList services={services} canManage={canManageServices} />
         )
+      ) : tab === "payments" ? (
+        <MpesaSettings />
       ) : tab === "billing" ? (
         <BillingPanel />
       ) : isLoading ? (

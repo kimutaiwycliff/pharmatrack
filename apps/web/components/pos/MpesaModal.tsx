@@ -14,24 +14,28 @@ interface Props {
   total: number
   /** When offline, STK push can't reach the server — force manual confirm. */
   online?: boolean
+  /** Whether STK push is available (plan includes it + tenant configured M-Pesa). */
+  stkAvailable?: boolean
   onClose: () => void
   onConfirm: (mpesaRef: string | null) => void
 }
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
 
-export function MpesaModal({ open, total, online = true, onClose, onConfirm }: Props) {
-  const [mode, setMode] = useState<Mode>("prompt")
+export function MpesaModal({ open, total, online = true, stkAvailable = true, onClose, onConfirm }: Props) {
+  const [mode, setMode] = useState<Mode>(stkAvailable ? "prompt" : "manual")
   const [phase, setPhase] = useState<Phase>("input")
   const [phone, setPhone] = useState("")
   const [code, setCode] = useState("")
   const [timer, setTimer] = useState(60)
   const [sending, setSending] = useState(false)
 
-  // Offline → STK push is unavailable; confirm manually instead.
+  // STK push needs a connection AND an active, plan-enabled M-Pesa config.
+  const canPrompt = online && stkAvailable
+  // When STK isn't available, confirm manually instead.
   useEffect(() => {
-    if (!online) setMode("manual")
-  }, [online])
+    if (!canPrompt) setMode("manual")
+  }, [canPrompt])
 
   const trimmedCode = code.trim()
   // The code is OPTIONAL (customer already confirmed on their phone). Only block
@@ -111,11 +115,11 @@ export function MpesaModal({ open, total, online = true, onClose, onConfirm }: P
           <div className="grid grid-cols-2 gap-2">
             {(
               [
-                { id: "prompt" as const, label: "Send STK Push", desc: online ? "Auto-prompt customer phone" : "Needs a connection" },
+                { id: "prompt" as const, label: "Send STK Push", desc: canPrompt ? "Auto-prompt customer phone" : !online ? "Needs a connection" : "Set up in Settings → Payments" },
                 { id: "manual" as const, label: "Manual Confirm", desc: "Customer already paid" },
               ] as const
             ).map((opt) => {
-              const disabled = opt.id === "prompt" && !online
+              const disabled = opt.id === "prompt" && !canPrompt
               return (
                 <button
                   key={opt.id}
@@ -253,7 +257,7 @@ export function MpesaModal({ open, total, online = true, onClose, onConfirm }: P
                 <Check size={18} />
                 {trimmedCode ? "Confirm payment" : "Confirm — customer paid"}
               </Button>
-              {online && (
+              {canPrompt && (
                 <button
                   onClick={() => switchMode("prompt")}
                   className="w-full text-center text-xs text-[var(--pt-green-600)] font-medium hover:underline"

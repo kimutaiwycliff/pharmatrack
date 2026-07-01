@@ -72,3 +72,20 @@ export const subscription_payment = pgTable("subscription_payment", {
   recorded_by: text("recorded_by").references(() => user.id),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
+
+// Per-tenant M-Pesa Daraja config (migration 016). Secrets are stored ENCRYPTED
+// (see apps/web/lib/crypto.ts) — never plaintext. STK push uses these creds so
+// money lands in the tenant's own till; unset/inactive → manual-confirm only.
+export const mpesa_config = pgTable("mpesa_config", {
+  organization_id: text("organization_id").primaryKey().references(() => organization.id, { onDelete: "cascade" }),
+  environment: text("environment").notNull().default("sandbox"), // sandbox | production
+  shortcode: text("shortcode"),
+  shortcode_type: text("shortcode_type").notNull().default("buygoods"), // buygoods | paybill
+  consumer_key: text("consumer_key"),
+  consumer_secret_enc: text("consumer_secret_enc"),
+  passkey_enc: text("passkey_enc"),
+  active: boolean("active").notNull().default(false),
+  verified_at: timestamp("verified_at", { withTimezone: true }),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+})

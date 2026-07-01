@@ -13,23 +13,26 @@ interface Props {
   total: number
   /** When offline, STK push can't reach the server — force manual confirm. */
   online?: boolean
+  /** Whether STK push is available (plan includes it + tenant configured M-Pesa). */
+  stkAvailable?: boolean
   onClose: () => void
   onConfirm: (cashAmt: number, mpesaAmt: number, mpesaRef: string | null) => void
 }
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
 
-export function SplitModal({ open, total, online = true, onClose, onConfirm }: Props) {
+export function SplitModal({ open, total, online = true, stkAvailable = true, onClose, onConfirm }: Props) {
   const [cash, setCash] = useState(() => Math.round(total * 0.4))
   const [phone, setPhone] = useState("")
-  const [mpesaMode, setMpesaMode] = useState<MpesaMode>("prompt")
+  const canPrompt = online && stkAvailable
+  const [mpesaMode, setMpesaMode] = useState<MpesaMode>(canPrompt ? "prompt" : "manual")
   const [code, setCode] = useState("")
   const [sending, setSending] = useState(false)
 
-  // Offline → STK push unavailable; confirm the M-Pesa portion manually.
+  // STK push needs a connection + an active, plan-enabled config; else manual.
   useEffect(() => {
-    if (!online) setMpesaMode("manual")
-  }, [online])
+    if (!canPrompt) setMpesaMode("manual")
+  }, [canPrompt])
 
   const mpesa = Math.max(0, total - cash)
   const cashPct = total > 0 ? Math.min(100, (cash / total) * 100) : 0
@@ -40,7 +43,7 @@ export function SplitModal({ open, total, online = true, onClose, onConfirm }: P
   const codeBlocks = trimmedCode.length > 0 && !codeValid
   const balanced = Math.abs(cash + mpesa - total) < 0.01
   const canConfirm =
-    cash > 0 && mpesa > 0 && balanced && (mpesaMode === "prompt" ? online : !codeBlocks)
+    cash > 0 && mpesa > 0 && balanced && (mpesaMode === "prompt" ? canPrompt : !codeBlocks)
 
   const setCashSafe = (v: number) => setCash(Math.min(total, Math.max(0, v)))
 
@@ -166,7 +169,7 @@ export function SplitModal({ open, total, online = true, onClose, onConfirm }: P
 
             <div className="flex gap-1.5 bg-[var(--pt-surface)] rounded-lg p-1">
               {(["prompt", "manual"] as const).map((m) => {
-                const disabled = m === "prompt" && !online
+                const disabled = m === "prompt" && !canPrompt
                 return (
                   <button
                     key={m}
@@ -178,7 +181,7 @@ export function SplitModal({ open, total, online = true, onClose, onConfirm }: P
                         : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"
                     } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
                   >
-                    {m === "prompt" ? (online ? "STK Push" : "STK (offline)") : "Manual Confirm"}
+                    {m === "prompt" ? (canPrompt ? "STK Push" : !online ? "STK (offline)" : "STK (off)") : "Manual Confirm"}
                   </button>
                 )
               })}

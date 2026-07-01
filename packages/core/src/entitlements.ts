@@ -20,7 +20,8 @@ export type Feature =
   | "pos"             // point of sale terminal
   | "inventory"       // stock, batches, receiving, adjustments
   | "offline_pos"     // Dexie/IndexedDB offline selling
-  | "mpesa"           // M-Pesa STK push payments
+  | "mpesa"           // M-Pesa at the till (manual confirm — all tiers)
+  | "mpesa_stk"       // M-Pesa STK push (auto-prompt the customer's phone) — Growth+
   | "dashboard"       // owner/manager home KPIs
   | "appointments"    // customers + appointments
   | "reminders"       // SMS / WhatsApp / email appointment reminders
@@ -52,6 +53,7 @@ const STARTER_FEATURES = [
 
 const GROWTH_FEATURES = [
   ...STARTER_FEATURES,
+  "mpesa_stk",
   "appointments",
   "reminders",
   "prescriptions",
