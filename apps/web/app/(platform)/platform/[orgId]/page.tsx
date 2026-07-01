@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react"
@@ -19,19 +19,24 @@ interface Payment { id: string; amount_kes: number; method: string | null; refer
 interface TenantDetail {
   tenant: { id: string; name: string; email: string | null; phone: string | null; created_at: string; subscriptions: Sub[] }
   branch_count: number; staff_count: number; plans: Plan[]; payments: Payment[]
+  deletion: { scheduled_purge_at: string; requested_at: string } | null
 }
 
 const selectCls = "w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
 const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : "")
+const daysUntil = (iso: string) => {
+  const d = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000)
+  return d <= 0 ? "today" : `in ${d} day${d === 1 ? "" : "s"}`
+}
 
 export default function TenantDetailPage() {
   const { orgId } = useParams<{ orgId: string }>()
-  const router = useRouter()
   const qc = useQueryClient()
   const [saving, setSaving] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
   const [confirmName, setConfirmName] = useState("")
-  const [deleting, setDeleting] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   const { data, isLoading } = useQuery<TenantDetail>({
     queryKey: ["tenant", orgId],
@@ -105,23 +110,35 @@ export default function TenantDetailPage() {
     finally { setPaying(false) }
   }
 
-  async function deleteTenant() {
-    setDeleting(true)
+  async function scheduleDeletion() {
+    setScheduling(true)
     try {
-      const res = await fetch(`/api/platform/tenants/${orgId}`, {
-        method: "DELETE",
+      const res = await fetch(`/api/platform/tenants/${orgId}/deletion`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirmName }),
       })
-      const json = (await res.json()) as { error?: string; freed_accounts?: number }
+      const json = (await res.json()) as { error?: string; scheduled_purge_at?: string }
       if (!res.ok) throw new Error(json.error ?? "Failed")
-      toast.success(`Tenant deleted${json.freed_accounts ? ` · ${json.freed_accounts} login(s) freed` : ""}`)
+      toast.success("Tenant scheduled for deletion")
+      setShowDelete(false); setConfirmName("")
+      await qc.invalidateQueries({ queryKey: ["tenant", orgId] })
       await qc.invalidateQueries({ queryKey: ["tenants"] })
-      router.push("/platform")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error")
-      setDeleting(false)
-    }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Error") }
+    finally { setScheduling(false) }
+  }
+
+  async function cancelDeletion() {
+    setCancelling(true)
+    try {
+      const res = await fetch(`/api/platform/tenants/${orgId}/deletion`, { method: "DELETE" })
+      const json = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      toast.success("Deletion cancelled — access restored")
+      await qc.invalidateQueries({ queryKey: ["tenant", orgId] })
+      await qc.invalidateQueries({ queryKey: ["tenants"] })
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Error") }
+    finally { setCancelling(false) }
   }
 
   if (isLoading || !data) {
@@ -219,26 +236,45 @@ export default function TenantDetailPage() {
       {/* Danger zone */}
       <section className="mt-6 rounded-xl border border-[var(--pt-red)]/40 bg-[var(--pt-red-50)] p-5">
         <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-red)] mb-2">Danger zone</h2>
-        <p className="text-sm text-[var(--pt-text-secondary)] mb-3">
-          Permanently delete <strong>{t.name}</strong> and <strong>all</strong> its data — branches, staff, products,
-          inventory, sales, customers, subscription and payment history. Staff logins for this tenant are removed so the
-          email can sign up again. This <strong>cannot be undone</strong>.
-        </p>
-        {!showDelete ? (
-          <Button variant="outline" onClick={() => setShowDelete(true)} className="gap-1.5 text-[var(--pt-red)] border-[var(--pt-red)]">
-            <Trash2 size={15} /> Delete tenant…
-          </Button>
-        ) : (
-          <div className="space-y-2">
-            <Label className="text-sm">Type <span className="font-mono font-semibold">{t.name}</span> to confirm</Label>
-            <Input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={t.name} className="h-10 max-w-sm" autoFocus />
-            <div className="flex items-center gap-2 pt-1">
-              <Button onClick={deleteTenant} disabled={deleting || !nameMatches} className="gap-1.5 bg-[var(--pt-red)] hover:opacity-90 text-white border-transparent">
-                {deleting && <Loader2 size={14} className="animate-spin" />} Permanently delete
-              </Button>
-              <Button variant="outline" onClick={() => { setShowDelete(false); setConfirmName("") }} disabled={deleting}>Cancel</Button>
-            </div>
+        {data.deletion ? (
+          <div>
+            <p className="text-sm text-[var(--pt-text)] font-medium">
+              ⚠️ Scheduled for permanent deletion on{" "}
+              <strong>{new Date(data.deletion.scheduled_purge_at).toLocaleDateString("en-KE", { day: "numeric", month: "long", year: "numeric" })}</strong>
+              {" "}({daysUntil(data.deletion.scheduled_purge_at)}).
+            </p>
+            <p className="text-sm text-[var(--pt-text-secondary)] mt-1 mb-3">
+              The tenant is blocked from signing in. On that date all its data is permanently purged and staff emails are freed.
+              You can cancel any time before then to restore access.
+            </p>
+            <Button variant="outline" onClick={cancelDeletion} disabled={cancelling} className="gap-1.5">
+              {cancelling && <Loader2 size={14} className="animate-spin" />} Cancel deletion &amp; restore access
+            </Button>
           </div>
+        ) : (
+          <>
+            <p className="text-sm text-[var(--pt-text-secondary)] mb-3">
+              Schedule <strong>{t.name}</strong> for deletion. It&rsquo;s blocked immediately and permanently purged after a
+              <strong> 30-day grace period</strong> — branches, staff, products, inventory, sales, customers, subscription and
+              payment history. Staff logins are then freed so the email can sign up again. You can cancel any time within the 30 days.
+            </p>
+            {!showDelete ? (
+              <Button variant="outline" onClick={() => setShowDelete(true)} className="gap-1.5 text-[var(--pt-red)] border-[var(--pt-red)]">
+                <Trash2 size={15} /> Schedule deletion…
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <Label className="text-sm">Type <span className="font-mono font-semibold">{t.name}</span> to confirm</Label>
+                <Input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={t.name} className="h-10 max-w-sm" autoFocus />
+                <div className="flex items-center gap-2 pt-1">
+                  <Button onClick={scheduleDeletion} disabled={scheduling || !nameMatches} className="gap-1.5 bg-[var(--pt-red)] hover:opacity-90 text-white border-transparent">
+                    {scheduling && <Loader2 size={14} className="animate-spin" />} Schedule deletion
+                  </Button>
+                  <Button variant="outline" onClick={() => { setShowDelete(false); setConfirmName("") }} disabled={scheduling}>Cancel</Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </section>
     </div>

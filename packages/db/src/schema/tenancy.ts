@@ -73,6 +73,18 @@ export const subscription_payment = pgTable("subscription_payment", {
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
+// Soft-delete schedule (migration 017). One row per tenant pending deletion;
+// a cron purges the org after scheduled_purge_at. Operator-only (RLS: no
+// app_authenticated policy). Cancelling restores prev_subscription_status.
+export const tenant_deletion = pgTable("tenant_deletion", {
+  organization_id: text("organization_id").primaryKey().references(() => organization.id, { onDelete: "cascade" }),
+  scheduled_purge_at: timestamp("scheduled_purge_at", { withTimezone: true }).notNull(),
+  requested_at: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  requested_by: text("requested_by").references(() => user.id),
+  prev_subscription_status: text("prev_subscription_status"),
+  reason: text("reason"),
+})
+
 // Per-tenant M-Pesa Daraja config (migration 016). Secrets are stored ENCRYPTED
 // (see apps/web/lib/crypto.ts) — never plaintext. STK push uses these creds so
 // money lands in the tenant's own till; unset/inactive → manual-confirm only.
