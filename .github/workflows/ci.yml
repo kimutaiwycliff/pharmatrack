@@ -1,16 +1,19 @@
 name: CI
 
+# Runs on every push to any branch, and on pull requests. Working branches
+# (e.g. non-supabase-version) get the same gate as main.
 on:
   push:
-    branches: [main]
   pull_request:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # ── Fast checks: no external services ───────────────────────────────────────
   verify:
+    name: typecheck · lint · test · build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,13 +30,23 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Cache Next's compiler output between runs for faster builds.
+      - name: Cache Next build
+        uses: actions/cache@v4
+        with:
+          path: apps/web/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**/*.[jt]s', 'apps/web/**/*.[jt]sx') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            next-${{ runner.os }}-
+
       - name: Typecheck
         run: pnpm --filter web typecheck
 
       - name: Lint
         run: pnpm --filter web lint
 
-      - name: Test
+      - name: Unit tests
         run: pnpm --filter web test
 
       - name: Build
@@ -41,5 +54,77 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
           NODE_OPTIONS: --max-old-space-size=4096
-          # Build-time placeholder; real value is injected at deploy time.
+          # Build-time placeholders; real values are injected at deploy time.
+          # The app connects lazily, so these are never dialled during the build.
           NEXT_PUBLIC_APP_URL: http://localhost:3000
+          BETTER_AUTH_SECRET: ci-placeholder-secret-at-least-32-chars-long
+          DATABASE_URL: postgres://app_owner:app_owner@localhost:5432/pharmatrack
+          DATABASE_AUTHENTICATED_URL: postgres://app_authenticated:app_authenticated@localhost:5432/pharmatrack
+
+  # ── RLS isolation: the non-negotiable tenancy gate (CLAUDE.md §2) ────────────
+  rls:
+    name: RLS isolation suite
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pharmatrack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # app_authenticated is NOBYPASSRLS, so the suite proves real isolation.
+      DATABASE_URL: postgres://app_owner:app_owner@localhost:5432/pharmatrack?sslmode=disable
+      DATABASE_AUTHENTICATED_URL: postgres://app_authenticated:app_authenticated@localhost:5432/pharmatrack?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Mirror infra/db/init: create the two login roles + pg_trgm as superuser
+      # (app_owner can't CREATE EXTENSION itself).
+      - name: Bootstrap RLS roles + extensions
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d pharmatrack -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='app_owner') THEN
+              CREATE ROLE app_owner LOGIN PASSWORD 'app_owner';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='app_authenticated') THEN
+              CREATE ROLE app_authenticated LOGIN PASSWORD 'app_authenticated' NOBYPASSRLS;
+            END IF;
+          END $$;
+          GRANT CREATE, USAGE ON SCHEMA public TO app_owner;
+          GRANT USAGE ON SCHEMA public TO app_authenticated;
+          CREATE EXTENSION IF NOT EXISTS pg_trgm;
+          SQL
+
+      # Apply all dbmate migrations as app_owner (same image as `make db-migrate`).
+      - name: Apply migrations (dbmate)
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/infra/migrations:/db/migrations" \
+            -e DATABASE_URL="$DATABASE_URL" \
+            ghcr.io/amacneil/dbmate:2 --migrations-dir /db/migrations --no-dump-schema up
+
+      - name: RLS isolation suite
+        run: pnpm --filter @pharmatrack/db test:rls
