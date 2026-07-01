@@ -11,7 +11,7 @@ import { getSessionCookie } from "better-auth/cookies"
 // Prefix-matched public routes (auth pages, Better Auth endpoints, first-run
 // setup, health, provider webhooks/callbacks, and public marketing/signup).
 const PUBLIC_ROUTES = [
-  "/login", "/signup", "/setup", "/auth",
+  "/login", "/signup", "/setup", "/auth", "/blog",
   "/api/auth", "/api/health", "/api/webhooks", "/api/mpesa", "/api/cron", "/api/setup", "/api/signup",
   // SEO / metadata routes must be crawlable — never redirect these to /login.
   "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/opengraph-image", "/apple-icon", "/icon",
