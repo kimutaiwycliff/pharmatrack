@@ -54,6 +54,8 @@ export function MpesaSettings() {
       }
     } catch { toast.error("Failed to load M-Pesa settings") } finally { setLoading(false) }
   }
+  // Load the saved config once on mount (canonical data-fetch effect).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [])
 
   async function save() {
@@ -104,7 +106,7 @@ export function MpesaSettings() {
           <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
           <p className="text-amber-800 dark:text-amber-200">
             <strong>STK push (auto-prompt) is a Growth-plan feature.</strong> You can still save your till here and take
-            M-Pesa via manual confirm; upgrade to Growth to auto-prompt customers' phones.
+            M-Pesa via manual confirm; upgrade to Growth to auto-prompt customers’ phones.
           </p>
         </div>
       )}
@@ -125,7 +127,7 @@ export function MpesaSettings() {
       {showGuide && (
         <ol className="text-xs text-[var(--pt-text-secondary)] leading-relaxed list-decimal ml-4 space-y-1 bg-[var(--pt-muted)] rounded-xl p-3.5">
           <li>Sign in at <strong>developer.safaricom.co.ke</strong> → <em>My Apps</em> → Create an app and enable <em>Lipa na M-Pesa Online</em>.</li>
-          <li>Copy the app's <strong>Consumer Key</strong> and <strong>Consumer Secret</strong>.</li>
+          <li>Copy the app’s <strong>Consumer Key</strong> and <strong>Consumer Secret</strong>.</li>
           <li>Under <em>Lipa na M-Pesa Online</em>, add your <strong>Till (Buy Goods)</strong> or <strong>Paybill</strong> number as the shortcode and copy its <strong>Passkey</strong>.</li>
           <li>Save below, click <strong>Test connection</strong>, then <strong>Send test STK</strong> to confirm — money lands directly in your till.</li>
         </ol>

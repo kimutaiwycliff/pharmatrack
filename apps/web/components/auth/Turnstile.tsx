@@ -15,8 +15,9 @@ export const turnstileEnabled = !!SITE_KEY
 
 export function Turnstile({ onToken }: { onToken: (token: string | null) => void }) {
   const elRef = useRef<HTMLDivElement>(null)
+  // Keep the latest callback in a ref without mutating it during render.
   const cbRef = useRef(onToken)
-  cbRef.current = onToken
+  useEffect(() => { cbRef.current = onToken }, [onToken])
 
   useEffect(() => {
     if (!SITE_KEY) return

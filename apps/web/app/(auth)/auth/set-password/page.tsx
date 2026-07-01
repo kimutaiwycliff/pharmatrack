@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { authClient } from "@/lib/auth/client"
@@ -9,20 +9,32 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+// useSearchParams reads the query at request time (SSR-safe), so it must sit
+// inside a Suspense boundary. This is also why the page renders the right state
+// immediately — no window access, no loading flash.
 export default function SetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <Shell>
+          <div className="mt-6 flex items-center gap-2 text-[var(--pt-text-secondary)] text-sm">
+            <Loader2 size={16} className="animate-spin" /> Checking your link…
+          </div>
+        </Shell>
+      }
+    >
+      <SetPasswordForm />
+    </Suspense>
+  )
+}
+
+function SetPasswordForm() {
   const router = useRouter()
-  const [checking, setChecking] = useState(true)
-  const [token, setToken] = useState<string | null>(null)
+  // Better Auth appends ?token=... to the reset/invite link.
+  const token = useSearchParams().get("token")
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
   const [saving, setSaving] = useState(false)
-
-  // Better Auth appends ?token=... to the reset/invite link.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    setToken(params.get("token"))
-    setChecking(false)
-  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -44,30 +56,36 @@ export default function SetPasswordPage() {
   }
 
   return (
+    <Shell>
+      {!token ? (
+        <p className="mt-6 text-sm text-[var(--pt-red)]">This link is invalid or has expired. Please request a new invite or reset link.</p>
+      ) : (
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          <div>
+            <Label className="text-sm font-medium">New password</Label>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5 h-10" autoFocus />
+          </div>
+          <div>
+            <Label className="text-sm font-medium">Confirm password</Label>
+            <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="mt-1.5 h-10" />
+          </div>
+          <Button type="submit" disabled={saving} className="w-full gap-1.5">
+            {saving && <Loader2 size={14} className="animate-spin" />} Set password &amp; continue
+          </Button>
+        </form>
+      )}
+    </Shell>
+  )
+}
+
+// Card chrome shared by the form and the Suspense fallback.
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--pt-bg)] p-6">
       <div className="w-full max-w-sm bg-[var(--pt-surface)] rounded-2xl border border-[var(--pt-border)] p-8">
         <h1 className="text-lg font-bold">Set your password</h1>
         <p className="text-sm text-[var(--pt-text-secondary)] mt-1">Choose a password to finish setting up your PharmaTrack account.</p>
-
-        {checking ? (
-          <div className="mt-6 flex items-center gap-2 text-[var(--pt-text-secondary)] text-sm"><Loader2 size={16} className="animate-spin" /> Checking your link…</div>
-        ) : !token ? (
-          <p className="mt-6 text-sm text-[var(--pt-red)]">This link is invalid or has expired. Please request a new invite or reset link.</p>
-        ) : (
-          <form onSubmit={submit} className="mt-6 space-y-4">
-            <div>
-              <Label className="text-sm font-medium">New password</Label>
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5 h-10" autoFocus />
-            </div>
-            <div>
-              <Label className="text-sm font-medium">Confirm password</Label>
-              <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="mt-1.5 h-10" />
-            </div>
-            <Button type="submit" disabled={saving} className="w-full gap-1.5">
-              {saving && <Loader2 size={14} className="animate-spin" />} Set password &amp; continue
-            </Button>
-          </form>
-        )}
+        {children}
       </div>
     </div>
   )

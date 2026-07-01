@@ -105,6 +105,9 @@ export default function GlobalError({
             >
               Try again
             </button>
+            {/* A full-document load is intentional here: the React tree has
+                crashed, so client-side <Link> navigation is not safe. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
               style={{ display: "inline-flex", alignItems: "center", height: "2.75rem", padding: "0 1.3rem", borderRadius: ".75rem", border: "1px solid #e2e8f0", fontSize: ".9rem", fontWeight: 600, color: "#0f172a", textDecoration: "none", background: "#fff" }}

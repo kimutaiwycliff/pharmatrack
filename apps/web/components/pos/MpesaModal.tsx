@@ -23,7 +23,7 @@ interface Props {
 const CODE_RE = /^[A-Z0-9]{10}$/i
 
 export function MpesaModal({ open, total, online = true, stkAvailable = true, onClose, onConfirm }: Props) {
-  const [mode, setMode] = useState<Mode>(stkAvailable ? "prompt" : "manual")
+  const [modeChoice, setModeChoice] = useState<Mode>(stkAvailable ? "prompt" : "manual")
   const [phase, setPhase] = useState<Phase>("input")
   const [phone, setPhone] = useState("")
   const [code, setCode] = useState("")
@@ -32,10 +32,9 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, on
 
   // STK push needs a connection AND an active, plan-enabled M-Pesa config.
   const canPrompt = online && stkAvailable
-  // When STK isn't available, confirm manually instead.
-  useEffect(() => {
-    if (!canPrompt) setMode("manual")
-  }, [canPrompt])
+  // Derive the effective mode: when STK isn't available, always confirm manually
+  // (no effect + setState needed — this can't drift out of sync).
+  const mode: Mode = canPrompt ? modeChoice : "manual"
 
   const trimmedCode = code.trim()
   // The code is OPTIONAL (customer already confirmed on their phone). Only block
@@ -59,7 +58,7 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, on
   }, [])
 
   const switchMode = (m: Mode) => {
-    setMode(m)
+    setModeChoice(m)
     reset()
   }
 

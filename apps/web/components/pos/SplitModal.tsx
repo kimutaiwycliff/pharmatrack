@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Banknote, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -25,14 +25,13 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, on
   const [cash, setCash] = useState(() => Math.round(total * 0.4))
   const [phone, setPhone] = useState("")
   const canPrompt = online && stkAvailable
-  const [mpesaMode, setMpesaMode] = useState<MpesaMode>(canPrompt ? "prompt" : "manual")
+  const [mpesaModeChoice, setMpesaMode] = useState<MpesaMode>(canPrompt ? "prompt" : "manual")
   const [code, setCode] = useState("")
   const [sending, setSending] = useState(false)
 
-  // STK push needs a connection + an active, plan-enabled config; else manual.
-  useEffect(() => {
-    if (!canPrompt) setMpesaMode("manual")
-  }, [canPrompt])
+  // Derive the effective mode: STK push needs a connection + an active,
+  // plan-enabled config; otherwise fall back to manual confirmation.
+  const mpesaMode: MpesaMode = canPrompt ? mpesaModeChoice : "manual"
 
   const mpesa = Math.max(0, total - cash)
   const cashPct = total > 0 ? Math.min(100, (cash / total) * 100) : 0

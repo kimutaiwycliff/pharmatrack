@@ -54,6 +54,9 @@ export function CatalogReviewDialog({
         active: r.is_active,
       }
     }
+    // Resetting the editable copy when the server rows change is the intended
+    // behaviour here (not derivable during render — the user mutates `edits`).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEdits(init)
   }, [data])
 
