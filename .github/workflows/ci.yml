@@ -130,14 +130,44 @@ jobs:
       - name: RLS isolation suite
         run: pnpm --filter @pharmatrack/db test:rls
 
+  # ── Did this push touch anything deployable? (docs-only pushes skip deploy) ───
+  changes:
+    name: detect deployable changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.f.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: f
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # Non-push events (e.g. manual workflow_dispatch) always deploy.
+          if [ "$EVENT" != "push" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # New branch / unknown base → can't diff, so deploy to be safe.
+          if [ -z "$BEFORE" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Deploy unless EVERY changed file is docs (*.md or docs/**).
+          if git diff --name-only "$BEFORE" "$SHA" | grep -qvE '(\.md$|^docs/)'; then
+            echo "code=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only push — skipping production deploy."
+          fi
+
   # ── Auto-deploy to production: only on push to main, after both gates pass ────
   # Mirrors scripts/release.sh, but the amd64 runner builds natively (no cross-
   # build). Builds + pushes the image, ships infra/, runs the on-box pull deploy,
   # then verifies the running image and health.
   deploy:
     name: deploy to production
-    needs: [verify, rls]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [verify, rls, changes]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-production # never cancel an in-flight production deploy
