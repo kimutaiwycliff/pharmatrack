@@ -167,25 +167,25 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, on
               </span>
             </div>
 
+            {/* Only offer the STK/manual choice when STK is actually available;
+                otherwise the M-Pesa portion is manual confirm, no toggle. */}
+            {canPrompt && (
             <div className="flex gap-1.5 bg-[var(--pt-surface)] rounded-lg p-1">
-              {(["prompt", "manual"] as const).map((m) => {
-                const disabled = m === "prompt" && !canPrompt
-                return (
-                  <button
-                    key={m}
-                    onClick={() => !disabled && setMpesaMode(m)}
-                    disabled={disabled}
-                    className={`flex-1 h-7 rounded-md text-xs font-semibold transition-colors ${
-                      mpesaMode === m
-                        ? "bg-[var(--pt-green)] text-white"
-                        : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"
-                    } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
-                  >
-                    {m === "prompt" ? (canPrompt ? "STK Push" : !online ? "STK (offline)" : "STK (off)") : "Manual Confirm"}
-                  </button>
-                )
-              })}
+              {(["prompt", "manual"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMpesaMode(m)}
+                  className={`flex-1 h-7 rounded-md text-xs font-semibold transition-colors ${
+                    mpesaMode === m
+                      ? "bg-[var(--pt-green)] text-white"
+                      : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"
+                  }`}
+                >
+                  {m === "prompt" ? "STK Push" : "Manual Confirm"}
+                </button>
+              ))}
             </div>
+            )}
 
             {mpesaMode === "prompt" ? (
               <div className="flex gap-2">

@@ -111,25 +111,25 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, on
             <span className="text-2xl font-bold tabular-nums">{formatKES(total)}</span>
           </div>
 
-          {/* Mode toggle (STK push disabled while offline) */}
+          {/* Mode toggle — only shown when STK push is actually available; otherwise
+              the modal goes straight to manual confirm for a cleaner till flow. */}
+          {canPrompt && (
           <div className="grid grid-cols-2 gap-2">
             {(
               [
-                { id: "prompt" as const, label: "Send STK Push", desc: canPrompt ? "Auto-prompt customer phone" : !online ? "Needs a connection" : "Set up in Settings → Payments" },
+                { id: "prompt" as const, label: "Send STK Push", desc: "Auto-prompt customer phone" },
                 { id: "manual" as const, label: "Manual Confirm", desc: "Customer already paid" },
               ] as const
             ).map((opt) => {
-              const disabled = opt.id === "prompt" && !canPrompt
               return (
                 <button
                   key={opt.id}
-                  onClick={() => !disabled && switchMode(opt.id)}
-                  disabled={disabled}
+                  onClick={() => switchMode(opt.id)}
                   className={`text-left p-3 rounded-xl border transition-colors ${
                     mode === opt.id
                       ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]"
                       : "border-[var(--pt-border)] bg-[var(--pt-surface)] hover:bg-[var(--pt-muted)]"
-                  } ${disabled ? "opacity-50 cursor-not-allowed hover:bg-[var(--pt-surface)]" : ""}`}
+                  }`}
                 >
                   <p
                     className={`text-sm font-semibold mb-0.5 ${
@@ -143,6 +143,7 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, on
               )
             })}
           </div>
+          )}
 
           {/* PROMPT — input */}
           {mode === "prompt" && phase === "input" && (
