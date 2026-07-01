@@ -2,7 +2,7 @@ import { redirect } from "next/navigation"
 import { dbAdmin, platform_admin } from "@pharmatrack/db"
 import { LoginForm } from "@/components/auth/LoginForm"
 
-export const metadata = { title: "Sign in — PharmaTrack" }
+export const metadata = { title: "Sign in", robots: { index: false, follow: false } }
 // Reads platform_admins (service-role) to route first-run installs to /setup —
 // must run per request, never prerendered at build (no DB/secret there).
 export const dynamic = "force-dynamic"

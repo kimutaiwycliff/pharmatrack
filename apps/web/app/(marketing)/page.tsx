@@ -9,10 +9,12 @@ import { Pricing } from "@/components/marketing/Pricing"
 import { Faq } from "@/components/marketing/Faq"
 import { FinalCta } from "@/components/marketing/FinalCta"
 import { Reveal } from "@/components/marketing/Reveal"
+import { StructuredData } from "@/components/marketing/StructuredData"
 
 export default function LandingPage() {
   return (
     <>
+      <StructuredData />
       {/* Hero animates on load; the rest fade up as they scroll into view. */}
       <Hero />
       <Reveal><TrustBar /></Reveal>

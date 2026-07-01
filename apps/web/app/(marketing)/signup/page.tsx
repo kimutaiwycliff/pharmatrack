@@ -5,8 +5,15 @@ import { getSession } from "@/lib/auth/helpers"
 import { SignupForm } from "@/components/marketing/SignupForm"
 
 export const metadata: Metadata = {
-  title: "Start your free trial — PharmaTrack",
-  description: "Create your pharmacy on PharmaTrack in minutes. 14-day free trial, no card required.",
+  title: "Start your free 14-day trial",
+  description: "Create your pharmacy on PharmaTrack in minutes — offline-capable POS, inventory, M-Pesa and PPB compliance. 14-day free trial, no card required.",
+  alternates: { canonical: "/signup" },
+  openGraph: {
+    title: "Start your free PharmaTrack trial",
+    description: "Set up your Kenyan pharmacy in minutes. 14-day free trial, no card required.",
+    url: "/signup",
+    type: "website",
+  },
 }
 
 const PERKS = [

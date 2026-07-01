@@ -2,9 +2,11 @@ import type { MetadataRoute } from "next"
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "PharmaTrack",
+    name: "PharmaTrack — Pharmacy POS for Kenya",
     short_name: "PharmaTrack",
-    description: "Pharmacy POS, inventory & appointments for Kenyan pharmacies",
+    description: "Offline-capable pharmacy POS, inventory, M-Pesa & PPB compliance for Kenyan pharmacies.",
+    categories: ["business", "medical", "productivity"],
+    lang: "en",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",
