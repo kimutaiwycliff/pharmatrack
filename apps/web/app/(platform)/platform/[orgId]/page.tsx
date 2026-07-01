@@ -2,10 +2,10 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -26,8 +26,12 @@ const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : "")
 
 export default function TenantDetailPage() {
   const { orgId } = useParams<{ orgId: string }>()
+  const router = useRouter()
   const qc = useQueryClient()
   const [saving, setSaving] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const [confirmName, setConfirmName] = useState("")
+  const [deleting, setDeleting] = useState(false)
 
   const { data, isLoading } = useQuery<TenantDetail>({
     queryKey: ["tenant", orgId],
@@ -101,11 +105,31 @@ export default function TenantDetailPage() {
     finally { setPaying(false) }
   }
 
+  async function deleteTenant() {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/platform/tenants/${orgId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmName }),
+      })
+      const json = (await res.json()) as { error?: string; freed_accounts?: number }
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      toast.success(`Tenant deleted${json.freed_accounts ? ` · ${json.freed_accounts} login(s) freed` : ""}`)
+      await qc.invalidateQueries({ queryKey: ["tenants"] })
+      router.push("/platform")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error")
+      setDeleting(false)
+    }
+  }
+
   if (isLoading || !data) {
     return <div className="flex items-center gap-2 text-[var(--pt-text-secondary)]"><Loader2 size={16} className="animate-spin" /> Loading…</div>
   }
 
   const t = data.tenant
+  const nameMatches = confirmName.trim().toLowerCase() === t.name.trim().toLowerCase()
   return (
     <div className="max-w-3xl">
       <Link href="/platform" className="inline-flex items-center gap-1.5 text-sm text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)] mb-4"><ArrowLeft size={15} /> All tenants</Link>
@@ -188,6 +212,32 @@ export default function TenantDetailPage() {
                 <span className="text-xs text-[var(--pt-text-tertiary)]">{new Date(p.created_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}</span>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* Danger zone */}
+      <section className="mt-6 rounded-xl border border-[var(--pt-red)]/40 bg-[var(--pt-red-50)] p-5">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-red)] mb-2">Danger zone</h2>
+        <p className="text-sm text-[var(--pt-text-secondary)] mb-3">
+          Permanently delete <strong>{t.name}</strong> and <strong>all</strong> its data — branches, staff, products,
+          inventory, sales, customers, subscription and payment history. Staff logins for this tenant are removed so the
+          email can sign up again. This <strong>cannot be undone</strong>.
+        </p>
+        {!showDelete ? (
+          <Button variant="outline" onClick={() => setShowDelete(true)} className="gap-1.5 text-[var(--pt-red)] border-[var(--pt-red)]">
+            <Trash2 size={15} /> Delete tenant…
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <Label className="text-sm">Type <span className="font-mono font-semibold">{t.name}</span> to confirm</Label>
+            <Input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={t.name} className="h-10 max-w-sm" autoFocus />
+            <div className="flex items-center gap-2 pt-1">
+              <Button onClick={deleteTenant} disabled={deleting || !nameMatches} className="gap-1.5 bg-[var(--pt-red)] hover:opacity-90 text-white border-transparent">
+                {deleting && <Loader2 size={14} className="animate-spin" />} Permanently delete
+              </Button>
+              <Button variant="outline" onClick={() => { setShowDelete(false); setConfirmName("") }} disabled={deleting}>Cancel</Button>
+            </div>
           </div>
         )}
       </section>

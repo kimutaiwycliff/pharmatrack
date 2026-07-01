@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { and, asc, desc, eq, sql } from "drizzle-orm"
-import { organization, org_settings, subscription, plan, branch, staff_profile, subscription_payment } from "@pharmatrack/db"
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
+import { organization, org_settings, subscription, plan, branch, staff_profile, subscription_payment, user } from "@pharmatrack/db"
 import { zUuid } from "@/lib/api/validation"
 import { getPlatformContext } from "@/lib/platform"
 
@@ -66,4 +66,56 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }).where(eq(subscription.organization_id, orgId)).returning()
 
   return NextResponse.json({ subscription: updated })
+}
+
+// Permanently delete a tenant and ALL of its data. Every organization_id-scoped
+// table is FK'd to organization ON DELETE CASCADE, so a single delete wipes
+// branches, products, inventory, sales, customers, subscription + payments,
+// staff_profile, member, invitation, org_settings and audit_log. We also remove
+// the staff LOGIN accounts that belonged solely to this tenant (cascading their
+// sessions + accounts) so the email is free to sign up again. Platform operators
+// and users who also belong to another org are preserved. Requires the operator
+// to type the tenant's exact name.
+const deleteSchema = z.object({ confirmName: z.string().min(1) })
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
+  const { orgId } = await params
+  const ctx = await getPlatformContext()
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const { db, user: actor } = ctx
+
+  const parsed = deleteSchema.safeParse(await request.json().catch(() => ({})))
+  if (!parsed.success) return NextResponse.json({ error: "Confirmation required" }, { status: 400 })
+
+  const [org] = await db.select().from(organization).where(eq(organization.id, orgId)).limit(1)
+  if (!org) return NextResponse.json({ error: "Tenant not found" }, { status: 404 })
+  if (parsed.data.confirmName.trim().toLowerCase() !== org.name.trim().toLowerCase()) {
+    return NextResponse.json({ error: "The name you typed doesn't match this tenant" }, { status: 400 })
+  }
+
+  let freedAccounts = 0
+  await db.transaction(async (tx) => {
+    // Accounts that belong ONLY to this org and aren't platform operators —
+    // computed while the member rows still exist (before the cascading delete).
+    const eligible = (await tx.execute(sql`
+      SELECT u."id" AS id
+      FROM "user" u
+      JOIN "member" m ON m."userId" = u."id" AND m."organizationId" = ${orgId}
+      WHERE NOT EXISTS (SELECT 1 FROM "member" m2 WHERE m2."userId" = u."id" AND m2."organizationId" <> ${orgId})
+        AND NOT EXISTS (SELECT 1 FROM "platform_admin" p WHERE p."user_id" = u."id")
+    `)) as unknown as Array<{ id: string }>
+    const ids = eligible.map((r) => r.id)
+
+    // Cascades every organization_id-scoped table.
+    await tx.delete(organization).where(eq(organization.id, orgId))
+
+    // Free the orphaned logins (cascades their sessions + accounts).
+    if (ids.length) {
+      await tx.delete(user).where(inArray(user.id, ids))
+      freedAccounts = ids.length
+    }
+  })
+
+  console.warn(`[platform] tenant "${org.name}" (${orgId}) deleted by ${actor.email ?? actor.id}; freed ${freedAccounts} account(s)`)
+  return NextResponse.json({ ok: true, tenant: org.name, freed_accounts: freedAccounts })
 }
