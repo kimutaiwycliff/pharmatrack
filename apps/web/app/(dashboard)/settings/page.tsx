@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone } from "lucide-react"
+import { hasFeature, type Feature } from "@pharmatrack/core"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
 import { ProfileSettingsForm } from "@/components/settings/ProfileSettingsForm"
@@ -34,11 +35,11 @@ function useSettings() {
 
 type Tab = "org" | "branches" | "services" | "payments" | "billing" | "profile" | "appearance"
 
-const TABS: { key: Tab; label: string; icon: React.ElementType; ownerOnly?: boolean }[] = [
+const TABS: { key: Tab; label: string; icon: React.ElementType; ownerOnly?: boolean; requiresFeature?: Feature }[] = [
   { key: "org",        label: "Organization", icon: Building2 },
   { key: "branches",   label: "Branches",     icon: GitBranch },
   { key: "services",   label: "Services",     icon: Syringe },
-  { key: "payments",   label: "Payments",     icon: Smartphone, ownerOnly: true },
+  { key: "payments",   label: "Payments",     icon: Smartphone, ownerOnly: true, requiresFeature: "mpesa_stk" },
   { key: "billing",    label: "Billing",      icon: CreditCard },
   { key: "profile",    label: "My Profile",   icon: User },
   { key: "appearance", label: "Appearance",   icon: Palette },
@@ -46,6 +47,7 @@ const TABS: { key: Tab; label: string; icon: React.ElementType; ownerOnly?: bool
 
 export default function SettingsPage() {
   const profile = useSessionStore((s) => s.profile)
+  const planCode = useSessionStore((s) => s.planCode)
   const [tab, setTab] = useState<Tab>("org")
   const { data, isLoading } = useSettings()
 
@@ -75,7 +77,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-[var(--pt-border)] overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-        {TABS.filter((t) => !t.ownerOnly || isOwner).map(({ key, label, icon: Icon }) => (
+        {TABS.filter((t) => (!t.ownerOnly || isOwner) && (!t.requiresFeature || hasFeature(planCode, t.requiresFeature))).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
