@@ -91,6 +91,20 @@ export function planOf(code: string | null | undefined): PlanCode {
   return isPlanCode(code) ? code : DEFAULT_PLAN
 }
 
+// While trialing, every tenant gets Growth-tier access regardless of which plan
+// they'll actually be billed for once the trial ends or converts — the trial
+// should showcase the product, not the tier they happened to pick at signup.
+// `subscription.plan_id` is left untouched; this only affects what entitlements
+// resolve to for the duration of `status = 'trialing'`.
+export const TRIAL_PLAN: PlanCode = "growth"
+
+/** Resolve the plan code that should actually gate features, given the org's
+ *  subscription status and its billed plan code. */
+export function effectivePlanCode(status: string | null | undefined, code: string | null | undefined): PlanCode {
+  if (status === "trialing") return TRIAL_PLAN
+  return planOf(code)
+}
+
 export function entitlements(code: string | null | undefined): PlanEntitlements {
   return PLAN_MATRIX[planOf(code)]
 }

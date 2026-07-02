@@ -4,22 +4,23 @@ import { NextResponse } from "next/server"
 import { eq, sql } from "drizzle-orm"
 import { dbAdmin, subscription, plan } from "@pharmatrack/db"
 import {
-  hasFeature, canAdd, planLimit, planOf, entitlements,
+  hasFeature, canAdd, planLimit, effectivePlanCode, entitlements,
   type Feature, type Limit, type PlanCode,
 } from "@pharmatrack/core"
 
 // Server-side entitlement resolution + guards. Plan code is read from the org's
 // live subscription, so switching a tenant's plan changes gating immediately.
 
-/** Resolve a tenant's plan code from its subscription (defaults to Starter). */
+/** Resolve a tenant's effective plan code (Growth while trialing, else its
+ *  billed plan, defaulting to Starter). */
 export async function planCodeForOrg(organizationId: string): Promise<PlanCode> {
   const [row] = await dbAdmin()
-    .select({ code: plan.code })
+    .select({ code: plan.code, status: subscription.status })
     .from(subscription)
     .leftJoin(plan, eq(plan.id, subscription.plan_id))
     .where(eq(subscription.organization_id, organizationId))
     .limit(1)
-  return planOf(row?.code)
+  return effectivePlanCode(row?.status, row?.code)
 }
 
 /** Count current rows of a limited resource for the org. */

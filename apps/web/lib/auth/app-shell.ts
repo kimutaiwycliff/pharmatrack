@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, branch as branchTable, subscription, plan } from "@pharmatrack/db"
-import { planOf, type PlanCode } from "@pharmatrack/core"
+import { effectivePlanCode, type PlanCode } from "@pharmatrack/core"
 import type { Profile, Branch, UserRole } from "@pharmatrack/types"
 import { getSession } from "./helpers"
 
@@ -48,5 +48,5 @@ export async function loadAppShell(): Promise<AppShell | null> {
     address: b.address, phone: b.phone, is_active: b.is_active, created_at: b.created_at.toISOString(),
   }))
 
-  return { userId: session.user.id, email: session.user.email ?? "", profile, branches, subStatus: sub?.status ?? null, planCode: planOf(sub?.planCode) }
+  return { userId: session.user.id, email: session.user.email ?? "", profile, branches, subStatus: sub?.status ?? null, planCode: effectivePlanCode(sub?.status, sub?.planCode) }
 }
