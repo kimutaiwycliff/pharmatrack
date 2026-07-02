@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { ArrowRight, MessageCircle } from "lucide-react"
 
+const WHATSAPP_GREETING = encodeURIComponent("Hi! I'm interested in PharmaTrack for my pharmacy — can you tell me more?")
+
 export function FinalCta() {
   return (
     <section id="demo" className="relative overflow-hidden mk-mesh mk-grain">
@@ -18,7 +20,7 @@ export function FinalCta() {
             Start free trial
             <ArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
           </Link>
-          <a href="https://wa.me/254700000000" className="inline-flex items-center justify-center gap-2 h-12 px-7 rounded-xl bg-[var(--pt-surface)] border border-[var(--pt-border-strong)] font-semibold hover:bg-[var(--pt-muted-strong)] transition-colors">
+          <a href={`https://wa.me/254756412487?text=${WHATSAPP_GREETING}`} className="inline-flex items-center justify-center gap-2 h-12 px-7 rounded-xl bg-[var(--pt-surface)] border border-[var(--pt-border-strong)] font-semibold hover:bg-[var(--pt-muted-strong)] transition-colors">
             <MessageCircle size={18} className="text-[var(--pt-green-600)]" /> Chat on WhatsApp
           </a>
         </div>

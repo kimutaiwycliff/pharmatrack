@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { Cross } from "lucide-react"
 
+const WHATSAPP_GREETING = encodeURIComponent("Hi! I'm interested in PharmaTrack for my pharmacy — can you tell me more?")
+
 const COLS: { title: string; links: { label: string; href: string }[] }[] = [
   {
     title: "Product",
@@ -24,7 +26,7 @@ const COLS: { title: string; links: { label: string; href: string }[] }[] = [
     links: [
       { label: "Start free trial", href: "/signup" },
       { label: "Sign in", href: "/login" },
-      { label: "WhatsApp us", href: "https://wa.me/254700000000" },
+      { label: "WhatsApp us", href: `https://wa.me/254756412487?text=${WHATSAPP_GREETING}` },
     ],
   },
 ]
