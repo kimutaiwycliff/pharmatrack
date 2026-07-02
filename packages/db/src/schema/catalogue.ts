@@ -93,4 +93,6 @@ export const product_pack_size = pgTable("product_pack_size", {
   unit_count: integer("unit_count").notNull().default(1),
   selling_price: numeric("selling_price", { precision: 12, scale: 2 }).notNull(),
   cost_price: numeric("cost_price", { precision: 12, scale: 2 }),
+  barcode: text("barcode"),
+  is_active: boolean("is_active").notNull().default(true),
 })

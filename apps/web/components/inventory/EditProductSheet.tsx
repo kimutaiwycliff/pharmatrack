@@ -99,6 +99,22 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
   const [adding, setAdding] = useState(false)
   const [newForm, setNewForm] = useState({ pack_label: "", units_per_pack: "", selling_price: "", barcode: "" })
   const [saving, setSaving] = useState(false)
+  const [scanningNew, setScanningNew] = useState(false)
+  const [scanningSizeId, setScanningSizeId] = useState<string | null>(null)
+
+  async function setSizeBarcode(sizeId: string, barcode: string) {
+    try {
+      const res = await fetch(`/api/products/${productId}/pack-sizes/${sizeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcode }),
+      })
+      const json = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      toast.success(`Barcode captured: ${barcode}`)
+      await queryClient.invalidateQueries({ queryKey: ["pack-sizes", productId] })
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Error") }
+  }
 
   async function addSize() {
     const units = parseInt(newForm.units_per_pack)
@@ -171,6 +187,9 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
             </div>
             <div className="flex items-center gap-3">
               <span className="font-bold tabular-nums">{formatKES(s.selling_price)}</span>
+              <button onClick={() => setScanningSizeId(s.id)} title="Scan barcode" aria-label="Scan barcode for this pack size" className="text-[var(--pt-text-tertiary)] hover:text-[var(--pt-green-600)] p-1 rounded">
+                <ScanBarcode size={13} />
+              </button>
               <button onClick={() => toggleActive(s)} className="text-[10px] font-semibold text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text-secondary)]">
                 {s.is_active ? "Deactivate" : "Activate"}
               </button>
@@ -188,7 +207,18 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
             <Input placeholder="Label (e.g. Strip of 10)" value={newForm.pack_label} onChange={(e) => setNewForm(f => ({ ...f, pack_label: e.target.value }))} className="h-9 text-sm" autoFocus />
             <Input type="number" placeholder={`${baseUnit}s per pack`} value={newForm.units_per_pack} onChange={(e) => setNewForm(f => ({ ...f, units_per_pack: e.target.value }))} className="h-9 text-sm" min={1} />
             <Input type="number" placeholder="Selling price (KES)" value={newForm.selling_price} onChange={(e) => setNewForm(f => ({ ...f, selling_price: e.target.value }))} className="h-9 text-sm" min={0} step="0.01" />
-            <Input placeholder="Barcode (optional)" value={newForm.barcode} onChange={(e) => setNewForm(f => ({ ...f, barcode: e.target.value }))} className="h-9 text-sm" />
+            <div className="flex gap-2">
+              <Input placeholder="Barcode (optional)" value={newForm.barcode} onChange={(e) => setNewForm(f => ({ ...f, barcode: e.target.value }))} className="h-9 text-sm" />
+              <button
+                type="button"
+                onClick={() => setScanningNew(true)}
+                aria-label="Scan barcode with camera"
+                title="Scan with camera"
+                className="h-9 w-9 shrink-0 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:text-[var(--pt-green-600)] hover:bg-[var(--pt-surface)] transition-colors"
+              >
+                <ScanBarcode size={14} />
+              </button>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button size="sm" onClick={addSize} disabled={saving} className="gap-1.5">
@@ -197,6 +227,19 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
             <Button size="sm" variant="outline" onClick={() => setAdding(false)}>Cancel</Button>
           </div>
         </div>
+      )}
+
+      {scanningNew && (
+        <CameraScanner
+          onScan={(event) => { setNewForm(f => ({ ...f, barcode: event.gtin ?? event.raw })); setScanningNew(false) }}
+          onClose={() => setScanningNew(false)}
+        />
+      )}
+      {scanningSizeId && (
+        <CameraScanner
+          onScan={(event) => { void setSizeBarcode(scanningSizeId, event.gtin ?? event.raw); setScanningSizeId(null) }}
+          onClose={() => setScanningSizeId(null)}
+        />
       )}
     </div>
   )

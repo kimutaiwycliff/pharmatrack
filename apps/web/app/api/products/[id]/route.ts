@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { and, asc, eq, ne, or } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import { withTenant, product, product_pack_size } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { serializePackSize } from "@/lib/products/packsize"
+import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
 import { redis } from "@/lib/redis"
 
 const updateSchema = z.object({
@@ -64,13 +65,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const nextGtin = parsed.data.gtin !== undefined ? parsed.data.gtin : existing.gtin
     const nextRaw = parsed.data.barcode_raw !== undefined ? parsed.data.barcode_raw : existing.barcode_raw
-    if (nextGtin || nextRaw) {
-      const conflictConds = [nextGtin ? eq(product.gtin, nextGtin) : undefined, nextRaw ? eq(product.barcode_raw, nextRaw) : undefined].filter(Boolean)
-      const [conflict] = await db.select({ id: product.id, name: product.name }).from(product)
-        .where(and(ne(product.id, id), eq(product.organization_id, ctx.organizationId), or(...conflictConds)))
-        .limit(1)
-      if (conflict) return { status: 409 as const, body: { error: `That barcode is already assigned to "${conflict.name}"` } }
-    }
+    const conflictName = await findBarcodeConflict(db, ctx.organizationId, [nextGtin, nextRaw], { productId: id })
+    if (conflictName) return { status: 409 as const, body: { error: `That barcode is already assigned to "${conflictName}"` } }
 
     const { cost_price, selling_price, max_discount_percent, ...rest } = parsed.data
     const [updated] = await db.update(product).set({

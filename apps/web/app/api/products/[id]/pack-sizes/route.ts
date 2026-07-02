@@ -4,6 +4,7 @@ import { asc, eq } from "drizzle-orm"
 import { withTenant, product, product_pack_size } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { serializePackSize } from "@/lib/products/packsize"
+import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
 
 const packSizeSchema = z.object({
   pack_label: z.string().min(1),
@@ -37,9 +38,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Confirm the product is in this org (RLS already scopes, this gives a 404).
     const [p] = await db.select({ id: product.id }).from(product).where(eq(product.id, id)).limit(1)
     if (!p) return { status: 404 as const, body: { error: "Product not found" } }
+
+    if (parsed.data.barcode) {
+      const conflictName = await findBarcodeConflict(db, ctx.organizationId, [parsed.data.barcode])
+      if (conflictName) return { status: 409 as const, body: { error: `That barcode is already assigned to "${conflictName}"` } }
+    }
+
     const [row] = await db.insert(product_pack_size).values({
       product_id: id, label: parsed.data.pack_label,
       unit_count: parsed.data.units_per_pack, selling_price: String(parsed.data.selling_price),
+      barcode: parsed.data.barcode || null,
     }).returning()
     return { status: 201 as const, body: { packSize: serializePackSize(row!) } }
   })

@@ -4,8 +4,8 @@ import { eq } from "drizzle-orm"
 import { withTenant, product_pack_size } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { serializePackSize } from "@/lib/products/packsize"
+import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
 
-// is_active/barcode are no longer columns — accepted for backward compat, ignored.
 const updateSchema = z.object({
   pack_label: z.string().min(1).optional(),
   units_per_pack: z.number().int().positive().optional(),
@@ -31,6 +31,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (parsed.data.pack_label !== undefined) set.label = parsed.data.pack_label
   if (parsed.data.units_per_pack !== undefined) set.unit_count = parsed.data.units_per_pack
   if (parsed.data.selling_price !== undefined) set.selling_price = String(parsed.data.selling_price)
+  if (parsed.data.barcode !== undefined) set.barcode = parsed.data.barcode
+  if (parsed.data.is_active !== undefined) set.is_active = parsed.data.is_active
 
   const out = await withTenant(ctx, async (db) => {
     if (Object.keys(set).length === 0) {
@@ -38,6 +40,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if (!row) return { status: 404 as const, body: { error: "Pack size not found" } }
       return { status: 200 as const, body: { packSize: serializePackSize(row) } }
     }
+
+    if (set.barcode) {
+      const conflictName = await findBarcodeConflict(db, ctx.organizationId, [set.barcode], { packSizeId: sizeId })
+      if (conflictName) return { status: 409 as const, body: { error: `That barcode is already assigned to "${conflictName}"` } }
+    }
+
     const [row] = await db.update(product_pack_size).set(set).where(eq(product_pack_size.id, sizeId)).returning()
     if (!row) return { status: 404 as const, body: { error: "Pack size not found" } }
     return { status: 200 as const, body: { packSize: serializePackSize(row) } }
