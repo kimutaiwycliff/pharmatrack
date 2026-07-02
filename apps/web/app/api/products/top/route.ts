@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm"
 import { withTenant, sale, sale_item, product_stock } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
+import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 
 const num = (v: string | number | null) => (v == null ? null : Number(v))
 const WINDOW_DAYS = 90
@@ -41,13 +42,14 @@ export async function GET(request: NextRequest) {
 
     // Preserve the most-sold ordering.
     const rank = new Map(ids.map((id, i) => [id, i]))
-    return rows
+    const withPrices = rows
       .sort((a, b) => (rank.get(a.product_id!) ?? 99) - (rank.get(b.product_id!) ?? 99))
       .map((p) => ({
         ...p,
         selling_price: num(p.selling_price), cost_price: num(p.cost_price),
         max_discount_percent: num(p.max_discount_percent),
       }))
+    return canViewCost(ctx.role) ? withPrices : withPrices.map(omitCost)
   })
 
   return NextResponse.json({ products })

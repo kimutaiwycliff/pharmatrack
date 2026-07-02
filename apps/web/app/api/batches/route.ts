@@ -3,6 +3,7 @@ import { z } from "zod"
 import { and, eq, asc } from "drizzle-orm"
 import { withTenant, product, product_batch } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
@@ -38,11 +39,12 @@ export async function GET(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
 
-  const batches = await withTenant(ctx, (db) =>
+  const rows = await withTenant(ctx, (db) =>
     db.select().from(product_batch)
       .where(and(eq(product_batch.product_id, productId), eq(product_batch.branch_id, branchId)))
       .orderBy(asc(product_batch.expiry_date)),
   )
+  const batches = canViewCost(ctx.role) ? rows : rows.map(omitCost)
   return NextResponse.json({ batches })
 }
 
@@ -100,7 +102,9 @@ export async function PATCH(request: NextRequest) {
   const set: Partial<typeof product_batch.$inferInsert> = {}
   if (d.expiry_date !== undefined) set.expiry_date = d.expiry_date
   if (d.batch_number !== undefined) set.batch_number = d.batch_number
-  if (d.cost_price !== undefined) set.cost_price = d.cost_price === null ? null : String(d.cost_price)
+  // Correcting an already-recorded batch's cost is "browsing", not the one-off
+  // entry receiving allows — restrict it like every other cost edit.
+  if (d.cost_price !== undefined && canViewCost(ctx.role)) set.cost_price = d.cost_price === null ? null : String(d.cost_price)
 
   const [updated] = await withTenant(ctx, (db) =>
     db.update(product_batch).set(set).where(eq(product_batch.id, d.id)).returning(),
@@ -118,5 +122,5 @@ export async function PATCH(request: NextRequest) {
     } catch {}
   }
 
-  return NextResponse.json({ batch: updated })
+  return NextResponse.json({ batch: canViewCost(ctx.role) ? updated : omitCost(updated) })
 }

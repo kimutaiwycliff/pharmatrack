@@ -14,9 +14,10 @@ interface LookupResult {
   }
 }
 
-async function lookupProduct(barcode: string, branchId?: string): Promise<LookupResult> {
+async function lookupProduct(barcode: string, branchId?: string, context?: "receive"): Promise<LookupResult> {
   const params = new URLSearchParams({ barcode })
   if (branchId) params.set("branch_id", branchId)
+  if (context) params.set("context", context)
 
   try {
     const res = await fetch(`/api/products/lookup?${params.toString()}`)
@@ -32,11 +33,14 @@ async function lookupProduct(barcode: string, branchId?: string): Promise<Lookup
   }
 }
 
-export function useProductLookup(barcode: string | null, branchId?: string) {
+// `context: "receive"` tells the API this is the stock-receiving flow, where a
+// pharmacist legitimately needs the last cost prefilled (it's an entry aid for
+// a write they're already allowed to make) — not "browsing" catalogue margins.
+export function useProductLookup(barcode: string | null, branchId?: string, context?: "receive") {
   return useQuery<LookupResult>({
-    queryKey: ["productLookup", barcode, branchId],
+    queryKey: ["productLookup", barcode, branchId, context],
     enabled: !!barcode && barcode.length >= 3,
-    queryFn: () => lookupProduct(barcode!, branchId),
+    queryFn: () => lookupProduct(barcode!, branchId, context),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000,
     // Run even when offline so the Dexie cache fallback in lookupProduct fires.

@@ -3,6 +3,7 @@ import { z } from "zod"
 import { and, or, ilike, asc, sql } from "drizzle-orm"
 import { withTenant, product } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { deriveGenericName } from "@/lib/generic-name"
 
@@ -48,7 +49,8 @@ export async function GET(request: NextRequest) {
     const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(product).where(where)
     return { rows, total: c?.n ?? 0 }
   })
-  return NextResponse.json({ products: rows, total, page, limit })
+  const products = canViewCost(ctx.role) ? rows : rows.map(omitCost)
+  return NextResponse.json({ products, total, page, limit })
 }
 
 export async function POST(request: NextRequest) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, eq, or, ilike, asc, sql } from "drizzle-orm"
 import { withTenant, product_stock } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
+import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { searchThreshold } from "@/lib/search"
 
 const EXPIRY_WARN_DAYS = 90
@@ -59,11 +60,12 @@ export async function GET(request: NextRequest) {
     return db.select().from(product_stock).where(where).orderBy(asc(product_stock.name))
   })
   // PostgREST returned numerics as numbers; Drizzle/postgres.js returns strings — coerce.
-  const products = all.map((p) => ({
+  const withPrices = all.map((p) => ({
     ...p,
     selling_price: num(p.selling_price), cost_price: num(p.cost_price),
     max_discount_percent: num(p.max_discount_percent),
   }))
+  const products = canViewCost(ctx.role) ? withPrices : withPrices.map(omitCost)
 
   let outOfStock = 0, lowStock = 0, expiring = 0, controlled = 0
   for (const p of products) {

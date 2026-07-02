@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, asc, desc, eq, or, ilike, sql } from "drizzle-orm"
 import { withTenant, product_stock } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
+import { canViewCostInContext, omitCost } from "@/lib/auth/costVisibility"
 import { searchThreshold } from "@/lib/search"
 
 const num = (v: string | number | null) => (v == null ? null : Number(v))
@@ -65,9 +66,10 @@ export async function GET(request: NextRequest) {
   })
 
   // PostgREST returned numerics as numbers; Drizzle/postgres.js returns strings.
-  const products = rows.map((p) => ({
+  const withPrices = rows.map((p) => ({
     ...p, selling_price: num(p.selling_price), cost_price: num(p.cost_price), max_discount_percent: num(p.max_discount_percent),
   }))
+  const products = canViewCostInContext(ctx.role, searchParams.get("context")) ? withPrices : withPrices.map(omitCost)
 
   return NextResponse.json({ products })
 }

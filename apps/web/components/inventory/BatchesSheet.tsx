@@ -205,10 +205,11 @@ function AdjustPanel({
   )
 }
 
-function EditBatchPanel({ batch, productId, branchId, onDone }: {
+function EditBatchPanel({ batch, productId, branchId, canSeeCost, onDone }: {
   batch: ProductBatch
   productId: string
   branchId: string
+  canSeeCost: boolean
   onDone: () => void
 }) {
   const qc = useQueryClient()
@@ -258,10 +259,12 @@ function EditBatchPanel({ batch, productId, branchId, onDone }: {
           <input type="text" value={batchNo} onChange={(e) => setBatchNo(e.target.value)} className={`${inputCls} font-mono`} />
         </div>
       </div>
-      <div>
-        <label className={labelCls}>Cost / unit (KES) <span className="font-normal normal-case text-[var(--pt-text-tertiary)]">(optional)</span></label>
-        <input type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="—" className={`${inputCls} tabular-nums`} />
-      </div>
+      {canSeeCost && (
+        <div>
+          <label className={labelCls}>Cost / unit (KES) <span className="font-normal normal-case text-[var(--pt-text-tertiary)]">(optional)</span></label>
+          <input type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="—" className={`${inputCls} tabular-nums`} />
+        </div>
+      )}
       <div className="flex gap-2">
         <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !expiry || !batchNo.trim()}
           className="h-9 flex-1 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white font-semibold">
@@ -327,6 +330,7 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
   const role = useSessionStore((s) => s.profile?.role)
   const canAdjust = role === "owner" || role === "manager"
   const canEdit = role === "owner" || role === "manager" || role === "pharmacist"
+  const canSeeCost = role === "owner" || role === "manager"
 
   const [adjustingId, setAdjustingId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -434,15 +438,17 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
                       </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                      <div>
-                        <p className="text-[var(--pt-text-tertiary)] uppercase tracking-wide text-[10px] font-semibold">
-                          Cost/unit
-                        </p>
-                        <p className="font-semibold mt-0.5">
-                          {b.cost_price != null ? formatKES(b.cost_price) : "—"}
-                        </p>
-                      </div>
+                    <div className={`mt-3 grid gap-2 text-xs ${canSeeCost ? "grid-cols-3" : "grid-cols-2"}`}>
+                      {canSeeCost && (
+                        <div>
+                          <p className="text-[var(--pt-text-tertiary)] uppercase tracking-wide text-[10px] font-semibold">
+                            Cost/unit
+                          </p>
+                          <p className="font-semibold mt-0.5">
+                            {b.cost_price != null ? formatKES(b.cost_price) : "—"}
+                          </p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-[var(--pt-text-tertiary)] uppercase tracking-wide text-[10px] font-semibold">
                           Received
@@ -465,7 +471,7 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
                     </div>
 
                     {editingId === b.id ? (
-                      <EditBatchPanel batch={b} productId={productId!} branchId={branchId} onDone={() => setEditingId(null)} />
+                      <EditBatchPanel batch={b} productId={productId!} branchId={branchId} canSeeCost={canSeeCost} onDone={() => setEditingId(null)} />
                     ) : adjustingId === b.id ? (
                       <AdjustPanel batch={b} productId={productId!} branchId={branchId} onDone={() => setAdjustingId(null)} />
                     ) : (

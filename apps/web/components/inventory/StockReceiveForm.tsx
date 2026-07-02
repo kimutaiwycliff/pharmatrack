@@ -84,7 +84,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
   const [pendingQty, setPendingQty] = useState<number>(1)
   const [pendingCost, setPendingCost] = useState<string>("")
 
-  const { data: lookupData, isFetching } = useProductLookup(scannedBarcode, branchId)
+  const { data: lookupData, isFetching } = useProductLookup(scannedBarcode, branchId, "receive")
 
   // Search products by name/brand (alternative to scanning).
   const [searchText, setSearchText] = useState("")
@@ -92,7 +92,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
   const { data: searchResults } = useQuery<ProductWithStock[]>({
     queryKey: ["receiveSearch", q, branchId],
     queryFn: async () => {
-      const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&branch_id=${branchId}`)
+      const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&branch_id=${branchId}&context=receive`)
       if (!res.ok) return []
       const json = (await res.json()) as { products: ProductWithStock[] }
       return json.products

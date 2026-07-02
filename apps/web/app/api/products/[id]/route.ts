@@ -3,6 +3,7 @@ import { z } from "zod"
 import { and, asc, eq } from "drizzle-orm"
 import { withTenant, product, product_pack_size } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { serializePackSize } from "@/lib/products/packsize"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
@@ -46,7 +47,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (!p) return NextResponse.json({ error: "Product not found" }, { status: 404 })
     const packSizes = await db.select().from(product_pack_size)
       .where(eq(product_pack_size.product_id, id)).orderBy(asc(product_pack_size.unit_count))
-    return NextResponse.json({ product: serialize(p), packSizes: packSizes.map(serializePackSize) })
+    const out = serialize(p)
+    return NextResponse.json({ product: canViewCost(ctx.role) ? out : omitCost(out), packSizes: packSizes.map(serializePackSize) })
   })
 }
 
@@ -58,6 +60,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const parsed = updateSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
+  // Pharmacist/cashier can't view cost — don't let a direct API call set it either.
+  if (!canViewCost(ctx.role)) parsed.data.cost_price = undefined
 
   const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ gtin: product.gtin, barcode_raw: product.barcode_raw }).from(product).where(eq(product.id, id)).limit(1)
@@ -77,7 +81,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updated_at: new Date(),
     }).where(and(eq(product.id, id), eq(product.organization_id, ctx.organizationId))).returning()
 
-    return { status: 200 as const, body: { product: serialize(updated!) }, gtin: parsed.data.gtin ?? existing.gtin, raw: parsed.data.barcode_raw ?? existing.barcode_raw }
+    const serialized = serialize(updated!)
+    return {
+      status: 200 as const,
+      body: { product: canViewCost(ctx.role) ? serialized : omitCost(serialized) },
+      gtin: parsed.data.gtin ?? existing.gtin, raw: parsed.data.barcode_raw ?? existing.barcode_raw,
+    }
   })
 
   if (out.status === 200 && redis) {

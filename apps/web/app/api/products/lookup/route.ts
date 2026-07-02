@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, or, eq, gt, asc } from "drizzle-orm"
 import { withTenant, product, product_batch } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { canViewCostInContext, omitCost } from "@/lib/auth/costVisibility"
 import { redis } from "@/lib/redis"
 
 const CACHE_TTL = 3600
@@ -10,6 +11,15 @@ interface LookupResponse {
   found: boolean
   product?: Record<string, unknown>
   suggestion?: { name: string; manufacturer: string; gtin: string }
+}
+
+// The Redis cache is shared across every role at this branch/barcode, so it
+// always stores the FULL response — filter cost only at the response edge,
+// never before caching, or a cashier's lookup would poison the cache for the
+// next owner who scans the same barcode.
+function filterLookup(resp: LookupResponse, role: Role, context: string | null): LookupResponse {
+  if (canViewCostInContext(role, context) || !resp.product) return resp
+  return { ...resp, product: omitCost(resp.product) }
 }
 
 async function fetchOpenFoodFacts(barcode: string): Promise<{ name: string; manufacturer: string } | null> {
@@ -29,6 +39,7 @@ export async function GET(request: NextRequest) {
   const branchId = request.nextUrl.searchParams.get("branch_id")
   if (!barcode) return NextResponse.json({ error: "barcode is required" }, { status: 400 })
 
+  const context = request.nextUrl.searchParams.get("context")
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
@@ -38,7 +49,7 @@ export async function GET(request: NextRequest) {
   if (redis) {
     try {
       const cached = await redis.get<LookupResponse>(cacheKey)
-      if (cached) return NextResponse.json(cached)
+      if (cached) return NextResponse.json(filterLookup(cached, ctx.role, context))
     } catch { /* miss */ }
   }
 
@@ -65,7 +76,7 @@ export async function GET(request: NextRequest) {
   if (productWithStock) {
     const response: LookupResponse = { found: true, product: productWithStock }
     if (redis) { try { await redis.set(cacheKey, response, { ex: CACHE_TTL }) } catch {} }
-    return NextResponse.json(response)
+    return NextResponse.json(filterLookup(response, ctx.role, context))
   }
 
   const off = await fetchOpenFoodFacts(barcode)

@@ -9,6 +9,7 @@ import { EditProductSheet } from "@/components/inventory/EditProductSheet"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { CategoryManager } from "@/components/inventory/CategoryManager"
 import { formatKES } from "@/lib/store/cartStore"
+import { useSessionStore } from "@/lib/store/sessionStore"
 import type { Product } from "@pharmatrack/types"
 
 type ProductRow = Product & { category_name?: string }
@@ -47,6 +48,8 @@ async function toggleActive(id: string, active: boolean): Promise<void> {
 
 export default function ProductsPage() {
   const qc = useQueryClient()
+  const role = useSessionStore((s) => s.profile?.role)
+  const canSeeCost = ["owner", "manager"].includes(role ?? "")
   const [rawSearch, setRawSearch] = useState("")
   const [categoryId, setCategoryId] = useState("")
   const [page, setPage] = useState(1)
@@ -184,7 +187,9 @@ export default function ProductsPage() {
                   <th className="px-5 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">Product</th>
                   <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden md:table-cell">Strength / Form</th>
                   <th className="px-4 py-3 text-right text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden sm:table-cell">Sell Price</th>
-                  <th className="px-4 py-3 text-right text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden lg:table-cell">Cost</th>
+                  {canSeeCost && (
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden lg:table-cell">Cost</th>
+                  )}
                   <th className="px-4 py-3 text-center text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden lg:table-cell">Max Disc.</th>
                   <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden xl:table-cell">GTIN</th>
                   <th className="px-4 py-3 text-center text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">Status</th>
@@ -220,9 +225,11 @@ export default function ProductsPage() {
                     <td className="px-4 py-3.5 text-right tabular-nums text-[13px] hidden sm:table-cell">
                       {p.selling_price != null ? formatKES(p.selling_price) : "—"}
                     </td>
-                    <td className="px-4 py-3.5 text-right tabular-nums text-[13px] text-[var(--pt-text-secondary)] hidden lg:table-cell">
-                      {p.cost_price != null ? formatKES(p.cost_price) : "—"}
-                    </td>
+                    {canSeeCost && (
+                      <td className="px-4 py-3.5 text-right tabular-nums text-[13px] text-[var(--pt-text-secondary)] hidden lg:table-cell">
+                        {p.cost_price != null ? formatKES(p.cost_price) : "—"}
+                      </td>
+                    )}
                     <td className="px-4 py-3.5 text-center text-[13px] hidden lg:table-cell">
                       {p.max_discount_percent != null
                         ? <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[11px] font-semibold">{p.max_discount_percent}%</span>

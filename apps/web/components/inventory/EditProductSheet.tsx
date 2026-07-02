@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatKES } from "@/lib/store/cartStore"
+import { useSessionStore } from "@/lib/store/sessionStore"
 import { CategorySelect } from "./CategorySelect"
 import { CameraScanner } from "@/components/pos/CameraScanner"
 import type { Product, ProductPackSize } from "@pharmatrack/types"
@@ -280,6 +281,8 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 // ─── Main component ──────────────────────────────────────────────────────────
 export function EditProductSheet({ productId, onClose, onSaved }: Props) {
   const queryClient = useQueryClient()
+  const role = useSessionStore((s) => s.profile?.role)
+  const canSeeCost = ["owner", "manager"].includes(role ?? "")
 
   const { data, isLoading } = useQuery<{ product: Product }>({
     queryKey: ["product", productId],
@@ -463,9 +466,11 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                   <Field label={`${form.base_unit ?? "unit"}s per pack`}>
                     <Input type="number" min={1} value={form.units_per_pack ?? 1} onChange={(e) => setF("units_per_pack", parseInt(e.target.value) || 1)} className="h-10" />
                   </Field>
-                  <Field label={`Cost / ${form.base_unit ?? "unit"} (KES)`}>
-                    <Input type="number" min={0} step="0.01" value={form.cost_price ?? ""} onChange={(e) => setF("cost_price", e.target.value ? parseFloat(e.target.value) : null)} className="h-10" placeholder="0.00" />
-                  </Field>
+                  {canSeeCost && (
+                    <Field label={`Cost / ${form.base_unit ?? "unit"} (KES)`}>
+                      <Input type="number" min={0} step="0.01" value={form.cost_price ?? ""} onChange={(e) => setF("cost_price", e.target.value ? parseFloat(e.target.value) : null)} className="h-10" placeholder="0.00" />
+                    </Field>
+                  )}
                   <Field label={`Sell price / ${form.base_unit ?? "unit"} (KES) *`}>
                     <Input type="number" min={0} step="0.01" value={form.selling_price ?? ""} onChange={(e) => setF("selling_price", parseFloat(e.target.value) || 0)} className="h-10" />
                   </Field>
@@ -473,7 +478,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                     <Input type="number" min={0} max={100} step="1" value={form.max_discount_percent ?? ""} onChange={(e) => setF("max_discount_percent", e.target.value ? parseFloat(e.target.value) : null)} className="h-10" placeholder="e.g. 15" />
                   </Field>
                 </div>
-                {margin !== null && (
+                {canSeeCost && margin !== null && (
                   <p className={`text-xs font-semibold ${parseFloat(margin) >= 20 ? "text-[var(--pt-green)]" : parseFloat(margin) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-[var(--pt-red)]"}`}>
                     Margin: {margin}%
                   </p>
