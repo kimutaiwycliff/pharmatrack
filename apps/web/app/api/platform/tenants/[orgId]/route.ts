@@ -4,6 +4,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm"
 import { organization, org_settings, subscription, plan, branch, staff_profile, subscription_payment, tenant_deletion } from "@pharmatrack/db"
 import { zUuid } from "@/lib/api/validation"
 import { getPlatformContext } from "@/lib/platform"
+import { purgeTenant } from "@/lib/platform/purge"
 
 type OrgSettings = { email?: string; phone?: string; address?: string; registration_number?: string }
 
@@ -69,4 +70,29 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }).where(eq(subscription.organization_id, orgId)).returning()
 
   return NextResponse.json({ subscription: updated })
+}
+
+// Instant, permanent purge — bypasses the 30-day grace window. Reuses the same
+// cascade+free-logins logic the soft-delete cron runs. Irreversible; requires the
+// operator to type the tenant's exact name. (Soft-delete lives at ./deletion.)
+const deleteNowSchema = z.object({ confirmName: z.string().min(1) })
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
+  const { orgId } = await params
+  const ctx = await getPlatformContext()
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const { db, user: actor } = ctx
+
+  const parsed = deleteNowSchema.safeParse(await request.json().catch(() => ({})))
+  if (!parsed.success) return NextResponse.json({ error: "Confirmation required" }, { status: 400 })
+
+  const [org] = await db.select().from(organization).where(eq(organization.id, orgId)).limit(1)
+  if (!org) return NextResponse.json({ error: "Tenant not found" }, { status: 404 })
+  if (parsed.data.confirmName.trim().toLowerCase() !== org.name.trim().toLowerCase()) {
+    return NextResponse.json({ error: "The name you typed doesn't match this tenant" }, { status: 400 })
+  }
+
+  const freed = await purgeTenant(db, orgId)
+  console.warn(`[platform] tenant "${org.name}" (${orgId}) PURGED IMMEDIATELY by ${actor.email ?? actor.id}; freed ${freed} account(s)`)
+  return NextResponse.json({ ok: true, tenant: org.name, freed_accounts: freed })
 }

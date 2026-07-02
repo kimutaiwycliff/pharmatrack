@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react"
@@ -31,12 +31,14 @@ const daysUntil = (iso: string) => {
 
 export default function TenantDetailPage() {
   const { orgId } = useParams<{ orgId: string }>()
+  const router = useRouter()
   const qc = useQueryClient()
   const [saving, setSaving] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
   const [confirmName, setConfirmName] = useState("")
   const [scheduling, setScheduling] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [purging, setPurging] = useState(false)
 
   const { data, isLoading } = useQuery<TenantDetail>({
     queryKey: ["tenant", orgId],
@@ -141,6 +143,22 @@ export default function TenantDetailPage() {
     finally { setCancelling(false) }
   }
 
+  async function deleteNow() {
+    setPurging(true)
+    try {
+      const res = await fetch(`/api/platform/tenants/${orgId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmName }),
+      })
+      const json = (await res.json()) as { error?: string; freed_accounts?: number }
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      toast.success(`Tenant permanently deleted${json.freed_accounts ? ` · ${json.freed_accounts} login(s) freed` : ""}`)
+      await qc.invalidateQueries({ queryKey: ["tenants"] })
+      router.push("/platform")
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Error"); setPurging(false) }
+  }
+
   if (isLoading || !data) {
     return <div className="flex items-center gap-2 text-[var(--pt-text-secondary)]"><Loader2 size={16} className="animate-spin" /> Loading…</div>
   }
@@ -236,6 +254,7 @@ export default function TenantDetailPage() {
       {/* Danger zone */}
       <section className="mt-6 rounded-xl border border-[var(--pt-red)]/40 bg-[var(--pt-red-50)] p-5">
         <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-red)] mb-2">Danger zone</h2>
+
         {data.deletion ? (
           <div>
             <p className="text-sm text-[var(--pt-text)] font-medium">
@@ -245,36 +264,53 @@ export default function TenantDetailPage() {
             </p>
             <p className="text-sm text-[var(--pt-text-secondary)] mt-1 mb-3">
               The tenant is blocked from signing in. On that date all its data is permanently purged and staff emails are freed.
-              You can cancel any time before then to restore access.
+              Cancel any time before then to restore access — or purge immediately below.
             </p>
-            <Button variant="outline" onClick={cancelDeletion} disabled={cancelling} className="gap-1.5">
-              {cancelling && <Loader2 size={14} className="animate-spin" />} Cancel deletion &amp; restore access
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={cancelDeletion} disabled={cancelling} className="gap-1.5">
+                {cancelling && <Loader2 size={14} className="animate-spin" />} Cancel deletion &amp; restore access
+              </Button>
+              {!showDelete && (
+                <Button variant="outline" onClick={() => setShowDelete(true)} className="gap-1.5 text-[var(--pt-red)] border-[var(--pt-red)]">
+                  <Trash2 size={15} /> Purge now instead…
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <>
             <p className="text-sm text-[var(--pt-text-secondary)] mb-3">
-              Schedule <strong>{t.name}</strong> for deletion. It&rsquo;s blocked immediately and permanently purged after a
-              <strong> 30-day grace period</strong> — branches, staff, products, inventory, sales, customers, subscription and
-              payment history. Staff logins are then freed so the email can sign up again. You can cancel any time within the 30 days.
+              Delete <strong>{t.name}</strong> — branches, staff, products, inventory, sales, customers, subscription and payment
+              history. Staff logins are freed so the email can sign up again. Choose a <strong>30-day grace period</strong>
+              (reversible) or <strong>delete permanently now</strong>.
             </p>
-            {!showDelete ? (
+            {!showDelete && (
               <Button variant="outline" onClick={() => setShowDelete(true)} className="gap-1.5 text-[var(--pt-red)] border-[var(--pt-red)]">
-                <Trash2 size={15} /> Schedule deletion…
+                <Trash2 size={15} /> Delete tenant…
               </Button>
-            ) : (
-              <div className="space-y-2">
-                <Label className="text-sm">Type <span className="font-mono font-semibold">{t.name}</span> to confirm</Label>
-                <Input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={t.name} className="h-10 max-w-sm" autoFocus />
-                <div className="flex items-center gap-2 pt-1">
-                  <Button onClick={scheduleDeletion} disabled={scheduling || !nameMatches} className="gap-1.5 bg-[var(--pt-red)] hover:opacity-90 text-white border-transparent">
-                    {scheduling && <Loader2 size={14} className="animate-spin" />} Schedule deletion
-                  </Button>
-                  <Button variant="outline" onClick={() => { setShowDelete(false); setConfirmName("") }} disabled={scheduling}>Cancel</Button>
-                </div>
-              </div>
             )}
           </>
+        )}
+
+        {showDelete && (
+          <div className="space-y-2 mt-3">
+            <Label className="text-sm">Type <span className="font-mono font-semibold">{t.name}</span> to confirm</Label>
+            <Input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={t.name} className="h-10 max-w-sm" autoFocus />
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {!data.deletion && (
+                <Button onClick={scheduleDeletion} disabled={scheduling || purging || !nameMatches} variant="outline" className="gap-1.5">
+                  {scheduling && <Loader2 size={14} className="animate-spin" />} Schedule 30-day deletion
+                </Button>
+              )}
+              <Button onClick={deleteNow} disabled={purging || scheduling || !nameMatches} className="gap-1.5 bg-[var(--pt-red)] hover:opacity-90 text-white border-transparent">
+                {purging && <Loader2 size={14} className="animate-spin" />} Delete permanently now
+              </Button>
+              <Button variant="outline" onClick={() => { setShowDelete(false); setConfirmName("") }} disabled={scheduling || purging}>Cancel</Button>
+            </div>
+            {!data.deletion && (
+              <p className="text-xs text-[var(--pt-text-tertiary)]">Schedule = reversible for 30 days · Delete now = immediate &amp; irreversible.</p>
+            )}
+          </div>
         )}
       </section>
     </div>
