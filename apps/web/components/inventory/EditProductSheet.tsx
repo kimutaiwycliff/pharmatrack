@@ -2,13 +2,14 @@
 
 import { useState, useRef, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { X, Upload, Trash2, Plus, Loader2, ImageIcon, PackageOpen } from "lucide-react"
+import { X, Upload, Trash2, Plus, Loader2, ImageIcon, PackageOpen, ScanBarcode } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatKES } from "@/lib/store/cartStore"
 import { CategorySelect } from "./CategorySelect"
+import { CameraScanner } from "@/components/pos/CameraScanner"
 import type { Product, ProductPackSize } from "@pharmatrack/types"
 
 interface Props {
@@ -281,6 +282,7 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
   }
 
   const [saving, setSaving] = useState(false)
+  const [scanning, setScanning] = useState(false)
 
   // Derived margin display
   const cost = Number(form.cost_price ?? 0)
@@ -360,8 +362,19 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                   <Field label="Manufacturer">
                     <Input value={form.manufacturer ?? ""} onChange={(e) => setF("manufacturer", e.target.value || null)} className="h-10" />
                   </Field>
-                  <Field label="GTIN / Barcode">
-                    <Input value={form.gtin ?? ""} onChange={(e) => setF("gtin", e.target.value || null)} className="h-10 font-mono" />
+                  <Field label="GTIN / Barcode" hint="Scan the box you're holding to set or fix this">
+                    <div className="flex gap-2">
+                      <Input value={form.gtin ?? ""} onChange={(e) => setF("gtin", e.target.value || null)} className="h-10 font-mono" placeholder="EAN-13 or barcode" />
+                      <button
+                        type="button"
+                        onClick={() => setScanning(true)}
+                        aria-label="Scan barcode with camera"
+                        title="Scan with camera"
+                        className="h-10 w-10 shrink-0 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:text-[var(--pt-green-600)] hover:bg-[var(--pt-muted)] transition-colors"
+                      >
+                        <ScanBarcode size={16} />
+                      </button>
+                    </div>
                   </Field>
                   <Field label="Strength">
                     <Input value={form.strength ?? ""} onChange={(e) => setF("strength", e.target.value || null)} placeholder="500mg" className="h-10" />
@@ -455,6 +468,18 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
           </div>
         )}
       </DialogContent>
+
+      {scanning && (
+        <CameraScanner
+          onScan={(event) => {
+            const code = event.gtin ?? event.raw
+            setF("gtin", code)
+            setScanning(false)
+            toast.success(`Barcode captured: ${code}`)
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
     </Dialog>
   )
 }
