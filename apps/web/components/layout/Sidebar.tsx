@@ -96,7 +96,7 @@ export function Sidebar() {
         ].join(" ")}
       >
         {/* Logo */}
-        <div className={["flex items-center h-14 px-4 shrink-0 gap-2", collapsed ? "lg:justify-center lg:gap-0" : ""].join(" ")}>
+        <Link href="/dashboard" className={["flex items-center h-14 px-4 shrink-0 gap-2", collapsed ? "lg:justify-center lg:gap-0" : ""].join(" ")}>
           <div className="w-8 h-8 rounded-lg bg-[var(--pt-green)] flex items-center justify-center shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12h14" />
@@ -105,7 +105,7 @@ export function Sidebar() {
           <span className={["text-[15px] font-bold tracking-tight text-[var(--pt-text)]", collapsed ? "lg:hidden" : ""].join(" ")}>
             Pharma<span className="text-[var(--pt-green)]">Track</span>
           </span>
-        </div>
+        </Link>
 
         {/* Nav */}
         <nav className="flex flex-col gap-0.5 px-2 flex-1 py-2 overflow-y-auto">

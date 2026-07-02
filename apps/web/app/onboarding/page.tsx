@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { redirect } from "next/navigation"
 import { getSession, getTenantContext, isPlatformAdmin } from "@/lib/auth/helpers"
 import { OnboardingForm } from "@/components/onboarding/OnboardingForm"
@@ -14,14 +15,14 @@ export default async function OnboardingPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--pt-bg)] px-6 py-10">
       <div className="w-full max-w-[440px]">
-        <div className="flex items-center gap-2 justify-center mb-7">
+        <Link href="/" className="flex items-center gap-2 justify-center mb-7 w-fit mx-auto">
           <div className="w-9 h-9 rounded-lg bg-[var(--pt-green)] flex items-center justify-center">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
           </div>
           <span className="text-xl font-bold tracking-tight text-[var(--pt-text)]">
             Pharma<span className="text-[var(--pt-green)]">Track</span>
           </span>
-        </div>
+        </Link>
         <div className="bg-[var(--pt-surface)] rounded-2xl border border-[var(--pt-border)] shadow-sm p-7">
           <h1 className="text-2xl font-bold tracking-tight text-[var(--pt-text)]">
             Welcome{session.user.name ? `, ${session.user.name.split(" ")[0]}` : ""} 👋

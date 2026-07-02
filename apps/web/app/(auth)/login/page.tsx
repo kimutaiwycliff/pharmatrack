@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { redirect } from "next/navigation"
 import { dbAdmin, platform_admin } from "@pharmatrack/db"
 import { LoginForm } from "@/components/auth/LoginForm"
@@ -29,7 +30,7 @@ export default async function LoginPage() {
         <div className="absolute top-1/2 -right-16 w-64 h-64 rounded-full bg-white/5" />
 
         {/* Logo */}
-        <div className="relative flex items-center gap-2.5">
+        <Link href="/" className="relative flex items-center gap-2.5 w-fit">
           <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
             <svg
               width="20"
@@ -45,7 +46,7 @@ export default async function LoginPage() {
             </svg>
           </div>
           <span className="text-2xl font-bold tracking-tight text-white">PharmaTrack</span>
-        </div>
+        </Link>
 
         {/* Hero text */}
         <div className="relative space-y-6">
