@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import Image from "next/image"
 import { X, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react"
 
 export interface GuideShot {
@@ -41,7 +42,7 @@ export function GuideGallery({ shots }: { shots: GuideShot[] }) {
               className="group relative block w-full overflow-hidden rounded-xl border border-[var(--pt-border)] shadow-sm text-left"
               aria-label={`Enlarge screenshot: ${s.caption}`}
             >
-              <img src={s.src} width={s.width} height={s.height} alt={s.caption} loading="lazy" decoding="async" className="w-full h-auto block" />
+              <Image src={s.src} width={s.width} height={s.height} alt={s.caption} loading="lazy" sizes="(min-width: 640px) 50vw, 100vw" className="w-full h-auto block" />
               <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
                 <ZoomIn size={22} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
               </span>

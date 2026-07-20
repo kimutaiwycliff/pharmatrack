@@ -49,7 +49,7 @@ export function MarketingFooter() {
         </div>
         {COLS.map((c) => (
           <div key={c.title}>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--pt-text-tertiary)] mb-3">{c.title}</h4>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--pt-text-secondary)] mb-3">{c.title}</h3>
             <ul className="space-y-2.5">
               {c.links.map((l) => (
                 <li key={l.label}>
@@ -63,7 +63,7 @@ export function MarketingFooter() {
         ))}
       </div>
       <div className="border-t border-[var(--pt-border)]">
-        <div className="mx-auto max-w-6xl px-5 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--pt-text-tertiary)]">
+        <div className="mx-auto max-w-6xl px-5 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--pt-text-secondary)]">
           <p>© {new Date().getFullYear()} PharmaTrack. Built in Kenya.</p>
           <div className="flex items-center gap-5">
             <Link href="#" className="hover:text-[var(--pt-text-secondary)]">Privacy</Link>

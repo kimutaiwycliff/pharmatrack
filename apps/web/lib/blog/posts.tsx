@@ -84,6 +84,60 @@ export const POSTS: Post[] = [
       </>
     ),
   },
+  {
+    slug: "offline-pharmacy-pos-kenya",
+    title: "Offline Pharmacy POS: How to Keep Selling When the Internet Drops",
+    description:
+      "Kenyan pharmacies can't afford a till that stops working every time the connection drops. Here's what offline-capable POS software actually needs to do — and how to test it before you buy.",
+    date: "2026-07-20",
+    readingMins: 4,
+    keywords: ["offline pharmacy POS", "offline POS Kenya", "pharmacy software no internet", "POS works offline"],
+    body: (
+      <>
+        <p>Power and internet drop often enough in Kenya that “offline mode” is a real requirement, not a nice-to-have. But a lot of software marketed as offline-capable only means the receipt screen still renders — the moment you try to search a product or take a payment, it needs a live connection anyway. Here’s what actually matters.</p>
+        <h2>What “offline capable” should really mean</h2>
+        <p>True offline support means your <em>full branch catalogue</em> — products, pack sizes, prices, batches — is cached on the device itself before you ever lose connection. That way product search, barcode lookup and pricing all keep working with zero internet, not just the till screen.</p>
+        <h2>The sync problem nobody mentions</h2>
+        <p>Queuing a sale while offline is the easy part. The hard part is syncing it back safely once the connection returns — without double-charging a customer or decrementing stock twice if the network blips mid-sync. That needs each offline sale to carry its own unique reference so the server can recognise and discard a duplicate automatically.</p>
+        <h2>What to check before you buy</h2>
+        <ul>
+          <li>Ask the vendor to demo with Wi-Fi and mobile data both switched off — not just a slow connection.</li>
+          <li>Ask what happens to a sale that <em>fails</em> to sync. It should land somewhere visible for retry, not disappear silently.</li>
+          <li>Ask if there’s a time limit on how long the POS can run offline. Some products cap it at 24 hours; a pharmacy that loses connectivity over a weekend shouldn’t lose its till.</li>
+        </ul>
+        <h2>How PharmaTrack does it</h2>
+        <p>The POS caches your full branch catalogue on the device on load, queues sales with a unique offline reference, and syncs automatically the moment connectivity returns — the server dedupes on that reference, and anything that fails to sync lands in a visible retry queue instead of vanishing. There’s no time limit on how long it can run offline.</p>
+        <p>See it for yourself — <a href="/signup">start a 14-day free trial</a> and try switching your Wi-Fi off mid-sale.</p>
+      </>
+    ),
+  },
+  {
+    slug: "cutting-pharmacy-expiry-losses-fefo",
+    title: "Cutting Drug Expiry Losses in Kenyan Pharmacies with FEFO",
+    description:
+      "Expired stock is one of the biggest silent costs in a Kenyan pharmacy. Here's how First-Expiry-First-Out selling and batch tracking cut those losses — and what to set up.",
+    date: "2026-07-20",
+    readingMins: 4,
+    keywords: ["reduce pharmacy stock losses Kenya", "FEFO pharmacy", "drug expiry tracking", "pharmacy inventory Kenya"],
+    body: (
+      <>
+        <p>Expiry write-offs are one of the quietest costs in a pharmacy — nobody notices the loss until a shelf audit or a batch of stock that has to be pulled entirely. Most of it is preventable with one change: selling the batch that expires soonest, every time, automatically.</p>
+        <h2>Why FIFO isn’t enough</h2>
+        <p>First-In-First-Out sells whichever stock arrived first. That sounds right, but a later delivery from a different supplier can have a <em>shorter</em> shelf life than stock already on the shelf. Selling by arrival order can leave the actually-expiring batch sitting untouched. First-Expiry-First-Out (FEFO) sells whichever batch expires soonest, regardless of when it arrived — which is what actually prevents write-offs.</p>
+        <h2>What FEFO needs from your system</h2>
+        <ul>
+          <li><strong>Batch-level tracking</strong> — batch number, expiry date and quantity recorded per batch, not one combined stock count per product.</li>
+          <li><strong>Automatic consumption at checkout</strong> — the earliest-expiry batch should decrement first on every sale, without relying on a cashier to check dates during a rush.</li>
+          <li><strong>An expiring-soon view</strong> — so stock nearing expiry (say, within 90 days) can be marked down or returned to a supplier before it becomes a total loss.</li>
+        </ul>
+        <h2>Why a spreadsheet stops working</h2>
+        <p>Tracking expiry by memory or a spreadsheet holds up with one branch and a handful of SKUs. It breaks down fast once you’re running multiple branches with hundreds of products — the batch decision has to happen automatically at the point of sale, every single time, or it simply won’t happen consistently.</p>
+        <h2>How PharmaTrack does it</h2>
+        <p>Every sale automatically decrements the earliest-expiry batch first. Inventory surfaces anything expiring within 90 days so you can act before it’s a write-off, and every stock adjustment — including expiry write-offs — logs a reason to an audit trail.</p>
+        <p><a href="/signup">Start a free trial</a> and receive a batch with a near expiry date to see FEFO pick it first at the till.</p>
+      </>
+    ),
+  },
 ]
 
 export function getPost(slug: string): Post | undefined {

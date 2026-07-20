@@ -49,7 +49,7 @@ export function MarketingNav({ signedIn }: { signedIn: boolean }) {
 
         <div className="hidden md:flex items-center gap-2">
           {signedIn ? (
-            <Link href="/home" className="text-sm font-semibold px-4 h-9 inline-flex items-center rounded-lg bg-[var(--pt-green)] text-white hover:bg-[var(--pt-green-600)] transition-colors">
+            <Link href="/home" className="text-sm font-semibold px-4 h-9 inline-flex items-center rounded-lg bg-[var(--pt-green-600)] text-white hover:bg-[var(--pt-green)] transition-colors">
               Go to app
             </Link>
           ) : (
@@ -57,7 +57,7 @@ export function MarketingNav({ signedIn }: { signedIn: boolean }) {
               <Link href="/login" className="text-sm font-semibold px-4 h-9 inline-flex items-center rounded-lg text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)] transition-colors">
                 Sign in
               </Link>
-              <Link href="/signup" className="text-sm font-semibold px-4 h-9 inline-flex items-center rounded-lg bg-[var(--pt-green)] text-white hover:bg-[var(--pt-green-600)] transition-colors shadow-sm shadow-[var(--pt-green)]/30">
+              <Link href="/signup" className="text-sm font-semibold px-4 h-9 inline-flex items-center rounded-lg bg-[var(--pt-green-600)] text-white hover:bg-[var(--pt-green)] transition-colors shadow-sm shadow-[var(--pt-green)]/30">
                 Start free trial
               </Link>
             </>
@@ -78,11 +78,11 @@ export function MarketingNav({ signedIn }: { signedIn: boolean }) {
           ))}
           <div className="pt-3 flex flex-col gap-2">
             {signedIn ? (
-              <Link href="/home" className="text-center text-sm font-semibold py-2.5 rounded-lg bg-[var(--pt-green)] text-white">Go to app</Link>
+              <Link href="/home" className="text-center text-sm font-semibold py-2.5 rounded-lg bg-[var(--pt-green-600)] text-white">Go to app</Link>
             ) : (
               <>
                 <Link href="/login" className="text-center text-sm font-semibold py-2.5 rounded-lg border border-[var(--pt-border)]">Sign in</Link>
-                <Link href="/signup" className="text-center text-sm font-semibold py-2.5 rounded-lg bg-[var(--pt-green)] text-white">Start free trial</Link>
+                <Link href="/signup" className="text-center text-sm font-semibold py-2.5 rounded-lg bg-[var(--pt-green-600)] text-white">Start free trial</Link>
               </>
             )}
           </div>

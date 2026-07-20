@@ -27,9 +27,9 @@ export function RoiCalculator() {
           <p className="mt-2 text-[var(--pt-text-secondary)]">Drag the sliders to your pharmacy.</p>
 
           <div className="mt-8 space-y-7">
-            <Slider label="Monthly inventory value" value={stockValue} min={50_000} max={3_000_000} step={50_000} onChange={setStockValue} display={fmt(stockValue)} />
-            <Slider label="Stock lost to expiry" value={wastePct} min={1} max={15} step={1} onChange={setWastePct} display={`${wastePct}%`} />
-            <Slider label="Staff members" value={staff} min={1} max={30} step={1} onChange={setStaff} display={`${staff}`} />
+            <Slider id="roi-stock-value" label="Monthly inventory value" value={stockValue} min={50_000} max={3_000_000} step={50_000} onChange={setStockValue} display={fmt(stockValue)} />
+            <Slider id="roi-waste-pct" label="Stock lost to expiry" value={wastePct} min={1} max={15} step={1} onChange={setWastePct} display={`${wastePct}%`} />
+            <Slider id="roi-staff" label="Staff members" value={staff} min={1} max={30} step={1} onChange={setStaff} display={`${staff}`} />
           </div>
         </div>
 
@@ -56,16 +56,17 @@ export function RoiCalculator() {
   )
 }
 
-function Slider({ label, value, min, max, step, onChange, display }: {
-  label: string; value: number; min: number; max: number; step: number; onChange: (n: number) => void; display: string
+function Slider({ id, label, value, min, max, step, onChange, display }: {
+  id: string; label: string; value: number; min: number; max: number; step: number; onChange: (n: number) => void; display: string
 }) {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2">
-        <label className="text-sm font-medium text-[var(--pt-text-secondary)]">{label}</label>
+        <label htmlFor={id} className="text-sm font-medium text-[var(--pt-text-secondary)]">{label}</label>
         <span className="font-[family-name:var(--font-display)] font-bold tabular-nums">{display}</span>
       </div>
       <input
+        id={id}
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full h-2 rounded-full appearance-none cursor-pointer accent-[var(--pt-green)] bg-[var(--pt-muted-strong)]"
