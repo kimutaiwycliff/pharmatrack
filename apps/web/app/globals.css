@@ -172,9 +172,15 @@
 }
 
 @media print {
-  /* Hide everything except the receipt */
-  body > * { display: none !important; }
-  #receipt-printable { display: block !important; }
+  /* Hide everything except the receipt. `display: none` on body's direct
+     children doesn't work here — the receipt is rendered through a Dialog
+     portal several levels below body, and display:none on an ancestor
+     removes its whole subtree regardless of a descendant's own display
+     value. `visibility` is inherited but overridable per-descendant, so a
+     deeply nested #receipt-printable can flip itself back to visible even
+     though everything above it is hidden. */
+  body * { visibility: hidden !important; }
+  #receipt-printable, #receipt-printable * { visibility: visible !important; }
 
   #receipt-printable {
     position: fixed;
