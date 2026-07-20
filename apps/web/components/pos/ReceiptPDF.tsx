@@ -20,7 +20,11 @@ interface Props {
   orgName: string
   branchName: string
   branchAddress: string | null
+  paperWidth?: "58mm" | "80mm"
 }
+
+// 1mm = 2.8346pt. 58mm and 80mm are the two common thermal roll widths.
+const PAPER_WIDTH_PT: Record<"58mm" | "80mm", number> = { "58mm": 164.4, "80mm": 226.77 }
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleString("en-KE", {
@@ -34,10 +38,10 @@ function kes(n: number) {
   return `KES ${n.toFixed(2)}`
 }
 
-export function ReceiptPDFDocument({ sale, items, orgName, branchName, branchAddress }: Props) {
+export function ReceiptPDFDocument({ sale, items, orgName, branchName, branchAddress, paperWidth = "80mm" }: Props) {
   return (
     <Document>
-      <Page size={[226.77, 841.89]} style={styles.page}>
+      <Page size={[PAPER_WIDTH_PT[paperWidth], 841.89]} style={styles.page}>
         <View style={styles.center}>
           <Text style={[styles.bold, { fontSize: 11, letterSpacing: 1 }]}>{orgName.toUpperCase()}</Text>
           <Text style={{ letterSpacing: 0.5 }}>{branchName.toUpperCase()}</Text>

@@ -30,6 +30,7 @@ interface ReceiptData {
   branchName: string
   branchAddress: string | null
   orgName: string
+  paperWidth?: "58mm" | "80mm"
 }
 
 export default function PosPage() {
@@ -137,7 +138,7 @@ export default function PosPage() {
 
     setSubmitting(true)
     try {
-      const json = await postJson<{ sale?: Sale; items?: SaleItem[] }>("/api/sales", {
+      const json = await postJson<{ sale?: Sale; items?: SaleItem[]; paperWidth?: "58mm" | "80mm" }>("/api/sales", {
         branch_id: activeBranch.id,
         shift_id: shift?.id ?? null,
         items,
@@ -156,7 +157,8 @@ export default function PosPage() {
         items: json.items ?? [],
         branchName: activeBranch.name,
         branchAddress: activeBranch.address ?? null,
-        orgName: "PharmaTrack",
+        orgName: json.sale.org_name ?? "PharmaTrack",
+        paperWidth: json.paperWidth ?? "80mm",
       })
       setPayModal(null)
       // Stock changed on the server — refetch the POS product list (and re-warm

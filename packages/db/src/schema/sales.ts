@@ -33,6 +33,10 @@ export const sale = pgTable("sale", {
   payment_method: text("payment_method").notNull(),
   offline_reference: text("offline_reference").unique(),
   customer_id: uuid("customer_id"),
+  amount_tendered: numeric("amount_tendered", { precision: 12, scale: 2 }),
+  change_given: numeric("change_given", { precision: 12, scale: 2 }),
+  customer_name: text("customer_name"),
+  customer_phone: text("customer_phone"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -46,6 +50,8 @@ export const sale_item = pgTable("sale_item", {
   unit_price: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
   discount_percent: numeric("discount_percent", { precision: 5, scale: 2 }).notNull().default("0"),
   line_total: numeric("line_total", { precision: 12, scale: 2 }).notNull(),
+  base_unit: text("base_unit"),
+  product_strength: text("product_strength"),
 })
 
 export const payment = pgTable("payment", {

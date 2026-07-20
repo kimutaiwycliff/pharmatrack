@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type CSSProperties } from "react"
 import { Check, Printer, ArrowRight, FileDown, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -13,12 +13,14 @@ interface ReceiptData {
   branchName: string
   branchAddress: string | null
   orgName: string
+  paperWidth?: "58mm" | "80mm"
 }
 
 interface Props {
   open: boolean
   data: ReceiptData | null
   onNewSale: () => void
+  closeLabel?: string
 }
 
 function formatDate(iso: string) {
@@ -44,6 +46,7 @@ async function downloadPDF(data: ReceiptData) {
       orgName={data.orgName}
       branchName={data.branchName}
       branchAddress={data.branchAddress}
+      paperWidth={data.paperWidth}
     />,
   ).toBlob()
   const url = URL.createObjectURL(blob)
@@ -54,7 +57,7 @@ async function downloadPDF(data: ReceiptData) {
   URL.revokeObjectURL(url)
 }
 
-export function ReceiptModal({ open, data, onNewSale }: Props) {
+export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale" }: Props) {
   const [pdfLoading, setPdfLoading] = useState(false)
 
   async function handlePDF() {
@@ -88,7 +91,11 @@ export function ReceiptModal({ open, data, onNewSale }: Props) {
 
             {/* Thermal receipt */}
             <div className="px-7 pb-2">
-              <div id="receipt-printable" className="border border-dashed border-[var(--pt-border-strong)] rounded-xl p-5 font-mono text-[11px] space-y-2">
+              <div
+                id="receipt-printable"
+                style={{ "--pt-receipt-width": data.paperWidth ?? "80mm" } as CSSProperties}
+                className="border border-dashed border-[var(--pt-border-strong)] rounded-xl p-5 font-mono text-[11px] space-y-2"
+              >
                 <div className="text-center space-y-0.5">
                   <p className="font-bold text-[13px] tracking-widest uppercase">
                     {data.orgName}
@@ -183,8 +190,8 @@ export function ReceiptModal({ open, data, onNewSale }: Props) {
                 onClick={onNewSale}
                 className="gap-1.5 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white text-xs h-10"
               >
-                New sale
-                <ArrowRight size={14} />
+                {closeLabel}
+                {closeLabel === "New sale" && <ArrowRight size={14} />}
               </Button>
             </div>
           </>

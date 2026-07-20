@@ -16,6 +16,7 @@ export interface Organization {
   logo_url: string | null
   settings: Record<string, unknown>
   created_at: string
+  receipt_paper_width?: "58mm" | "80mm" | null
 }
 
 export interface Branch {
@@ -196,6 +197,7 @@ export interface Sale {
   voided_at: string | null
   voided_by: string | null
   created_at: string
+  org_name?: string | null
 }
 
 export interface SaleItem {
@@ -205,7 +207,7 @@ export interface SaleItem {
   batch_id: string | null
   product_name: string
   product_strength: string | null
-  base_unit: string
+  base_unit: string | null
   quantity: number
   unit_price: number
   discount_percent: number

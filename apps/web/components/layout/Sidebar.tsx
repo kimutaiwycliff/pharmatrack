@@ -11,6 +11,7 @@ import {
   Truck,
   Users,
   Clock,
+  Receipt,
   CalendarClock,
   ClipboardList,
   BarChart3,
@@ -45,6 +46,7 @@ const NAV: NavItem[] = [
   { label: "Prescriptions", href: "/prescriptions", icon: ClipboardList, roles: ["owner", "manager", "pharmacist"], feature: "prescriptions" },
   { label: "Staff", href: "/staff", icon: Users, roles: ["owner", "manager"] },
   { label: "Shifts", href: "/shifts", icon: Clock, roles: ["owner", "manager"] },
+  { label: "Sales", href: "/sales", icon: Receipt, roles: ["owner", "manager", "pharmacist", "cashier"] },
   { label: "Reports", href: "/reports", icon: BarChart3, roles: ["owner", "manager"], feature: "reports" },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
 ]

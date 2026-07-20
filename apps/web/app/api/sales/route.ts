@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { and, eq, gt, asc, inArray, sql } from "drizzle-orm"
+import { and, eq, gt, gte, lte, asc, desc, ilike, inArray, sql } from "drizzle-orm"
 import {
-  withTenant, product_batch, sale, sale_item, payment, controlled_substance_log,
+  withTenant, product_batch, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings,
 } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
@@ -46,6 +46,59 @@ function receiptNumber(seq: number): string {
   const d = new Date()
   const yymmdd = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`
   return `RCP-${yymmdd}-${String(seq).padStart(6, "0")}`
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const branchId = searchParams.get("branch_id")
+  const from = searchParams.get("from")
+  const to = searchParams.get("to")
+  const q = searchParams.get("q")
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
+  const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
+  if (!branchId) return apiError("branch_id required", 400)
+
+  const ctx = await getTenantContext()
+  if (!ctx) return apiError("Unauthorized", 401)
+
+  return withTenant(ctx, async (db) => {
+    const where = and(
+      eq(sale.branch_id, branchId),
+      eq(sale.status, "completed"),
+      ctx.role === "cashier" ? eq(sale.cashier_id, ctx.userId) : undefined,
+      from ? gte(sale.created_at, new Date(from)) : undefined,
+      to ? lte(sale.created_at, new Date(to)) : undefined,
+      q ? ilike(sale.receipt_number, `%${q}%`) : undefined,
+    )
+
+    const all = await db.select({
+      row: sale, cashier_name: user.name,
+    }).from(sale)
+      .leftJoin(user, eq(user.id, sale.cashier_id))
+      .where(where).orderBy(desc(sale.created_at))
+
+    const total = all.length
+    const offset = (page - 1) * limit
+    const pageRows = all.slice(offset, offset + limit)
+    const saleIds = pageRows.map((r) => r.row.id)
+
+    const itemCounts: Record<string, number> = {}
+    if (saleIds.length > 0) {
+      const counts = await db.select({ sale_id: sale_item.sale_id, n: sql<number>`count(*)::int` })
+        .from(sale_item).where(inArray(sale_item.sale_id, saleIds)).groupBy(sale_item.sale_id)
+      for (const c of counts) itemCounts[c.sale_id] = c.n
+    }
+
+    const sales = pageRows.map(({ row, cashier_name }) => ({
+      ...row,
+      subtotal: Number(row.subtotal), discount_amount: Number(row.discount_amount),
+      tax_amount: Number(row.tax_amount), total_amount: Number(row.total_amount),
+      cashier_name: cashier_name ?? "—",
+      item_count: itemCounts[row.id] ?? 0,
+    }))
+
+    return NextResponse.json({ sales, total, page, limit })
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -106,12 +159,16 @@ export async function POST(request: NextRequest) {
       total_amount: String(totalAmount),
       payment_method: data.payment_method,
       offline_reference: data.offline_reference ?? null,
+      amount_tendered: data.amount_tendered != null ? String(data.amount_tendered) : null,
+      change_given: data.change_given != null ? String(data.change_given) : null,
+      customer_name: data.customer_name,
+      customer_phone: data.customer_phone,
     }).returning()
 
     // Build sale_item rows with FEFO batch deduction. `meta` runs parallel to the
     // insert array so we can attach controlled-substance logs to the right line.
     const rows: Array<typeof sale_item.$inferInsert> = []
-    const meta: Array<{ base_unit: string; product_strength: string | null; controlled: boolean; batch_number: string | null }> = []
+    const meta: Array<{ controlled: boolean; batch_number: string | null }> = []
 
     for (const item of data.items) {
       const batches = await db.select({
@@ -133,8 +190,9 @@ export async function POST(request: NextRequest) {
           product_name: item.product_name, quantity: take, unit_price: String(item.unit_price),
           discount_percent: String(item.discount_percent),
           line_total: String(Number((take * item.unit_price * (1 - item.discount_percent / 100)).toFixed(2))),
+          base_unit: item.base_unit, product_strength: item.product_strength,
         })
-        meta.push({ base_unit: item.base_unit, product_strength: item.product_strength, controlled: item.is_controlled, batch_number: batch.batch_number })
+        meta.push({ controlled: item.is_controlled, batch_number: batch.batch_number })
         remaining -= take
       }
 
@@ -170,21 +228,27 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Echo the receipt-only fields the UI renders but the schema no longer stores.
-    const items = inserted.map((row, idx) => ({
+    const items = inserted.map((row) => ({
       ...row,
       selling_price: Number(row.unit_price), unit_price: Number(row.unit_price),
       line_total: Number(row.line_total), discount_percent: Number(row.discount_percent),
-      base_unit: meta[idx]!.base_unit, product_strength: meta[idx]!.product_strength,
     }))
+
+    const [org] = await db.select({ name: organization.name }).from(organization)
+      .where(eq(organization.id, ctx.organizationId)).limit(1)
+    const [settingsRow] = await db.select({ settings: org_settings.settings }).from(org_settings)
+      .where(eq(org_settings.organization_id, ctx.organizationId)).limit(1)
+    const paperWidth = (settingsRow?.settings as { receipt_paper_width?: string } | undefined)?.receipt_paper_width ?? "80mm"
+
     const saleOut = {
       ...saleRow,
       subtotal: Number(saleRow!.subtotal), discount_amount: Number(saleRow!.discount_amount),
       tax_amount: Number(saleRow!.tax_amount), total_amount: Number(saleRow!.total_amount),
       amount_tendered: data.amount_tendered, change_given: data.change_given,
       mpesa_reference: data.mpesa_reference, customer_name: data.customer_name, customer_phone: data.customer_phone,
+      org_name: org?.name ?? null,
     }
-    return { sale: saleOut, items }
+    return { sale: saleOut, items, paperWidth }
     })
   } catch (e) {
     if (e instanceof InsufficientStockError) {

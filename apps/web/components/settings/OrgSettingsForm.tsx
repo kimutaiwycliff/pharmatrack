@@ -13,6 +13,8 @@ interface Props {
   readonly: boolean
 }
 
+const selectCls = "h-10 w-full rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+
 export function OrgSettingsForm({ org, readonly }: Props) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
@@ -21,6 +23,7 @@ export function OrgSettingsForm({ org, readonly }: Props) {
     phone: org.phone ?? "",
     email: org.email ?? "",
     address: org.address ?? "",
+    receipt_paper_width: org.receipt_paper_width ?? "80mm",
   })
   const [loading, setLoading] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -43,6 +46,7 @@ export function OrgSettingsForm({ org, readonly }: Props) {
           phone: form.phone || undefined,
           email: form.email || undefined,
           address: form.address || undefined,
+          receipt_paper_width: form.receipt_paper_width,
         }),
       })
       const json = (await res.json()) as { error?: string }
@@ -127,6 +131,24 @@ export function OrgSettingsForm({ org, readonly }: Props) {
           className="h-10"
           disabled={readonly}
         />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+          Receipt Paper Width
+        </label>
+        <select
+          className={selectCls}
+          value={form.receipt_paper_width}
+          onChange={(e) => set("receipt_paper_width", e.target.value)}
+          disabled={readonly}
+        >
+          <option value="80mm">80mm (standard)</option>
+          <option value="58mm">58mm (compact)</option>
+        </select>
+        <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-1">
+          Match your thermal printer&apos;s paper width so receipts print at the right size
+        </p>
       </div>
 
       {!readonly && (
