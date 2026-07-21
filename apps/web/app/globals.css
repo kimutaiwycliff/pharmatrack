@@ -52,6 +52,10 @@
   /* PharmaTrack brand tokens */
   --pt-green: #16a34a;
   --pt-green-600: #15803d;
+  /* Fixed (non-theme-shifting) shade for white text on a green button — dark
+     mode's --pt-green-600 equals light mode's --pt-green, which fails
+     WCAG AA (4.5:1) for white text. This token stays constant across themes. */
+  --pt-green-cta: #15803d;
   --pt-green-50: #f0fdf4;
   --pt-green-100: #dcfce7;
   --pt-bg: #f9fafb;
@@ -109,6 +113,7 @@
   /* PharmaTrack brand tokens — dark */
   --pt-green: #22c55e;
   --pt-green-600: #16a34a;
+  --pt-green-cta: #15803d;
   --pt-green-50: #0f2a1b;
   --pt-green-100: #173a26;
   --pt-bg: #0e1116;
