@@ -5,12 +5,12 @@ import { getSession } from "@/lib/auth/helpers"
 import { SignupForm } from "@/components/marketing/SignupForm"
 
 export const metadata: Metadata = {
-  title: "Start your free 14-day trial",
-  description: "Create your pharmacy on PharmaTrack in minutes — offline-capable POS, inventory, M-Pesa and PPB compliance. 14-day free trial, no card required.",
+  title: "Start your free 30-day trial",
+  description: "Create your pharmacy on PharmaTrack in minutes — offline-capable POS, inventory, M-Pesa and PPB compliance. 30-day free trial, no card required.",
   alternates: { canonical: "/signup" },
   openGraph: {
     title: "Start your free PharmaTrack trial",
-    description: "Set up your Kenyan pharmacy in minutes. 14-day free trial, no card required.",
+    description: "Set up your Kenyan pharmacy in minutes. 30-day free trial, no card required.",
     url: "/signup",
     type: "website",
   },
@@ -57,7 +57,7 @@ export default async function SignupPage() {
       {/* Form */}
       <div className="w-full max-w-md mx-auto lg:mx-0">
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight">Start your free trial</h1>
-        <p className="mt-2 text-[var(--pt-text-secondary)]">14 days free. No card. Cancel anytime.</p>
+        <p className="mt-2 text-[var(--pt-text-secondary)]">30 days free. No card. Cancel anytime.</p>
         <div className="mt-7">
           <SignupForm googleEnabled={!!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)} />
         </div>

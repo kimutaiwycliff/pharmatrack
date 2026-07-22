@@ -2,11 +2,13 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { getSession, getTenantContext, isPlatformAdmin } from "@/lib/auth/helpers"
 import { OnboardingForm } from "@/components/onboarding/OnboardingForm"
+import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 
 export const metadata = { title: "Set up your pharmacy — PharmaTrack" }
 export const dynamic = "force-dynamic"
 
 export default async function OnboardingPage() {
+  const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
   const session = await getSession()
   if (!session?.user) redirect("/login")
   if (await isPlatformAdmin()) redirect("/platform")
@@ -28,7 +30,7 @@ export default async function OnboardingPage() {
             Welcome{session.user.name ? `, ${session.user.name.split(" ")[0]}` : ""} 👋
           </h1>
           <p className="text-sm text-[var(--pt-text-secondary)] mt-1.5 mb-6">
-            One last step — name your pharmacy and we&apos;ll set up your 14-day free trial.
+            One last step — name your pharmacy and we&apos;ll set up your {trialDays}-day free trial.
           </p>
           <OnboardingForm />
         </div>

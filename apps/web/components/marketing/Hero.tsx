@@ -1,7 +1,9 @@
 import Link from "next/link"
 import { ArrowRight, ShieldCheck, WifiOff, Smartphone, TrendingUp } from "lucide-react"
+import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 
 export function Hero() {
+  const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
   return (
     <section className="relative overflow-hidden mk-mesh mk-grain">
       <div className="absolute inset-0 mk-crosses pointer-events-none" />
@@ -25,7 +27,7 @@ export function Hero() {
 
           <div className="mk-rise mt-8 flex flex-col sm:flex-row gap-3" style={{ animationDelay: "210ms" }}>
             <Link href="/signup" className="group inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-[var(--pt-green)] text-white font-semibold shadow-lg shadow-[var(--pt-green)]/25 hover:bg-[var(--pt-green-600)] transition-all hover:shadow-xl hover:shadow-[var(--pt-green)]/30">
-              Start your 14-day free trial
+              Start your {trialDays}-day free trial
               <ArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
             </Link>
             <Link href="#demo" className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-[var(--pt-surface)] border border-[var(--pt-border-strong)] text-[var(--pt-text)] font-semibold hover:bg-[var(--pt-muted-strong)] transition-colors">

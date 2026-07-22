@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth/server"
 import { rateLimit, clientIp } from "@/lib/rate-limit"
 import { verifySignupOtp } from "@/lib/email-otp"
 import { notifyPlatformNewSignup } from "@/lib/notifications/platform"
+import { trialDaysForSignup } from "@/lib/launch-offer"
 
 function tooMany(retryAfter: number) {
   return NextResponse.json(
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
       ownerEmail: d.email,
       ownerName: d.owner_name,
       ownerPassword: d.password,
-      trialDays: 14,
+      trialDays: trialDaysForSignup(),
     })
     ownerId = res.ownerId
   } catch (e) {

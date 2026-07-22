@@ -3,6 +3,10 @@ import "server-only"
 // Platform-operator contact details, configurable at runtime via env (no rebuild):
 //   PLATFORM_CONTACT_EMAIL     — support/billing email shown to tenants
 //   PLATFORM_CONTACT_WHATSAPP  — WhatsApp number (Kenyan local or international)
+//   PLATFORM_PAYMENT_NUMBER    — M-Pesa number tenants send subscription payments
+//                                 to (falls back to PLATFORM_CONTACT_WHATSAPP —
+//                                 today they're the same personal number; swap to
+//                                 a dedicated till/paybill later without code changes)
 // Falls back to the first PLATFORM_NOTIFY_EMAIL for the email if unset.
 
 export interface PlatformContact {
@@ -10,6 +14,7 @@ export interface PlatformContact {
   whatsapp: string | null
   whatsappLink: string | null
   mailtoLink: string | null
+  paymentNumber: string | null
 }
 
 /** Normalize a Kenyan number to wa.me international form: 0716522948 → 254716522948. */
@@ -28,10 +33,12 @@ export function platformContact(): PlatformContact {
     process.env.PLATFORM_NOTIFY_EMAIL?.split(",")[0]?.trim() ||
     null
   const whatsapp = process.env.PLATFORM_CONTACT_WHATSAPP?.trim() || null
+  const paymentNumber = process.env.PLATFORM_PAYMENT_NUMBER?.trim() || whatsapp
   return {
     email,
     whatsapp,
     whatsappLink: whatsapp ? waLink(whatsapp) : null,
     mailtoLink: email ? `mailto:${email}` : null,
+    paymentNumber,
   }
 }

@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm"
 import { withTenant, subscription, plan, subscription_payment } from "@pharmatrack/db"
 import { getApiContext } from "@/lib/api-auth"
 import { paystackConfigured } from "@/lib/billing/paystack"
+import { platformContact } from "@/lib/platform-contact"
 
 // Owner-facing billing summary: their subscription + plan + recent payments.
 export async function GET() {
@@ -25,6 +26,7 @@ export async function GET() {
         : null,
       payments: payments.map((p) => ({ ...p, amount_kes: Number(p.amount_kes) })),
       paystackEnabled: paystackConfigured(),
+      paymentNumber: platformContact().paymentNumber,
     })
   })
 }

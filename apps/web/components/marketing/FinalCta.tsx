@@ -1,9 +1,11 @@
 import Link from "next/link"
 import { ArrowRight, MessageCircle } from "lucide-react"
+import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 
 const WHATSAPP_GREETING = encodeURIComponent("Hi! I'm interested in PharmaTrack for my pharmacy — can you tell me more?")
 
 export function FinalCta() {
+  const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
   return (
     <section id="demo" className="relative overflow-hidden mk-mesh mk-grain">
       <div className="absolute inset-0 mk-crosses pointer-events-none" />
@@ -13,7 +15,7 @@ export function FinalCta() {
           <span className="block text-[var(--pt-green-700)]">this week.</span>
         </h2>
         <p className="mt-5 text-lg text-[var(--pt-text-secondary)] max-w-xl mx-auto">
-          Spin up your pharmacy in minutes with a 14-day free trial. Keep it, or talk to us first — no pressure, no card.
+          Spin up your pharmacy in minutes with a {trialDays}-day free trial. Keep it, or talk to us first — no pressure, no card.
         </p>
         <div className="mt-9 flex flex-col sm:flex-row gap-3 justify-center">
           <Link href="/signup" className="group inline-flex items-center justify-center gap-2 h-12 px-7 rounded-xl bg-[var(--pt-green)] text-white font-semibold shadow-lg shadow-[var(--pt-green)]/25 hover:bg-[var(--pt-green-600)] transition-all">

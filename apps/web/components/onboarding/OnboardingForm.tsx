@@ -2,8 +2,10 @@
 
 import { useState } from "react"
 import { Loader2, ArrowRight } from "lucide-react"
+import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 
 export function OnboardingForm() {
+  const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
   const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -45,7 +47,7 @@ export function OnboardingForm() {
         className="group w-full h-12 rounded-xl bg-[var(--pt-green)] text-white font-semibold inline-flex items-center justify-center gap-2 hover:bg-[var(--pt-green-600)] transition-colors disabled:opacity-60">
         {pending ? <Loader2 size={18} className="animate-spin" /> : <>Create my pharmacy <ArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" /></>}
       </button>
-      <p className="text-xs text-[var(--pt-text-tertiary)] text-center">14-day free trial · No card required</p>
+      <p className="text-xs text-[var(--pt-text-tertiary)] text-center">{trialDays}-day free trial · No card required</p>
     </form>
   )
 }

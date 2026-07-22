@@ -41,9 +41,9 @@ const CHAPTERS: Chapter[] = [
       "Go to **pharmatrack.co.ke** and click **Start free trial**.",
       "Enter your pharmacy's name, your own name, a work email, and a password.",
       "We email a 6-digit code to that address — enter it to confirm you own the inbox.",
-      "Click **Create account & start trial**. Your organization, a Main Branch, and a 14-day trial are created in the same step — you're signed in immediately.",
+      "Click **Create account & start trial**. Your organization, a Main Branch, and a 30-day trial are created in the same step — you're signed in immediately.",
     ],
-    tip: { kind: "tip", text: "The 14-day trial unlocks every Growth-tier feature — M-Pesa STK push, appointments, prescriptions, reports — regardless of which plan you end up billed on. Use the trial to actually try everything, not just the basics." },
+    tip: { kind: "tip", text: "The 30-day trial unlocks every Growth-tier feature — M-Pesa STK push, appointments, prescriptions, reports — regardless of which plan you end up billed on. Use the trial to actually try everything, not just the basics." },
     shots: [
       shot("01-signup.jpg", "The signup form — pharmacy name, your name, work email, password.", 1600, 1245),
       shot("02-signup-otp.jpg", "A 6-digit code confirms the email address before the account is created.", 1600, 1062),

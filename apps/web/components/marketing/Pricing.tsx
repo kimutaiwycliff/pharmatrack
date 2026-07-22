@@ -1,16 +1,17 @@
 import Link from "next/link"
-import { Check } from "lucide-react"
+import { Check, Sparkles } from "lucide-react"
+import { launchOfferActive, LAUNCH_TRIAL_DAYS, LAUNCH_OFFER_ENDS_AT } from "@/lib/launch-offer"
 
 // Tiers mirror the entitlements catalog (packages/core/entitlements.ts) and the
 // `plan` table prices. Keep features/limits in sync with PLAN_MATRIX.
 const PLANS = [
   {
-    name: "Starter", price: "2,500", tagline: "Single pharmacy finding its feet.",
+    name: "Starter", price: "1,500", tagline: "Single pharmacy finding its feet.",
     features: ["1 branch", "Up to 5 staff", "POS, inventory & M-Pesa", "Offline POS", "Owner dashboard", "Email support"],
     cta: "Start free trial", highlight: false,
   },
   {
-    name: "Growth", price: "6,000", tagline: "Busy shops & small chains.",
+    name: "Growth", price: "4,500", tagline: "Busy shops & small chains.",
     features: ["Up to 3 branches", "Unlimited staff", "Everything in Starter", "Appointments & reminders", "Prescriptions & DUR", "Reports & analytics", "Priority support"],
     cta: "Start free trial", highlight: true,
   },
@@ -29,7 +30,14 @@ export function Pricing() {
         <h2 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight mt-2">
           Pay for a system that pays for itself.
         </h2>
-        <p className="mt-3 text-[var(--pt-text-secondary)] text-lg">14-day free trial on every plan. No card required. Save 20% paying annually.</p>
+        <p className="mt-3 text-[var(--pt-text-secondary)] text-lg">
+          {launchOfferActive() ? `${LAUNCH_TRIAL_DAYS}-day free trial` : "14-day free trial"} on every plan. No card required. Save 20% paying annually.
+        </p>
+        {launchOfferActive() && (
+          <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--pt-green-50)] text-[var(--pt-green-600)] border border-[var(--pt-green-100)] px-3 py-1 text-xs font-semibold">
+            <Sparkles size={13} /> Launch offer — {LAUNCH_TRIAL_DAYS}-day trial ends {LAUNCH_OFFER_ENDS_AT.toLocaleDateString("en-KE", { day: "numeric", month: "long", year: "numeric" })}
+          </p>
+        )}
       </div>
 
       <div className="mt-12 grid md:grid-cols-3 gap-5 items-start">

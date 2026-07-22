@@ -59,6 +59,25 @@ export async function notifyPlatformSubscription(info: {
   } catch { /* best-effort */ }
 }
 
+export async function notifyPlatformPaymentClaim(info: {
+  pharmacy: string; plan: string; amountKes: number; reference: string; email: string
+}): Promise<void> {
+  try {
+    await send(
+      `Payment claim — ${info.pharmacy} says they've paid`,
+      `<p>A pharmacy owner says they've sent a manual M-Pesa payment and is awaiting confirmation.</p>
+       <ul>
+         <li><strong>Pharmacy:</strong> ${esc(info.pharmacy)}</li>
+         <li><strong>Plan:</strong> ${esc(info.plan)}</li>
+         <li><strong>Amount claimed:</strong> KES ${info.amountKes.toLocaleString()}</li>
+         <li><strong>M-Pesa reference:</strong> ${esc(info.reference)}</li>
+         <li><strong>Billing email:</strong> ${esc(info.email)}</li>
+       </ul>
+       <p>Check your M-Pesa messages for that reference, then confirm or reject it in the operator console.</p>`,
+    )
+  } catch { /* best-effort */ }
+}
+
 function esc(s: string): string {
   return s.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] ?? c))
 }

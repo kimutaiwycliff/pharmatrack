@@ -70,6 +70,11 @@ export const subscription_payment = pgTable("subscription_payment", {
   period_start: date("period_start"),
   period_end: date("period_end"),
   recorded_by: text("recorded_by").references(() => user.id),
+  // 'pending' = owner self-reported a payment awaiting operator verification;
+  // 'confirmed' = verified (operator-recorded rows default straight to this);
+  // 'rejected' = operator could not verify the claim.
+  status: text("status").notNull().default("confirmed"),
+  claimed_by: text("claimed_by").references(() => user.id),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

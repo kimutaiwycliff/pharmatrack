@@ -44,7 +44,7 @@ export default function OgImage() {
         </div>
 
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {["Offline POS", "M-Pesa", "Multi-branch", "PPB register", "14-day free trial"].map((t) => (
+          {["Offline POS", "M-Pesa", "Multi-branch", "PPB register", "30-day free trial"].map((t) => (
             <div
               key={t}
               style={{

@@ -15,7 +15,7 @@ interface Sub {
   id: string; status: string; plan_id: string | null
   trial_ends_at: string | null; current_period_end: string | null
 }
-interface Payment { id: string; amount_kes: number; method: string | null; reference: string | null; period_end: string | null; created_at: string }
+interface Payment { id: string; amount_kes: number; method: string | null; reference: string | null; period_end: string | null; created_at: string; status: string }
 interface TenantDetail {
   tenant: { id: string; name: string; email: string | null; phone: string | null; created_at: string; subscriptions: Sub[] }
   branch_count: number; staff_count: number; plans: Plan[]; payments: Payment[]
@@ -70,6 +70,10 @@ export default function TenantDetailPage() {
   const [payPeriodEnd, setPayPeriodEnd] = useState("")
   const [paying, setPaying] = useState(false)
 
+  // Pending claim confirm/reject
+  const [claimPeriodEnd, setClaimPeriodEnd] = useState<Record<string, string>>({})
+  const [actingOn, setActingOn] = useState<string | null>(null)
+
   async function saveSubscription() {
     setSaving(true)
     try {
@@ -110,6 +114,23 @@ export default function TenantDetailPage() {
       await qc.invalidateQueries({ queryKey: ["tenants"] })
     } catch (err) { toast.error(err instanceof Error ? err.message : "Error") }
     finally { setPaying(false) }
+  }
+
+  async function resolveClaim(paymentId: string, action: "confirm" | "reject") {
+    setActingOn(paymentId)
+    try {
+      const res = await fetch(`/api/platform/tenants/${orgId}/payments/${paymentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, period_end: claimPeriodEnd[paymentId] || undefined }),
+      })
+      const json = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      toast.success(action === "confirm" ? "Payment confirmed" : "Payment rejected")
+      await qc.invalidateQueries({ queryKey: ["tenant", orgId] })
+      await qc.invalidateQueries({ queryKey: ["tenants"] })
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Error") }
+    finally { setActingOn(null) }
   }
 
   async function scheduleDeletion() {
@@ -239,12 +260,38 @@ export default function TenantDetailPage() {
         ) : (
           <div>
             {data.payments.map((p) => (
-              <div key={p.id} className="flex items-center justify-between px-5 py-3 border-t border-[var(--pt-border)] text-sm">
-                <div>
-                  <span className="font-semibold tabular-nums">KES {Number(p.amount_kes).toLocaleString()}</span>
-                  <span className="text-[var(--pt-text-tertiary)] ml-2 text-xs">{p.method ?? "—"}{p.reference ? ` · ${p.reference}` : ""}</span>
+              <div key={p.id} className="px-5 py-3 border-t border-[var(--pt-border)] text-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold tabular-nums">KES {Number(p.amount_kes).toLocaleString()}</span>
+                    <span className="text-[var(--pt-text-tertiary)] ml-2 text-xs">{p.method ?? "—"}{p.reference ? ` · ${p.reference}` : ""}</span>
+                    {p.status !== "confirmed" && (
+                      <span className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                        p.status === "pending"
+                          ? "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30"
+                          : "bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/30"
+                      }`}>{p.status}</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-[var(--pt-text-tertiary)]">{new Date(p.created_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}</span>
                 </div>
-                <span className="text-xs text-[var(--pt-text-tertiary)]">{new Date(p.created_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}</span>
+                {p.status === "pending" && (
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <Input
+                      type="date"
+                      value={claimPeriodEnd[p.id] ?? ""}
+                      onChange={(e) => setClaimPeriodEnd((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      className="h-9 w-auto"
+                      placeholder="Covers until"
+                    />
+                    <Button size="sm" onClick={() => resolveClaim(p.id, "confirm")} disabled={actingOn === p.id} className="gap-1.5">
+                      {actingOn === p.id && <Loader2 size={13} className="animate-spin" />} Confirm{claimPeriodEnd[p.id] ? " & activate" : ""}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => resolveClaim(p.id, "reject")} disabled={actingOn === p.id} className="text-[var(--pt-red)] border-[var(--pt-red)]">
+                      Reject
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

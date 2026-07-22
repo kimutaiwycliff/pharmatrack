@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     template: "%s · PharmaTrack",
   },
   description:
-    "PharmaTrack is an offline-capable pharmacy POS, inventory, M-Pesa and PPB-compliance platform built for Kenyan pharmacies. Sell in minutes, keep selling offline, run multiple branches. 14-day free trial.",
+    "PharmaTrack is an offline-capable pharmacy POS, inventory, M-Pesa and PPB-compliance platform built for Kenyan pharmacies. Sell in minutes, keep selling offline, run multiple branches. 30-day free trial.",
   applicationName: "PharmaTrack",
   keywords: [
     "pharmacy POS Kenya", "pharmacy software Kenya", "pharmacy management system",
@@ -69,7 +69,7 @@ export const metadata: Metadata = {
     siteName: "PharmaTrack",
     title: "PharmaTrack — Pharmacy POS & Inventory Software for Kenya",
     description:
-      "Offline-capable pharmacy POS, inventory, M-Pesa and PPB compliance — built for Kenyan pharmacies. Start a 14-day free trial.",
+      "Offline-capable pharmacy POS, inventory, M-Pesa and PPB compliance — built for Kenyan pharmacies. Start a 30-day free trial.",
     url: SITE_URL,
     locale: "en_KE",
   },

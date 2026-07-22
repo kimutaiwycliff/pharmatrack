@@ -34,7 +34,7 @@ export const POSTS: Post[] = [
         <p>Even if you have one shop today, pick software that supports multiple branches with per-branch stock and reports, and role-based access so cashiers see the till while owners see the numbers.</p>
         <h2>5. Honest, local pricing</h2>
         <p>Look for KES pricing, a free trial, and no lock-in — ideally the option to self-host and export your data.</p>
-        <p><strong>PharmaTrack</strong> was built around exactly these needs for Kenyan pharmacies. You can <a href="/signup">start a 14-day free trial</a> and be selling the same day.</p>
+        <p><strong>PharmaTrack</strong> was built around exactly these needs for Kenyan pharmacies. You can <a href="/signup">start a 30-day free trial</a> and be selling the same day.</p>
       </>
     ),
   },
@@ -107,7 +107,7 @@ export const POSTS: Post[] = [
         </ul>
         <h2>How PharmaTrack does it</h2>
         <p>The POS caches your full branch catalogue on the device on load, queues sales with a unique offline reference, and syncs automatically the moment connectivity returns — the server dedupes on that reference, and anything that fails to sync lands in a visible retry queue instead of vanishing. There’s no time limit on how long it can run offline.</p>
-        <p>See it for yourself — <a href="/signup">start a 14-day free trial</a> and try switching your Wi-Fi off mid-sale.</p>
+        <p>See it for yourself — <a href="/signup">start a 30-day free trial</a> and try switching your Wi-Fi off mid-sale.</p>
       </>
     ),
   },

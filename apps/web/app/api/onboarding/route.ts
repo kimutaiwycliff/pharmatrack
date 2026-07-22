@@ -4,6 +4,7 @@ import { getSession, getTenantContext } from "@/lib/auth/helpers"
 import { provisionTenantForUser } from "@/lib/provisioning"
 import { notifyPlatformNewSignup } from "@/lib/notifications/platform"
 import { rateLimit, clientIp } from "@/lib/rate-limit"
+import { trialDaysForSignup } from "@/lib/launch-offer"
 
 // Completes signup for a user who authenticated (e.g. Google) but has no pharmacy
 // yet: they name it, and we provision the tenant + trial against their existing
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
   try {
-    await provisionTenantForUser({ userId: session.user.id, pharmacyName: parsed.data.pharmacy_name, trialDays: 14 })
+    await provisionTenantForUser({ userId: session.user.id, pharmacyName: parsed.data.pharmacy_name, trialDays: trialDaysForSignup() })
   } catch {
     return NextResponse.json({ error: "Could not create your pharmacy. Please try again." }, { status: 400 })
   }

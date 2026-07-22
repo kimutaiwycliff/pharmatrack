@@ -5,10 +5,12 @@ import Link from "next/link"
 import { Loader2, ArrowRight, ArrowLeft, MailCheck } from "lucide-react"
 import { Turnstile, turnstileEnabled } from "@/components/auth/Turnstile"
 import { GoogleButton } from "@/components/auth/GoogleButton"
+import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 
 type Phase = "details" | "code"
 
 export function SignupForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
+  const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
   const [phase, setPhase] = useState<Phase>("details")
   const [form, setForm] = useState({ pharmacy_name: "", owner_name: "", email: "", password: "" })
   const [otp, setOtp] = useState("")
@@ -136,7 +138,7 @@ export function SignupForm({ googleEnabled = false }: { googleEnabled?: boolean 
       </button>
 
       <p className="text-xs text-[var(--pt-text-tertiary)] text-center">
-        We&apos;ll email you a code to verify your address · No card · 14-day trial
+        We&apos;ll email you a code to verify your address · No card · {trialDays}-day trial
       </p>
       <p className="text-sm text-center text-[var(--pt-text-secondary)]">
         Already have an account? <Link href="/login" className="font-semibold text-[var(--pt-green-700)] hover:underline">Sign in</Link>

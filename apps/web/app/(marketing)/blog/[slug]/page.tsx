@@ -69,7 +69,7 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
         <p className="font-[family-name:var(--font-display)] text-lg font-bold">Run your whole pharmacy in one place.</p>
         <p className="text-sm text-[var(--pt-text-secondary)] mt-1">Offline POS, M-Pesa, inventory and PPB compliance.</p>
         <Link href="/signup" className="inline-flex items-center justify-center mt-4 h-11 px-6 rounded-xl bg-[var(--pt-green)] text-white font-semibold text-sm hover:bg-[var(--pt-green-600)] transition-colors">
-          Start a free 14-day trial
+          Start a free 30-day trial
         </Link>
       </div>
     </article>
