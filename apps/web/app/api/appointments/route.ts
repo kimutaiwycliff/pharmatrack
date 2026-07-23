@@ -20,7 +20,8 @@ const createSchema = z.object({
   service_label: z.string().max(120).optional(),
   scheduled_at: z.string().datetime({ offset: true }),
   duration_minutes: z.number().int().positive().max(480).default(15),
-  assigned_to: zUuid().nullable().optional(),
+  // Not a UUID — assigned_to references Better Auth's user.id, a non-UUID text id.
+  assigned_to: z.string().trim().min(1).nullable().optional(),
   notes: z.string().max(1000).optional(),
   parent_appointment_id: zUuid().nullable().optional(),
   reminders_opt_in: z.boolean().default(true),

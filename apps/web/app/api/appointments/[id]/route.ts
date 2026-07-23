@@ -3,7 +3,6 @@ import { z } from "zod"
 import { and, eq } from "drizzle-orm"
 import { withTenant, appointment, appointment_reminder, appointment_service } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
-import { zUuid } from "@/lib/api/validation"
 import { serviceRecurrenceWeeks } from "@/lib/appointments/services"
 import { queueReminders } from "@/lib/appointments/queue"
 import { fetchAppointment } from "@/lib/appointments/serialize"
@@ -14,7 +13,8 @@ const updateSchema = z.object({
   status: z.enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"]).optional(),
   scheduled_at: z.string().datetime({ offset: true }).optional(),
   duration_minutes: z.number().int().positive().max(480).optional(),
-  assigned_to: zUuid().nullable().optional(),
+  // Not a UUID — assigned_to references Better Auth's user.id, a non-UUID text id.
+  assigned_to: z.string().trim().min(1).nullable().optional(),
   service: z.string().min(1).optional(),
   notes: z.string().max(1000).nullable().optional(),
 })
