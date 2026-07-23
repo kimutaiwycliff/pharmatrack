@@ -6,6 +6,7 @@ import type { Profile, Branch } from "@pharmatrack/types"
 import type { PlanCode } from "@pharmatrack/core"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
+import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 
 function SessionInit({ profile, branches, planCode }: { profile: Profile; branches: Branch[]; planCode: PlanCode }) {
   const setProfile = useSessionStore((s) => s.setProfile)
@@ -56,7 +57,7 @@ export function Providers({
   return (
     <QueryClientProvider client={client}>
       <SessionInit profile={profile} branches={branches} planCode={planCode} />
-      {children}
+      <ConfirmProvider>{children}</ConfirmProvider>
     </QueryClientProvider>
   )
 }

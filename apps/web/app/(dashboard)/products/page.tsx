@@ -9,6 +9,7 @@ import { EditProductSheet } from "@/components/inventory/EditProductSheet"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { CategoryManager } from "@/components/inventory/CategoryManager"
 import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
@@ -58,6 +59,7 @@ async function deleteProduct(id: string): Promise<void> {
 
 export default function ProductsPage() {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const role = useSessionStore((s) => s.profile?.role)
   const canSeeCost = ["owner", "manager"].includes(role ?? "")
   const canManageCatalog = ["owner", "manager"].includes(role ?? "")
@@ -105,7 +107,8 @@ export default function ProductsPage() {
   }
 
   async function handleDelete(p: ProductRow) {
-    if (!confirm(`Delete "${p.name}"? This can't be undone.`)) return
+    const ok = await confirm(`Delete "${p.name}"? This can't be undone.`, { title: "Delete product?", confirmLabel: "Delete" })
+    if (!ok) return
     try {
       await deleteProduct(p.id)
       await qc.invalidateQueries({ queryKey: ["products"] })

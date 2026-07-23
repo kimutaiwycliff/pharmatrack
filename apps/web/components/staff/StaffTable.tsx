@@ -9,6 +9,7 @@ import { SetPasswordDialog } from "./SetPasswordDialog"
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import type { Branch } from "@pharmatrack/types"
 
 interface StaffMember {
@@ -51,6 +52,7 @@ function ActionMenu({
   const [showPin, setShowPin] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
 
   if (member.id === currentUserId || member.role === "owner") return null
 
@@ -79,8 +81,9 @@ function ActionMenu({
   const resendInvite = () =>
     call(() => fetch(`/api/staff/${member.id}/resend`, { method: "POST" }), "Invite re-sent to")
 
-  const remove = () => {
-    if (!confirm(`Delete ${member.full_name}? They lose all access immediately. This can't be undone.`)) return
+  const remove = async () => {
+    const ok = await confirm(`Delete ${member.full_name}? They lose all access immediately. This can't be undone.`, { title: "Delete staff member?", confirmLabel: "Delete" })
+    if (!ok) return
     call(() => fetch(`/api/staff/${member.id}`, { method: "DELETE" }), `${member.full_name} removed`)
   }
 

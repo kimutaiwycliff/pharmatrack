@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus, Pencil, Trash2, Check, X, Loader2, FolderTree, CornerDownRight } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import type { CategoryNode } from "./CategorySelect"
 
 async function fetchCategories(): Promise<CategoryNode[]> {
@@ -27,6 +28,7 @@ async function api(method: string, path: string, body?: unknown): Promise<void> 
 
 export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories, staleTime: 30_000 })
 
   const topLevel = useMemo(() => categories.filter((c) => !c.parent_id), [categories])
@@ -71,8 +73,9 @@ export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenC
     if (!name) return
     void run(() => api("PATCH", `/api/categories/${id}`, { name }), () => { setEditing(null); toast.success("Renamed") })
   }
-  const remove = (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"? Products in it become uncategorized.`)) return
+  const remove = async (id: string, name: string) => {
+    const ok = await confirm(`Delete "${name}"? Products in it become uncategorized.`, { title: "Delete category?", confirmLabel: "Delete" })
+    if (!ok) return
     void run(() => api("DELETE", `/api/categories/${id}`), () => toast.success("Deleted"))
   }
 
