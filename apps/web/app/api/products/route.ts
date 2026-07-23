@@ -78,12 +78,15 @@ export async function POST(request: NextRequest) {
   ]
   if (d.gtin) dupeConds.push(eq(product.gtin, d.gtin))
 
-  const result = await withTenant(ctx, async (db) => {
+  type DupeHit = { id: string; name: string; strength: string | null; dosage_form: string | null }
+  const result = await withTenant(ctx, async (db): Promise<
+    { ok: true; product: typeof product.$inferSelect } | { ok: false; dupe: DupeHit }
+  > => {
     const [dupe] = await db.select({ id: product.id, name: product.name, strength: product.strength, dosage_form: product.dosage_form })
       .from(product).where(or(...dupeConds)).limit(1)
-    if (dupe) return { dupe }
+    if (dupe) return { ok: false, dupe }
 
-    const created = await db.insert(product).values({
+    const [created] = await db.insert(product).values({
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       name: d.name,
@@ -107,15 +110,15 @@ export async function POST(request: NextRequest) {
       image_url: d.image_url ?? null,
       max_discount_percent: num(d.max_discount_percent),
     }).returning()
-    return { created: created[0] }
+    return { ok: true, product: created! }
   })
 
-  if ("dupe" in result) {
+  if (!result.ok) {
     const label = [result.dupe.name, result.dupe.strength, result.dupe.dosage_form].filter(Boolean).join(" ")
     return NextResponse.json(
       { error: `Already in your catalogue: ${label}`, existing_product_id: result.dupe.id },
       { status: 409 },
     )
   }
-  return NextResponse.json({ product: result.created }, { status: 201 })
+  return NextResponse.json({ product: result.product }, { status: 201 })
 }

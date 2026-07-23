@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { CategorySelect } from "./CategorySelect"
+import { SuggestInput } from "./SuggestInput"
 import { CameraScanner } from "@/components/pos/CameraScanner"
 import type { Product, ProductPackSize } from "@pharmatrack/types"
 
@@ -19,8 +20,16 @@ interface Props {
   onSaved?: () => void
 }
 
-const DOSAGE_FORMS = ["Tablet","Capsule","Syrup","Cream","Gel","Injection","Drops","Inhaler","Sachet","Other"]
-const BASE_UNITS   = ["tablet","capsule","ml","g","unit"]
+const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Suspension", "Cream", "Gel", "Ointment", "Lotion", "Injection", "Drops", "Inhaler", "Sachet"]
+const BASE_UNITS = ["tablet", "capsule", "ml", "g", "unit", "bottle", "tube", "sachet", "pack", "vial", "inhaler", "piece"]
+
+// Merge curated defaults with whatever this org has already used (custom values
+// teammates typed in) so they're discoverable instead of silently re-typed.
+function mergeSuggestions(defaults: string[], used: string[] | undefined): string[] {
+  const seen = new Set(defaults.map((s) => s.toLowerCase()))
+  const extra = (used ?? []).filter((s) => !seen.has(s.toLowerCase()))
+  return [...defaults, ...extra]
+}
 
 // ─── Image uploader ──────────────────────────────────────────────────────────
 function ImageUploader({ value, onChange }: { value: string | null; onChange: (url: string | null) => void }) {
@@ -308,6 +317,21 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
   })
   const suppliers = suppliersData?.suppliers ?? []
 
+  // Custom base units / dosage forms this org has already used, merged with
+  // curated defaults for the free-text suggestion dropdowns below.
+  const { data: unitsData } = useQuery<{ base_units: string[]; dosage_forms: string[] }>({
+    queryKey: ["product-units"],
+    queryFn: async () => {
+      const res = await fetch("/api/products/units")
+      if (!res.ok) return { base_units: [], dosage_forms: [] }
+      return res.json() as Promise<{ base_units: string[]; dosage_forms: string[] }>
+    },
+    enabled: !!productId,
+    staleTime: 60_000,
+  })
+  const baseUnitSuggestions = mergeSuggestions(BASE_UNITS, unitsData?.base_units)
+  const dosageFormSuggestions = mergeSuggestions(DOSAGE_FORMS, unitsData?.dosage_forms)
+
   // Form state — re-initialised whenever a different product loads
   const [form, setForm] = useState<Partial<Product>>({})
   const [syncedId, setSyncedId] = useState<string | null>(null)
@@ -427,11 +451,13 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                   </Field>
                 </div>
                 <Field label="Dosage Form">
-                  <select value={form.dosage_form ?? ""} onChange={(e) => setF("dosage_form", e.target.value)}
-                    className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
-                    <option value="">Select…</option>
-                    {DOSAGE_FORMS.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
+                  <SuggestInput
+                    value={form.dosage_form ?? ""}
+                    onChange={(v) => setF("dosage_form", v)}
+                    suggestions={dosageFormSuggestions}
+                    placeholder="e.g. Tablet, or type your own…"
+                    className="h-10"
+                  />
                 </Field>
               </Section>
 
@@ -455,10 +481,13 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
               <Section title="Units & Pricing">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Base unit">
-                    <select value={form.base_unit ?? "unit"} onChange={(e) => setF("base_unit", e.target.value)}
-                      className="w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]">
-                      {BASE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
+                    <SuggestInput
+                      value={form.base_unit ?? "unit"}
+                      onChange={(v) => setF("base_unit", v)}
+                      suggestions={baseUnitSuggestions}
+                      placeholder="e.g. tablet, or type your own…"
+                      className="h-10"
+                    />
                   </Field>
                   <Field label="Pack label">
                     <Input value={form.pack_label ?? ""} onChange={(e) => setF("pack_label", e.target.value || null)} placeholder="Box, Bottle…" className="h-10" />

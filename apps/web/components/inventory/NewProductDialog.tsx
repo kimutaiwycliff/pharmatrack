@@ -21,6 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { CategorySelect } from "./CategorySelect"
+import { SuggestInput } from "./SuggestInput"
+import { useQuery } from "@tanstack/react-query"
 import type { ProductWithStock } from "@pharmatrack/types"
 
 interface NewProductDialogProps {
@@ -41,8 +43,16 @@ interface NewProductDialogProps {
   onDuplicate?: (existingProductId: string) => void
 }
 
-const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Suspension", "Cream", "Gel", "Ointment", "Lotion", "Injection", "Drops", "Inhaler", "Sachet", "Other"]
+const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Suspension", "Cream", "Gel", "Ointment", "Lotion", "Injection", "Drops", "Inhaler", "Sachet"]
 const BASE_UNITS = ["tablet", "capsule", "ml", "g", "unit", "bottle", "tube", "sachet", "pack", "vial", "inhaler", "piece"]
+
+// Merge curated defaults with whatever this org has already used (custom values
+// teammates typed in) so they're discoverable instead of silently re-typed.
+function mergeSuggestions(defaults: string[], used: string[] | undefined): string[] {
+  const seen = new Set(defaults.map((s) => s.toLowerCase()))
+  const extra = (used ?? []).filter((s) => !seen.has(s.toLowerCase()))
+  return [...defaults, ...extra]
+}
 
 interface CatalogItem {
   id: string
@@ -151,6 +161,21 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
   const [quantityReceived, setQuantityReceived] = useState(1)
   const [supplierId, setSupplierId] = useState("")
 
+  // Custom base units / dosage forms this org has already used, merged with
+  // curated defaults for the free-text suggestion dropdowns below.
+  const { data: unitsData } = useQuery<{ base_units: string[]; dosage_forms: string[] }>({
+    queryKey: ["product-units"],
+    queryFn: async () => {
+      const res = await fetch("/api/products/units")
+      if (!res.ok) return { base_units: [], dosage_forms: [] }
+      return res.json() as Promise<{ base_units: string[]; dosage_forms: string[] }>
+    },
+    enabled: open,
+    staleTime: 60_000,
+  })
+  const baseUnitSuggestions = mergeSuggestions(BASE_UNITS, unitsData?.base_units)
+  const dosageFormSuggestions = mergeSuggestions(DOSAGE_FORMS, unitsData?.dosage_forms)
+
   // Drug catalog autofill — search the shared reference list and prefill identity.
   const [catalogQuery, setCatalogQuery] = useState("")
   const [catalogResults, setCatalogResults] = useState<CatalogItem[]>([])
@@ -182,10 +207,9 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
     setManufacturer(item.manufacturer ?? "")
     setGtin(item.gtin ?? "")
     setStrength(item.strength ?? "")
-    // Keep the dosage-form select valid; fall back to "Other" for niche forms.
-    setDosageForm(item.dosage_form && DOSAGE_FORMS.includes(item.dosage_form) ? item.dosage_form : (item.dosage_form ? "Other" : ""))
+    setDosageForm(item.dosage_form ?? "")
     baseUnitTouched.current = true
-    setBaseUnit(BASE_UNITS.includes(item.base_unit) ? item.base_unit : "unit")
+    setBaseUnit(item.base_unit || "unit")
     if (item.pack_label) setPackLabel(item.pack_label)
     if (item.units_per_pack) setUnitsPerPack(item.units_per_pack)
     setIsControlled(item.is_controlled)
@@ -391,10 +415,13 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
               </div>
               <div>
                 <Label className="text-sm font-medium">Dosage form *</Label>
-                <Select value={dosageForm} onValueChange={(v) => { if (v !== null) onDosageChange(v) }}>
-                  <SelectTrigger className="mt-1.5 h-10"><SelectValue placeholder="Select form…" /></SelectTrigger>
-                  <SelectContent>{DOSAGE_FORMS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
-                </Select>
+                <SuggestInput
+                  value={dosageForm}
+                  onChange={onDosageChange}
+                  suggestions={dosageFormSuggestions}
+                  placeholder="e.g. Tablet, or type your own…"
+                  className="mt-1.5 h-10"
+                />
                 <FieldError msg={errors["dosage_form"]} />
               </div>
             </div>
@@ -417,10 +444,13 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-sm font-medium">Base unit *</Label>
-                <Select value={baseUnit} onValueChange={(v) => { if (v !== null) { baseUnitTouched.current = true; setBaseUnit(v) } }}>
-                  <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
-                  <SelectContent>{BASE_UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                </Select>
+                <SuggestInput
+                  value={baseUnit}
+                  onChange={(v) => { baseUnitTouched.current = true; setBaseUnit(v) }}
+                  suggestions={baseUnitSuggestions}
+                  placeholder="e.g. tablet, or type your own…"
+                  className="mt-1.5 h-10"
+                />
               </div>
               <div>
                 <Label htmlFor="pack_label" className="text-sm font-medium">Pack label</Label>
