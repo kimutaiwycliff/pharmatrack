@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, asc, eq } from "drizzle-orm"
-import { withTenant, product, product_pack_size } from "@pharmatrack/db"
+import { withTenant, product, product_pack_size, product_batch, sale_item } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { serializePackSize } from "@/lib/products/packsize"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
 import { redis } from "@/lib/redis"
+
+const DELETE_ROLES: Role[] = ["owner", "manager"]
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -87,6 +89,41 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       body: { product: canViewCost(ctx.role) ? serialized : omitCost(serialized) },
       gtin: parsed.data.gtin ?? existing.gtin, raw: parsed.data.barcode_raw ?? existing.barcode_raw,
     }
+  })
+
+  if (out.status === 200 && redis) {
+    try {
+      if (out.gtin) await redis.del(`product:${ctx.organizationId}:${out.gtin}`)
+      if (out.raw) await redis.del(`product:${ctx.organizationId}:${out.raw}`)
+    } catch {}
+  }
+  return NextResponse.json(out.body, { status: out.status })
+}
+
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const ctx = await getTenantContext()
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!DELETE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+  const out = await withTenant(ctx, async (db) => {
+    const [existing] = await db.select({ id: product.id, gtin: product.gtin, barcode_raw: product.barcode_raw })
+      .from(product).where(eq(product.id, id)).limit(1)
+    if (!existing) return { status: 404 as const, body: { error: "Product not found" } }
+
+    // Hard delete would cascade-remove batches (losing receipt/stock history) and
+    // fail outright against any sale_item referencing it — so block it here with
+    // a clear message rather than a raw FK-violation, and point to deactivating.
+    const [[hasBatch], [hasSale]] = await Promise.all([
+      db.select({ id: product_batch.id }).from(product_batch).where(eq(product_batch.product_id, id)).limit(1),
+      db.select({ id: sale_item.id }).from(sale_item).where(eq(sale_item.product_id, id)).limit(1),
+    ])
+    if (hasBatch || hasSale) {
+      return { status: 409 as const, body: { error: "This product has stock or sales history — deactivate it instead of deleting." } }
+    }
+
+    await db.delete(product).where(eq(product.id, id))
+    return { status: 200 as const, body: { ok: true }, gtin: existing.gtin, raw: existing.barcode_raw }
   })
 
   if (out.status === 200 && redis) {

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree } from "lucide-react"
+import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { EditProductSheet } from "@/components/inventory/EditProductSheet"
@@ -46,6 +46,14 @@ async function toggleActive(id: string, active: boolean): Promise<void> {
     body: JSON.stringify({ is_active: active }),
   })
   if (!res.ok) throw new Error("Failed to update product")
+}
+
+async function deleteProduct(id: string): Promise<void> {
+  const res = await fetch(`/api/products/${id}`, { method: "DELETE" })
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(json.error ?? "Failed to delete product")
+  }
 }
 
 export default function ProductsPage() {
@@ -93,6 +101,17 @@ export default function ProductsPage() {
       toast.success(`${p.name} ${!p.is_active ? "activated" : "deactivated"}`)
     } catch {
       toast.error("Failed to update product")
+    }
+  }
+
+  async function handleDelete(p: ProductRow) {
+    if (!confirm(`Delete "${p.name}"? This can't be undone.`)) return
+    try {
+      await deleteProduct(p.id)
+      await qc.invalidateQueries({ queryKey: ["products"] })
+      toast.success(`${p.name} deleted`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete product")
     }
   }
 
@@ -270,6 +289,15 @@ export default function ProductsPage() {
                         >
                           {p.is_active ? <ToggleRight size={16} className="text-[var(--pt-green)]" /> : <ToggleLeft size={16} />}
                         </button>
+                        {canManageCatalog && (
+                          <button
+                            onClick={() => handleDelete(p)}
+                            className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-[var(--pt-red)] transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

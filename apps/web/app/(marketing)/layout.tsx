@@ -1,9 +1,11 @@
 import type { Metadata } from "next"
 import { Bricolage_Grotesque } from "next/font/google"
 import { getSession } from "@/lib/auth/helpers"
+import { platformContact } from "@/lib/platform-contact"
 import { MarketingNav } from "@/components/marketing/MarketingNav"
 import { MarketingFooter } from "@/components/marketing/MarketingFooter"
 import { Analytics } from "@/components/marketing/Analytics"
+import { FloatingWhatsApp } from "@/components/marketing/FloatingWhatsApp"
 
 // Distinctive display face for headlines — paired with the app's Inter body.
 const display = Bricolage_Grotesque({
@@ -27,6 +29,7 @@ export const metadata: Metadata = {
 export default async function MarketingLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
   const signedIn = !!session?.user
+  const contact = platformContact()
 
   return (
     <div className={`${display.variable} marketing-root min-h-screen bg-[var(--pt-bg)] text-[var(--pt-text)] antialiased`}>
@@ -34,6 +37,7 @@ export default async function MarketingLayout({ children }: { children: React.Re
       <main>{children}</main>
       <MarketingFooter />
       <Analytics />
+      <FloatingWhatsApp whatsappLink={contact.whatsappLink} />
     </div>
   )
 }
