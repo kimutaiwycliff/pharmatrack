@@ -55,7 +55,7 @@ export function CatalogSeedControls({ canManage, branchId }: { canManage: boolea
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--pt-green-100)] bg-[var(--pt-green-50)] px-4 py-3 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-[var(--pt-green-100)] bg-[var(--pt-green-50)] px-4 py-3 mb-4">
         <div className="flex items-center gap-2.5 min-w-0">
           <Sparkles size={18} className="text-[var(--pt-green-600)] shrink-0" />
           <div className="min-w-0">
@@ -67,7 +67,7 @@ export function CatalogSeedControls({ canManage, branchId }: { canManage: boolea
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center flex-wrap gap-2 shrink-0">
           {hasSeeded && (
             <Button variant="outline" onClick={unseed} disabled={busy} className="gap-1.5 h-9" title="Remove untouched seeded products">
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}

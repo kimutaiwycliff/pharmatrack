@@ -8,8 +8,10 @@ import { useDebounce } from "@/lib/hooks/useDebounce"
 import { EditProductSheet } from "@/components/inventory/EditProductSheet"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { CategoryManager } from "@/components/inventory/CategoryManager"
+import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
 import { formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
+import { useUIStore } from "@/lib/store/uiStore"
 import type { Product } from "@pharmatrack/types"
 
 type ProductRow = Product & { category_name?: string }
@@ -50,6 +52,8 @@ export default function ProductsPage() {
   const qc = useQueryClient()
   const role = useSessionStore((s) => s.profile?.role)
   const canSeeCost = ["owner", "manager"].includes(role ?? "")
+  const canManageCatalog = ["owner", "manager"].includes(role ?? "")
+  const branchId = useUIStore((s) => s.activeBranchId)
   const [rawSearch, setRawSearch] = useState("")
   const [categoryId, setCategoryId] = useState("")
   const [page, setPage] = useState(1)
@@ -154,6 +158,9 @@ export default function ProductsPage() {
 
       {/* Table */}
       <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
+        {/* Quick Start: load the Kenyan retail catalogue by department, then price & stock */}
+        <CatalogSeedControls canManage={canManageCatalog} branchId={branchId} />
+
         {isLoading ? (
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
             {Array.from({ length: 10 }).map((_, i) => (
