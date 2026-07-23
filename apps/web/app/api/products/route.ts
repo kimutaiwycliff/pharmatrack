@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { and, or, ilike, asc, sql } from "drizzle-orm"
+import { and, or, ilike, asc, sql, eq, isNull } from "drizzle-orm"
 import { withTenant, product } from "@pharmatrack/db"
 import { getTenantContext, type Role } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
@@ -66,8 +66,24 @@ export async function POST(request: NextRequest) {
   const d = parsed.data
   const num = (v: number | null | undefined) => (v == null ? null : String(v))
 
-  const created = await withTenant(ctx, (db) =>
-    db.insert(product).values({
+  // Duplicate guard: same GTIN, or same name+strength+dosage_form (case-insensitive)
+  // already exists in this org — most often because it was already Quick-Started
+  // from the shared catalogue or added earlier by a teammate.
+  const dupeConds = [
+    and(
+      sql`lower(${product.name}) = ${d.name.trim().toLowerCase()}`,
+      d.strength ? sql`lower(${product.strength}) = ${d.strength.trim().toLowerCase()}` : isNull(product.strength),
+      d.dosage_form ? sql`lower(${product.dosage_form}) = ${d.dosage_form.trim().toLowerCase()}` : isNull(product.dosage_form),
+    ),
+  ]
+  if (d.gtin) dupeConds.push(eq(product.gtin, d.gtin))
+
+  const result = await withTenant(ctx, async (db) => {
+    const [dupe] = await db.select({ id: product.id, name: product.name, strength: product.strength, dosage_form: product.dosage_form })
+      .from(product).where(or(...dupeConds)).limit(1)
+    if (dupe) return { dupe }
+
+    const created = await db.insert(product).values({
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       name: d.name,
@@ -90,7 +106,16 @@ export async function POST(request: NextRequest) {
       requires_prescription: d.requires_prescription,
       image_url: d.image_url ?? null,
       max_discount_percent: num(d.max_discount_percent),
-    }).returning(),
-  )
-  return NextResponse.json({ product: created[0] }, { status: 201 })
+    }).returning()
+    return { created: created[0] }
+  })
+
+  if ("dupe" in result) {
+    const label = [result.dupe.name, result.dupe.strength, result.dupe.dosage_form].filter(Boolean).join(" ")
+    return NextResponse.json(
+      { error: `Already in your catalogue: ${label}`, existing_product_id: result.dupe.id },
+      { status: 409 },
+    )
+  }
+  return NextResponse.json({ product: result.created }, { status: 201 })
 }

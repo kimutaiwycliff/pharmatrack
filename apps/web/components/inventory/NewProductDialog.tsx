@@ -37,6 +37,8 @@ interface NewProductDialogProps {
   branchId: string
   suppliers: Array<{ id: string; name: string }>
   onCreated: (product: ProductWithStock) => void
+  /** Called instead of onCreated when the product already exists in this org. */
+  onDuplicate?: (existingProductId: string) => void
 }
 
 const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Suspension", "Cream", "Gel", "Ointment", "Lotion", "Injection", "Drops", "Inhaler", "Sachet", "Other"]
@@ -114,7 +116,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">{children}</h3>
 }
 
-export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppliers, onCreated }: NewProductDialogProps) {
+export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppliers, onCreated, onDuplicate }: NewProductDialogProps) {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isPending, startTransition] = useTransition()
 
@@ -245,8 +247,16 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
             max_discount_percent: maxDiscountPercent !== "" ? parseFloat(maxDiscountPercent) : null,
           }),
         })
-        const productData = (await productRes.json()) as { product?: { id: string }; error?: string }
+        const productData = (await productRes.json()) as { product?: { id: string }; error?: string; existing_product_id?: string }
         if (!productRes.ok || !productData.product) {
+          if (productRes.status === 409 && productData.existing_product_id) {
+            toast.error(productData.error ?? "You already have this product", { duration: 6000 })
+            if (onDuplicate) {
+              onDuplicate(productData.existing_product_id)
+              onOpenChange(false)
+            }
+            return
+          }
           toast.error(productData.error ?? "Failed to create product")
           return
         }

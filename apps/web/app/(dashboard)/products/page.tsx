@@ -320,6 +320,7 @@ export default function ProductsPage() {
             setNewOpen(false)
             void qc.invalidateQueries({ queryKey: ["products"] })
           }}
+          onDuplicate={(existingProductId) => setEditId(existingProductId)}
         />
       )}
 
