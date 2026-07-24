@@ -23,7 +23,7 @@ const PROTECTED_PAGE_PREFIXES = [
 // API routes that self-authenticate (Better Auth, webhooks/callbacks, cron, health,
 // first-run). Everything else under /api is treated as protected.
 const PUBLIC_API_PREFIXES = [
-  "/api/auth", "/api/health", "/api/webhooks", "/api/mpesa", "/api/cron", "/api/setup", "/api/signup",
+  "/api/auth", "/api/health", "/api/webhooks", "/api/mpesa", "/api/cron", "/api/setup", "/api/signup", "/api/contact",
 ]
 
 const underPrefix = (pathname: string, prefix: string) =>

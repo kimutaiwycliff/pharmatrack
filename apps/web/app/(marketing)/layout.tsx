@@ -5,7 +5,7 @@ import { platformContact } from "@/lib/platform-contact"
 import { MarketingNav } from "@/components/marketing/MarketingNav"
 import { MarketingFooter } from "@/components/marketing/MarketingFooter"
 import { Analytics } from "@/components/marketing/Analytics"
-import { FloatingWhatsApp } from "@/components/marketing/FloatingWhatsApp"
+import { ContactWidget } from "@/components/marketing/ContactWidget"
 
 // Distinctive display face for headlines — paired with the app's Inter body.
 const display = Bricolage_Grotesque({
@@ -37,7 +37,7 @@ export default async function MarketingLayout({ children }: { children: React.Re
       <main>{children}</main>
       <MarketingFooter />
       <Analytics />
-      <FloatingWhatsApp whatsappLink={contact.whatsappLink} />
+      <ContactWidget whatsappLink={contact.whatsappLink} />
     </div>
   )
 }
