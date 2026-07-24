@@ -1,0 +1,13 @@
+{
+  "build": {
+    "devUrl": "http://localhost:3000"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "url": "http://localhost:3000"
+      }
+    ]
+  }
+}

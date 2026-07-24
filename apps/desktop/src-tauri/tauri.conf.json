@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PharmaTrack",
+  "version": "0.1.0",
+  "identifier": "ke.co.pharmatrack.desktop",
+  "build": {},
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "PharmaTrack",
+        "url": "https://pharmatrack.co.ke",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 700
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis", "dmg", "app"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_KEY_FROM_tauri_signer_generate",
+      "endpoints": [
+        "https://pharmatrack.co.ke/desktop-updates/{{target}}/{{arch}}/{{current_version}}"
+      ]
+    }
+  }
+}
