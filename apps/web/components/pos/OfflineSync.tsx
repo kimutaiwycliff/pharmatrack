@@ -44,7 +44,15 @@ export function OfflineSync() {
     void run()
     const onOnline = () => void run()
     window.addEventListener("online", onOnline)
-    return () => window.removeEventListener("online", onOnline)
+    // Safety net: the OS doesn't always fire a clean `online` event after a
+    // flaky connection (e.g. Wi-Fi that drops in and out, or waking from
+    // sleep) — a periodic retry catches those cases too. Cheap when idle:
+    // it's just an IndexedDB read when the queue is empty, no network call.
+    const interval = window.setInterval(() => void run(), 90_000)
+    return () => {
+      window.removeEventListener("online", onOnline)
+      window.clearInterval(interval)
+    }
   }, [qc])
 
   return null
