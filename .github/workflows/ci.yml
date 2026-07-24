@@ -244,3 +244,240 @@ jobs:
             echo "::error::app did not report healthy after deploy"
             exit 1
           fi
+
+  # ── Did this push touch the desktop app? (avoids rebuilding installers on every
+  #    unrelated web commit) ───────────────────────────────────────────────────
+  desktop-changes:
+    name: detect desktop app changes
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.f.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: f
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "push" ]; then echo "desktop=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ -z "$BEFORE" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$BEFORE" "$SHA" | grep -q '^apps/desktop/'; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "desktop=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Build + ship the Windows installer ───────────────────────────────────────
+  # Runs after `deploy` so infra/upload-desktop-release.sh (synced by that job's
+  # rsync step) already exists on the box. GitHub runners can't reach MinIO
+  # directly (see infra/upload-desktop-release.sh) - artifacts are scp'd to the
+  # box, then uploaded to MinIO from there over the compose network.
+  #
+  # Security note: this job has no explicit branch/event `if:` of its own -
+  # `needs: [deploy]` is load-bearing. `deploy` only runs on a push to main
+  # outside pull_request; when it's skipped (any PR, any other branch), GitHub
+  # Actions skips jobs that `needs` it too (a skipped dependency ≠ success), so
+  # this job - which touches TAURI_SIGNING_PRIVATE_KEY and SSH_PRIVATE_KEY -
+  # never runs on a fork's PR. Don't remove `deploy` from `needs` without adding
+  # an equivalent explicit guard.
+  desktop-windows:
+    name: build desktop app (Windows)
+    needs: [desktop-changes, deploy]
+    if: needs.desktop-changes.outputs.desktop == 'true'
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      exe_sig: ${{ steps.sig.outputs.exe_sig }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Read desktop app version
+        id: meta
+        shell: bash
+        run: echo "version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Build (tauri build - NSIS installer)
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Must be set even for a password-less key - unset makes the signer
+          # try an interactive prompt, which hangs/fails on a CI runner.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: pnpm exec tauri build --bundles nsis
+
+      - name: Read updater signature
+        id: sig
+        shell: bash
+        run: |
+          SIG_FILE=$(ls apps/desktop/src-tauri/target/release/bundle/nsis/*.exe.sig)
+          echo "exe_sig=$(cat "$SIG_FILE")" >> "$GITHUB_OUTPUT"
+
+      - name: Ship installer to the box + upload to MinIO
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          SSH="ssh -i $HOME/.ssh/deploy_key -o ConnectTimeout=20"
+          SCP="scp -i $HOME/.ssh/deploy_key -o ConnectTimeout=20"
+
+          EXE=$(ls apps/desktop/src-tauri/target/release/bundle/nsis/*.exe)
+          NAME="PharmaTrack_${VERSION}_x64-setup.exe"
+
+          $SCP "$EXE" "$DEPLOY_USER@$DEPLOY_HOST:/tmp/$NAME"
+          $SSH "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd pharmatrack && bash infra/upload-desktop-release.sh /tmp/$NAME v${VERSION}/$NAME"
+
+  # ── Build + ship the macOS installer (universal: Intel + Apple Silicon) ─────
+  desktop-macos:
+    name: build desktop app (macOS)
+    needs: [desktop-changes, deploy]
+    if: needs.desktop-changes.outputs.desktop == 'true'
+    runs-on: macos-latest
+    outputs:
+      dmg_name: ${{ steps.meta.outputs.dmg_name }}
+      app_tar_sig: ${{ steps.sig.outputs.app_tar_sig }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Read desktop app version
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=PharmaTrack_${VERSION}_universal.dmg" >> "$GITHUB_OUTPUT"
+
+      # dmg is the direct-download installer for the landing page; it is NOT a
+      # valid updater artifact on macOS (confirmed by building both locally) -
+      # the updater needs the .app bundle instead, packaged by Tauri itself as
+      # PharmaTrack.app.tar.gz + .sig when "app" is included in --bundles.
+      - name: Build (tauri build - universal dmg + app)
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: pnpm exec tauri build --target universal-apple-darwin --bundles dmg,app
+
+      - name: Read updater signature
+        id: sig
+        run: |
+          SIG_FILE=$(ls apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig)
+          echo "app_tar_sig=$(cat "$SIG_FILE")" >> "$GITHUB_OUTPUT"
+
+      - name: Ship installer + updater artifact to the box + upload to MinIO
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          SSH="ssh -i $HOME/.ssh/deploy_key -o ConnectTimeout=20"
+          SCP="scp -i $HOME/.ssh/deploy_key -o ConnectTimeout=20"
+
+          BUNDLE_DIR=apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle
+          DMG=$(ls "$BUNDLE_DIR"/dmg/*.dmg)
+          APP_TAR=$(ls "$BUNDLE_DIR"/macos/*.app.tar.gz)
+          DMG_NAME="PharmaTrack_${VERSION}_universal.dmg"
+          APP_TAR_NAME="PharmaTrack_${VERSION}_universal.app.tar.gz"
+
+          $SCP "$DMG" "$DEPLOY_USER@$DEPLOY_HOST:/tmp/$DMG_NAME"
+          $SCP "$APP_TAR" "$DEPLOY_USER@$DEPLOY_HOST:/tmp/$APP_TAR_NAME"
+
+          $SSH "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd pharmatrack && bash infra/upload-desktop-release.sh /tmp/$DMG_NAME v${VERSION}/$DMG_NAME"
+          $SSH "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd pharmatrack && bash infra/upload-desktop-release.sh /tmp/$APP_TAR_NAME v${VERSION}/$APP_TAR_NAME"
+
+  # ── Publish the updater manifest once both platform builds succeed ──────────
+  # `platforms` is the standard Tauri updater schema (auto-update downloads this
+  # exact file per target - the macOS entry MUST point at the .app.tar.gz, not
+  # the .dmg, which isn't a valid updater artifact). `downloads` is a PharmaTrack-
+  # specific addition (Tauri ignores unknown fields) the landing page reads for
+  # the nicer direct-install files (.exe / .dmg) - one manifest, two consumers,
+  # no drift between "what the app updates to" and "what the download button
+  # links to."
+  desktop-publish-manifest:
+    name: publish desktop update manifest
+    needs: [desktop-windows, desktop-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build + upload latest.json
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          VERSION: ${{ needs.desktop-windows.outputs.version }}
+          WIN_SIG: ${{ needs.desktop-windows.outputs.exe_sig }}
+          MAC_APP_TAR_SIG: ${{ needs.desktop-macos.outputs.app_tar_sig }}
+          DMG_NAME: ${{ needs.desktop-macos.outputs.dmg_name }}
+        run: |
+          set -euo pipefail
+          EXE_NAME="PharmaTrack_${VERSION}_x64-setup.exe"
+          APP_TAR_NAME="PharmaTrack_${VERSION}_universal.app.tar.gz"
+          BASE="https://pharmatrack.co.ke/api/desktop/download/v${VERSION}"
+
+          cat > latest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "notes": "PharmaTrack Desktop v${VERSION}",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${WIN_SIG}",
+                "url": "${BASE}/${EXE_NAME}"
+              },
+              "darwin-universal": {
+                "signature": "${MAC_APP_TAR_SIG}",
+                "url": "${BASE}/${APP_TAR_NAME}"
+              }
+            },
+            "downloads": {
+              "windows": "${BASE}/${EXE_NAME}",
+              "mac": "${BASE}/${DMG_NAME}"
+            }
+          }
+          EOF
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          scp -i ~/.ssh/deploy_key -o ConnectTimeout=20 latest.json "$DEPLOY_USER@$DEPLOY_HOST:/tmp/latest.json"
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd pharmatrack && bash infra/upload-desktop-release.sh /tmp/latest.json latest.json"

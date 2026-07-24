@@ -31,9 +31,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_KEY_FROM_tauri_signer_generate",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFQjFDREYwMTExMDRGMEMKUldRTVR4QVI4TTJ4M2c4NEVZMXZCVGpEM2dHOGpsZkdsemR3Q3NtdGwvc1RHcXcvWjZ1U2paZzkK",
       "endpoints": [
-        "https://pharmatrack.co.ke/desktop-updates/{{target}}/{{arch}}/{{current_version}}"
+        "https://pharmatrack.co.ke/api/desktop/download/latest.json"
       ]
     }
   }
