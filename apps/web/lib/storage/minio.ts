@@ -24,6 +24,7 @@ function client(): S3Client {
 }
 
 const PRODUCTS_BUCKET = () => process.env.MINIO_BUCKET_PRODUCTS ?? "pharmatrack-products"
+const RELEASES_BUCKET = () => process.env.MINIO_BUCKET_DESKTOP_RELEASES ?? "pharmatrack-desktop-releases"
 
 /** App-relative URL that serves the object via /api/media/<key> (browser-reachable). */
 export function productImageUrl(key: string): string {
@@ -61,4 +62,41 @@ export async function getProductObject(
 
 export async function deleteProductImage(key: string): Promise<void> {
   await client().send(new DeleteObjectCommand({ Bucket: PRODUCTS_BUCKET(), Key: key }))
+}
+
+// Desktop installers (Windows/macOS) + the updater manifest. Same "never expose
+// MinIO directly" pattern as products — served through /api/desktop/download/<key>.
+// CI uploads the actual release artifacts via `mc` over SSH (see infra/deploy.sh);
+// putDesktopRelease exists mainly for local testing of the download route.
+
+/** App-relative URL that serves the object via /api/desktop/download/<key>. */
+export function desktopReleaseUrl(key: string): string {
+  return `/api/desktop/download/${key}`
+}
+
+export async function putDesktopRelease(
+  key: string,
+  body: Buffer | Uint8Array,
+  contentType: string,
+): Promise<string> {
+  await client().send(new PutObjectCommand({
+    Bucket: RELEASES_BUCKET(),
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+  }))
+  return desktopReleaseUrl(key)
+}
+
+export async function getDesktopReleaseObject(
+  key: string,
+): Promise<{ body: Uint8Array; contentType: string } | null> {
+  try {
+    const res = await client().send(new GetObjectCommand({ Bucket: RELEASES_BUCKET(), Key: key }))
+    if (!res.Body) return null
+    const body = await res.Body.transformToByteArray()
+    return { body, contentType: res.ContentType ?? "application/octet-stream" }
+  } catch {
+    return null
+  }
 }

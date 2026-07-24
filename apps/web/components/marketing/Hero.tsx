@@ -1,9 +1,12 @@
 import Link from "next/link"
 import { ArrowRight, ShieldCheck, WifiOff, Smartphone, TrendingUp } from "lucide-react"
 import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
+import { getLatestDesktopRelease } from "@/lib/desktop/release"
+import { DesktopDownload } from "@/components/marketing/DesktopDownload"
 
-export function Hero() {
+export async function Hero() {
   const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
+  const desktopRelease = await getLatestDesktopRelease()
   return (
     <section className="relative overflow-hidden mk-mesh mk-grain">
       <div className="absolute inset-0 mk-crosses pointer-events-none" />
@@ -99,11 +102,12 @@ export function Hero() {
         </div>
       </div>
 
-      {/* device hint strip */}
-      <div className="relative mx-auto max-w-6xl px-5 pb-10">
+      {/* device hint strip + desktop app download */}
+      <div className="relative mx-auto max-w-6xl px-5 pb-10 space-y-4">
         <p className="flex items-center gap-2 text-xs text-[var(--pt-text-tertiary)]">
           <Smartphone size={14} /> Works on any phone, tablet or till — installs like an app, runs offline.
         </p>
+        <DesktopDownload release={desktopRelease} />
       </div>
     </section>
   )

@@ -24,6 +24,7 @@ const PROTECTED_PAGE_PREFIXES = [
 // first-run). Everything else under /api is treated as protected.
 const PUBLIC_API_PREFIXES = [
   "/api/auth", "/api/health", "/api/webhooks", "/api/mpesa", "/api/cron", "/api/setup", "/api/signup", "/api/contact",
+  "/api/desktop", // installer downloads + updater manifest - anonymous marketing-site visitors need these
 ]
 
 const underPrefix = (pathname: string, prefix: string) =>

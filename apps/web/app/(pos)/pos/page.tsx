@@ -109,15 +109,11 @@ export default function PosPage() {
       return
     }
 
-    // Offline: cash + manual M-Pesa + split all queue locally (non-prompting —
-    // the customer confirms the M-Pesa payment on their own phone). STK push is
-    // the only thing that needs connectivity, so the modals fall back to manual
-    // confirm while offline. The M-Pesa code is optional either way.
-    if (!online) {
+    async function queueThisSaleOffline(reason: "offline" | "network-failure") {
       await queueOfflineSale({
         saleId: crypto.randomUUID(),
-        branchId: activeBranch.id,
-        cashierId: profile.id,
+        branchId: activeBranch!.id,
+        cashierId: profile!.id,
         shiftId: shift?.id ?? null,
         items,
         discount,
@@ -130,9 +126,21 @@ export default function PosPage() {
         createdAt: new Date().toISOString(),
         synced: 0,
       })
-      toast.success("Saved offline — it will sync when you reconnect. Give the customer a manual receipt.")
+      toast.success(
+        reason === "offline"
+          ? "Saved offline — it will sync when you reconnect. Give the customer a manual receipt."
+          : "Connection dropped mid-sale — saved offline, it will sync when you reconnect. Give the customer a manual receipt.",
+      )
       clearCart()
       setPayModal(null)
+    }
+
+    // Offline: cash + manual M-Pesa + split all queue locally (non-prompting —
+    // the customer confirms the M-Pesa payment on their own phone). STK push is
+    // the only thing that needs connectivity, so the modals fall back to manual
+    // confirm while offline. The M-Pesa code is optional either way.
+    if (!online) {
+      await queueThisSaleOffline("offline")
       return
     }
 
@@ -167,7 +175,16 @@ export default function PosPage() {
       qc.invalidateQueries({ queryKey: ["branchCatalogPrefetch"] })
       qc.invalidateQueries({ queryKey: ["topProducts"] })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Sale failed")
+      // fetch() itself only ever rejects with a TypeError for a genuine network
+      // failure (DNS, dropped connection, etc.) — an HTTP error status resolves
+      // normally and is surfaced by postJson() as a plain Error instead. So a
+      // TypeError here means the request never reached the server at all, even
+      // though navigator.onLine said we were connected — don't lose the sale.
+      if (err instanceof TypeError) {
+        await queueThisSaleOffline("network-failure")
+      } else {
+        toast.error(err instanceof Error ? err.message : "Sale failed")
+      }
     } finally {
       setSubmitting(false)
     }

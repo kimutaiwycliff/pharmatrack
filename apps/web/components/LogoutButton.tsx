@@ -36,7 +36,22 @@ export function LogoutButton({
             <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <form action={signOut} className="flex-1">
+            <form
+              action={signOut}
+              className="flex-1"
+              onSubmit={() => {
+                // Clear cached pages so a shared till device can't serve this
+                // account's cached authenticated views to the next person who
+                // logs in offline before the first online navigation.
+                if (typeof caches !== "undefined") {
+                  caches.keys().then((keys) => {
+                    for (const key of keys) {
+                      if (key.startsWith("pt-pages-")) caches.delete(key)
+                    }
+                  }).catch(() => {})
+                }
+              }}
+            >
               <Button type="submit" className="w-full bg-[var(--pt-red)] hover:opacity-90 text-white">
                 <LogOut size={15} className="mr-1.5" /> Sign out
               </Button>
