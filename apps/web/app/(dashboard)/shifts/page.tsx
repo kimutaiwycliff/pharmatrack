@@ -6,6 +6,7 @@ import { Clock, ChevronLeft, ChevronRight } from "lucide-react"
 import { ShiftSummarySheet } from "@/components/shifts/ShiftSummarySheet"
 import { useUIStore } from "@/lib/store/uiStore"
 import { formatKES } from "@/lib/store/cartStore"
+import { varianceSeverity } from "@/lib/shifts/variance"
 
 interface ShiftRow {
   id: string
@@ -179,7 +180,11 @@ export default function ShiftsPage() {
                     </td>
                     <td className="px-4 py-3.5 text-right tabular-nums hidden lg:table-cell">
                       {s.variance != null ? (
-                        <span className={Math.abs(s.variance) < 1 ? "text-[var(--pt-green)] font-semibold" : "text-[var(--pt-amber)] font-semibold"}>
+                        <span className={
+                          varianceSeverity(s.variance) === "ok" ? "text-[var(--pt-green)] font-semibold" :
+                          varianceSeverity(s.variance) === "serious" ? "text-[var(--pt-red)] font-semibold" :
+                          "text-[var(--pt-amber)] font-semibold"
+                        }>
                           {s.variance >= 0 ? "+" : ""}{formatKES(s.variance)}
                         </span>
                       ) : (

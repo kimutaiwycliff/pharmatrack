@@ -155,6 +155,8 @@ export default function PosPage() {
         amount_tendered: params.amountTendered,
         change_given: params.changeGiven,
         mpesa_reference: params.mpesaReference,
+        cash_amount: params.cashAmount ?? null,
+        mpesa_amount: params.mpesaAmount ?? null,
         customer_name: null,
         customer_phone: params.customerPhone ?? null,
       })

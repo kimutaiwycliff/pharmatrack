@@ -35,6 +35,11 @@ const saleSchema = z.object({
   amount_tendered: z.number().nonnegative().nullable(),
   change_given: z.number().nonnegative().nullable(),
   mpesa_reference: z.string().nullable(),
+  // Only meaningful when payment_method === "split" - the cash/M-Pesa
+  // breakdown, needed to record real per-method payment rows so shift
+  // variance (which only counts actual cash) isn't blind to split sales.
+  cash_amount: z.number().nonnegative().nullable().optional(),
+  mpesa_amount: z.number().nonnegative().nullable().optional(),
   customer_name: z.string().nullable(),
   customer_phone: z.string().nullable(),
   // Idempotency key for offline sales — the server dedupes on it so a re-synced
@@ -219,9 +224,18 @@ export async function POST(request: NextRequest) {
       }))
     if (csRows.length > 0) await db.insert(controlled_substance_log).values(csRows)
 
-    // Payment detail (cash/mpesa). 'split' lacks a breakdown in the POST body, so
-    // we record only the sale totals for it.
-    if (data.payment_method !== "split") {
+    // Payment detail (cash/mpesa/split). A split sale gets one row per
+    // method it actually used, so shift variance (which sums payment.amount
+    // where method='cash') sees the real cash collected instead of treating
+    // the whole split total as non-cash.
+    if (data.payment_method === "split") {
+      const cashAmt = data.cash_amount ?? 0
+      const mpesaAmt = data.mpesa_amount ?? Math.max(0, totalAmount - cashAmt)
+      const rows = []
+      if (cashAmt > 0) rows.push({ sale_id: saleRow!.id, method: "cash", amount: String(cashAmt) })
+      if (mpesaAmt > 0) rows.push({ sale_id: saleRow!.id, method: "mpesa", amount: String(mpesaAmt), mpesa_receipt: data.mpesa_reference })
+      if (rows.length > 0) await db.insert(payment).values(rows)
+    } else {
       await db.insert(payment).values({
         sale_id: saleRow!.id, method: data.payment_method, amount: String(totalAmount),
         mpesa_receipt: data.mpesa_reference,

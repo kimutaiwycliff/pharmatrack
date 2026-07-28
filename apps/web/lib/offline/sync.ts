@@ -46,6 +46,8 @@ export async function syncOfflineSales(): Promise<SyncResult> {
           amount_tendered: s.amountTendered,
           change_given: null,
           mpesa_reference: s.mpesaReference,
+          cash_amount: s.cashAmount,
+          mpesa_amount: s.mpesaAmount,
           customer_name: null,
           customer_phone: s.customerPhone,
           offline_reference: s.saleId, // server can dedupe on this

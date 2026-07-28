@@ -14,6 +14,7 @@ export const shift = pgTable("shift", {
   opening_float: numeric("opening_float", { precision: 12, scale: 2 }).notNull().default("0"),
   closing_cash: numeric("closing_cash", { precision: 12, scale: 2 }),
   variance: numeric("variance", { precision: 12, scale: 2 }),
+  notes: text("notes"),
   opened_at: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
   closed_at: timestamp("closed_at", { withTimezone: true }),
 })

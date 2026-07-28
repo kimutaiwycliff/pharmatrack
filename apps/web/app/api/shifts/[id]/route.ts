@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { and, eq } from "drizzle-orm"
-import { withTenant, shift, sale, user, staff_profile } from "@pharmatrack/db"
+import { and, eq, inArray } from "drizzle-orm"
+import { withTenant, shift, sale, payment, user, staff_profile } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
 import { serializeShift } from "@/lib/shifts/serialize"
 
@@ -17,16 +17,27 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       .where(eq(shift.id, id)).limit(1)
     if (!found) return NextResponse.json({ error: "Shift not found" }, { status: 404 })
 
-    const sales = await db.select({ total_amount: sale.total_amount, payment_method: sale.payment_method })
+    const sales = await db.select({ id: sale.id, total_amount: sale.total_amount, payment_method: sale.payment_method })
       .from(sale).where(and(eq(sale.shift_id, id), eq(sale.status, "completed")))
 
     const totals = sales.reduce((acc, s) => {
       acc.count += 1; acc.total += Number(s.total_amount)
-      if (s.payment_method === "cash") acc.cash += Number(s.total_amount)
-      if (s.payment_method === "mpesa") acc.mpesa += Number(s.total_amount)
       if (s.payment_method === "split") acc.split += Number(s.total_amount)
       return acc
     }, { count: 0, total: 0, cash: 0, mpesa: 0, split: 0 })
+
+    // Real per-method totals from the payment table - correctly includes the
+    // cash/mpesa portions of split-tender sales (sale.payment_method alone
+    // can't tell you how much of a split sale was cash).
+    const saleIds = sales.map((s) => s.id)
+    if (saleIds.length > 0) {
+      const payRows = await db.select({ method: payment.method, amount: payment.amount })
+        .from(payment).where(inArray(payment.sale_id, saleIds))
+      for (const p of payRows) {
+        if (p.method === "cash") totals.cash += Number(p.amount)
+        if (p.method === "mpesa") totals.mpesa += Number(p.amount)
+      }
+    }
 
     const mapped = serializeShift(found.row)
     const variance = mapped.closing_cash != null ? mapped.closing_cash - (mapped.opening_float + totals.cash) : null

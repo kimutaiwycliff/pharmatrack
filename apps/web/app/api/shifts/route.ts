@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, desc, eq, gte, lte, inArray, isNull } from "drizzle-orm"
-import { withTenant, shift, sale, user, staff_profile } from "@pharmatrack/db"
+import { withTenant, shift, sale, payment, user, staff_profile } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { serializeShift } from "@/lib/shifts/serialize"
@@ -51,16 +51,32 @@ export async function GET(request: NextRequest) {
 
     const salesByShift: Record<string, { count: number; total: number; cash: number; mpesa: number }> = {}
     if (shiftIds.length > 0) {
-      const sales = await db.select({ shift_id: sale.shift_id, total_amount: sale.total_amount, payment_method: sale.payment_method })
+      const sales = await db.select({ id: sale.id, shift_id: sale.shift_id, total_amount: sale.total_amount })
         .from(sale).where(and(inArray(sale.shift_id, shiftIds), eq(sale.status, "completed")))
+      const saleToShift = new Map<string, string>()
       for (const s of sales) {
         if (!s.shift_id) continue
+        saleToShift.set(s.id, s.shift_id)
         const e = salesByShift[s.shift_id] ?? { count: 0, total: 0, cash: 0, mpesa: 0 }
         e.count += 1
         e.total += Number(s.total_amount)
-        if (s.payment_method === "cash") e.cash += Number(s.total_amount)
-        if (s.payment_method === "mpesa") e.mpesa += Number(s.total_amount)
         salesByShift[s.shift_id] = e
+      }
+
+      // Real per-method totals from the payment table - correctly includes
+      // the cash/mpesa portions of split-tender sales, unlike filtering on
+      // sale.payment_method (which is just "cash"|"mpesa"|"split").
+      const saleIds = sales.map((s) => s.id)
+      if (saleIds.length > 0) {
+        const payRows = await db.select({ sale_id: payment.sale_id, method: payment.method, amount: payment.amount })
+          .from(payment).where(inArray(payment.sale_id, saleIds))
+        for (const p of payRows) {
+          const shiftId = saleToShift.get(p.sale_id)
+          const e = shiftId ? salesByShift[shiftId] : undefined
+          if (!e) continue
+          if (p.method === "cash") e.cash += Number(p.amount)
+          if (p.method === "mpesa") e.mpesa += Number(p.amount)
+        }
       }
     }
 
@@ -111,14 +127,20 @@ export async function PATCH(req: NextRequest) {
       .where(and(eq(shift.id, parsed.data.shift_id), isNull(shift.closed_at))).limit(1)
     if (!existing || existing.cashier_id !== ctx.userId) return { status: 404 as const, body: { error: "Shift not found or already closed" } }
 
-    // variance = closing cash − (opening float + cash sales this shift)
-    const sales = await db.select({ total_amount: sale.total_amount })
-      .from(sale).where(and(eq(sale.shift_id, existing.id), eq(sale.status, "completed"), eq(sale.payment_method, "cash")))
-    const cashSales = sales.reduce((s, r) => s + Number(r.total_amount), 0)
+    // variance = closing cash − (opening float + actual cash collected this
+    // shift). Cash is summed from the payment table (method='cash'), not
+    // sale.payment_method === 'cash' - that misses the cash portion of
+    // split-tender sales entirely, which would falsely inflate variance.
+    const cashPayments = await db.select({ amount: payment.amount })
+      .from(payment)
+      .innerJoin(sale, eq(sale.id, payment.sale_id))
+      .where(and(eq(sale.shift_id, existing.id), eq(sale.status, "completed"), eq(payment.method, "cash")))
+    const cashSales = cashPayments.reduce((s, r) => s + Number(r.amount), 0)
     const variance = parsed.data.closing_cash - (Number(existing.opening_float) + cashSales)
 
     const [updated] = await db.update(shift).set({
       closed_at: new Date(), closing_cash: String(parsed.data.closing_cash), variance: String(variance),
+      notes: parsed.data.notes ?? null,
     }).where(eq(shift.id, existing.id)).returning()
     return { status: 200 as const, body: { shift: serializeShift(updated!) } }
   })

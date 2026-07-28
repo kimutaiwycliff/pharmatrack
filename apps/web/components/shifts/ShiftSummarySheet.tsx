@@ -4,6 +4,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useQuery } from "@tanstack/react-query"
 import { Clock, X, TrendingUp, Banknote, Smartphone, AlertTriangle } from "lucide-react"
 import { formatKES } from "@/lib/store/cartStore"
+import { varianceSeverity } from "@/lib/shifts/variance"
 
 interface ShiftRow {
   id: string
@@ -172,14 +173,25 @@ export function ShiftSummarySheet({ shiftId, onClose }: Props) {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="flex items-center gap-1 text-[var(--pt-text-secondary)]">
-                          {shift.variance !== null && Math.abs(shift.variance) > 1 && (
-                            <AlertTriangle size={12} className="text-[var(--pt-amber)]" />
-                          )}
+                          {(() => {
+                            const sev = varianceSeverity(shift.variance)
+                            return sev && sev !== "ok" ? (
+                              <AlertTriangle
+                                size={12}
+                                className={sev === "serious" ? "text-[var(--pt-red)]" : "text-[var(--pt-amber)]"}
+                              />
+                            ) : null
+                          })()}
                           Variance
                         </span>
                         <span className={`font-bold tabular-nums ${
-                          shift.variance === null ? "" :
-                          Math.abs(shift.variance) < 1 ? "text-[var(--pt-green)]" : "text-[var(--pt-amber)]"
+                          (() => {
+                            const sev = varianceSeverity(shift.variance)
+                            if (sev === "ok") return "text-[var(--pt-green)]"
+                            if (sev === "serious") return "text-[var(--pt-red)]"
+                            if (sev === "warn") return "text-[var(--pt-amber)]"
+                            return ""
+                          })()
                         }`}>
                           {shift.variance != null ? formatKES(shift.variance) : "—"}
                         </span>

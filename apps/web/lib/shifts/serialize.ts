@@ -12,9 +12,10 @@ export function serializeShift(row: ShiftRow) {
     staff_id: row.cashier_id,
     opening_float: Number(row.opening_float),
     closing_cash: row.closing_cash == null ? null : Number(row.closing_cash),
+    variance: row.variance == null ? null : Number(row.variance),
     clocked_in_at: row.opened_at,
     clocked_out_at: row.closed_at,
-    notes: null as string | null,
+    notes: row.notes,
     created_at: row.opened_at,
   }
 }
