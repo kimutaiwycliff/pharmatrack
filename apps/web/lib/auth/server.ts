@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { organization, admin, haveIBeenPwned, captcha } from "better-auth/plugins"
 import { nextCookies } from "better-auth/next-js"
+import { expo } from "@better-auth/expo"
 import { dbAdmin, user, session, account, verification, organization as organizationTable, member, invitation } from "@pharmatrack/db"
 import { sendEmail } from "@/lib/notifications/email"
 import { pinLogin } from "@/lib/auth/pin-plugin"
@@ -22,6 +23,10 @@ const turnstileConfigured = !!process.env.TURNSTILE_SECRET_KEY
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
+  // ADR-013 — the Android app's custom deep-link scheme, trusted alongside the
+  // web origin (implicit from baseURL) so Better Auth's origin/CSRF check
+  // accepts requests once the `expo` plugin rewrites `expo-origin` → `origin`.
+  trustedOrigins: ["pharmatrack://"],
   database: drizzleAdapter(dbAdmin(), {
     provider: "pg",
     schema: { user, session, account, verification, organization: organizationTable, member, invitation },
@@ -75,6 +80,19 @@ export const auth = betterAuth({
     ? { socialProviders: { google: { clientId: process.env.GOOGLE_CLIENT_ID!, clientSecret: process.env.GOOGLE_CLIENT_SECRET! } } }
     : {}),
   plugins: [
+    // ADR-013 — Android app auth. Translates an incoming `Authorization: Bearer`
+    // header into a request-scoped session cookie (so every plugin below this
+    // one just sees a normal cookie session) and echoes the current token back
+    // via `set-auth-token` on any response that sets a session cookie, including
+    // /sign-in/pin and /sign-in/email. Purely additive — web cookie login is
+    // unaffected. Placed first so downstream plugins see the translated cookie.
+    // ADR-013 — Android app auth. `@better-auth/expo`'s client manages a
+    // cookie jar in SecureStore (captures Set-Cookie, replays it as a Cookie
+    // header on later requests) rather than bearer tokens — so this plugin's
+    // only job is rewriting the `expo-origin` header the client sends (RN has
+    // no browser Origin header) to `origin`, so /sign-in/pin and /sign-in/email
+    // pass Better Auth's origin-trust check against `trustedOrigins` above.
+    expo(),
     organization({
       sendInvitationEmail: async (data) => {
         const url = `${process.env.NEXT_PUBLIC_APP_URL}/auth/accept-invite?id=${data.id}`

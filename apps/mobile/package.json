@@ -1,0 +1,45 @@
+{
+  "name": "mobile",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@better-auth/expo": "^1.6.25",
+    "@morrowdigital/watermelondb-expo-plugin": "2.4.0-beta.0",
+    "@nozbe/watermelondb": "^0.28.0",
+    "@pharmatrack/core": "workspace:^",
+    "@react-native-community/netinfo": "^11.4.1",
+    "better-auth": "^1.6.25",
+    "expo": "~57.0.9",
+    "expo-camera": "~17.0.8",
+    "expo-constants": "~57.0.8",
+    "expo-dev-client": "~6.0.10",
+    "expo-linking": "~57.0.4",
+    "expo-network": "~57.0.1",
+    "expo-router": "~57.0.9",
+    "expo-secure-store": "~15.0.8",
+    "expo-status-bar": "~57.0.1",
+    "expo-web-browser": "~57.0.2",
+    "react": "19.2.4",
+    "react-native": "0.86.0",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.13"
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-decorators": "^7.25.9",
+    "@types/react": "~19.2.2",
+    "eslint": "^9",
+    "eslint-config-expo": "^57.0.1",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo start --dev-client --android",
+    "ios": "expo start --dev-client --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "lint": "expo lint"
+  },
+  "private": true
+}
