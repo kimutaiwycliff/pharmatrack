@@ -334,11 +334,16 @@ export default function Pos() {
                 </>
               ) : null}
 
-              {paymentMethod === "mpesa" && mpesaOffered && isOnline ? (
+              {/* isOnline only gates which methods are SELECTABLE (above) — once
+                  a flow is already active we don't tear it down on a mid-flow
+                  disconnect. "Confirm received" and "Enter code manually"
+                  need no network at all, and a failed Send/Resend surfaces its
+                  own error from sendStkPush()'s network catch. */}
+              {paymentMethod === "mpesa" && mpesaOffered ? (
                 <MpesaFlow amountCents={total()} onConfirmed={onMpesaConfirmed} />
               ) : null}
 
-              {paymentMethod === "split" && mpesaOffered && isOnline ? (
+              {paymentMethod === "split" && mpesaOffered ? (
                 <>
                   <TextInput
                     style={styles.input}
