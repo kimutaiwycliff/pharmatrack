@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { applyDiscount, sumCents, toCents, type Cents } from "@pharmatrack/core"
-import Product from "../db/models/Product"
+import type { ProductRow } from "../db/schema"
 
 export interface CartItem {
   productId: string
@@ -15,7 +15,7 @@ export interface CartItem {
 
 interface CartState {
   items: CartItem[]
-  addProduct: (product: Product) => void
+  addProduct: (product: ProductRow) => void
   incrementQty: (productId: string, delta: number) => void
   removeItem: (productId: string) => void
   clear: () => void

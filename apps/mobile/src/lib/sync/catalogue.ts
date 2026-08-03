@@ -1,6 +1,6 @@
-import { Q } from "@nozbe/watermelondb"
-import { database } from "../../db/database"
-import Product from "../../db/models/Product"
+import { eq, like, or } from "drizzle-orm"
+import { db } from "../../db/database"
+import { products, type ProductRow } from "../../db/schema"
 import { apiFetch } from "../api-fetch"
 
 // Shape of one row from the `product_stock` view, as returned by
@@ -39,65 +39,59 @@ interface ApiProduct {
 export async function syncCatalogue(branchId: string): Promise<{ count: number }> {
   const res = await apiFetch(`/api/products/search?all=1&branch_id=${branchId}`)
   if (!res.ok) throw new Error(`Catalogue sync failed: ${res.status}`)
-  const { products } = (await res.json()) as { products: ApiProduct[] }
+  const { products: apiProducts } = (await res.json()) as { products: ApiProduct[] }
 
-  const collection = database.get<Product>("products")
-
-  await database.write(async () => {
-    const existing = await collection.query().fetch()
-    const deletions = existing.map((p) => p.prepareDestroyPermanently())
-    const creations = products.map((p) =>
-      collection.prepareCreate((record) => {
-        record.productId = p.product_id
-        record.name = p.name
-        record.brandName = p.brand_name
-        record.genericName = p.generic_name
-        record.strength = p.strength
-        record.dosageForm = p.dosage_form
-        record.baseUnit = p.base_unit
-        record.packLabel = p.pack_label
-        record.unitsPerPack = p.units_per_pack
-        record.sellingPrice = p.selling_price
-        record.costPrice = p.cost_price
-        record.reorderLevel = p.reorder_level
-        record.isControlled = p.is_controlled
-        record.requiresPrescription = p.requires_prescription
-        record.gtin = p.gtin
-        record.barcodeRaw = p.barcode_raw
-        record.categoryId = p.category_id
-        record.isActive = p.is_active
-        record.imageUrl = p.image_url
-        record.maxDiscountPercent = p.max_discount_percent
-        record.catalogId = p.catalog_id
-        record.stockOnHand = p.stock_on_hand
-        record.earliestExpiry = p.earliest_expiry
-        record.batchCount = p.batch_count
-      }),
+  await db.transaction(async (tx) => {
+    await tx.delete(products)
+    if (apiProducts.length === 0) return
+    await tx.insert(products).values(
+      apiProducts.map((p) => ({
+        productId: p.product_id,
+        name: p.name,
+        brandName: p.brand_name,
+        genericName: p.generic_name,
+        strength: p.strength,
+        dosageForm: p.dosage_form,
+        baseUnit: p.base_unit,
+        packLabel: p.pack_label,
+        unitsPerPack: p.units_per_pack,
+        sellingPrice: p.selling_price,
+        costPrice: p.cost_price,
+        reorderLevel: p.reorder_level,
+        isControlled: p.is_controlled,
+        requiresPrescription: p.requires_prescription,
+        gtin: p.gtin,
+        barcodeRaw: p.barcode_raw,
+        categoryId: p.category_id,
+        isActive: p.is_active,
+        imageUrl: p.image_url,
+        maxDiscountPercent: p.max_discount_percent,
+        catalogId: p.catalog_id,
+        stockOnHand: p.stock_on_hand,
+        earliestExpiry: p.earliest_expiry,
+        batchCount: p.batch_count,
+      })),
     )
-    await database.batch(...deletions, ...creations)
   })
 
-  return { count: products.length }
+  return { count: apiProducts.length }
 }
 
-export async function searchLocalProducts(query: string): Promise<Product[]> {
-  const collection = database.get<Product>("products")
-  if (!query.trim()) return collection.query(Q.take(50)).fetch()
-  return collection
-    .query(
-      Q.or(
-        Q.where("name", Q.like(`%${Q.sanitizeLikeString(query)}%`)),
-        Q.where("brand_name", Q.like(`%${Q.sanitizeLikeString(query)}%`)),
-        Q.where("barcode_raw", query),
-        Q.where("gtin", query),
-      ),
-      Q.take(50),
-    )
-    .fetch()
+export async function searchLocalProducts(query: string): Promise<ProductRow[]> {
+  if (!query.trim()) return db.select().from(products).limit(50)
+  const like_ = `%${query}%`
+  return db
+    .select()
+    .from(products)
+    .where(or(like(products.name, like_), like(products.brandName, like_), eq(products.barcodeRaw, query), eq(products.gtin, query)))
+    .limit(50)
 }
 
-export async function findByBarcode(code: string): Promise<Product | null> {
-  const collection = database.get<Product>("products")
-  const matches = await collection.query(Q.or(Q.where("barcode_raw", code), Q.where("gtin", code)), Q.take(1)).fetch()
+export async function findByBarcode(code: string): Promise<ProductRow | null> {
+  const matches = await db
+    .select()
+    .from(products)
+    .where(or(eq(products.barcodeRaw, code), eq(products.gtin, code)))
+    .limit(1)
   return matches[0] ?? null
 }

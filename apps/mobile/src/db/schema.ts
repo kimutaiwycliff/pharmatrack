@@ -1,56 +1,49 @@
-import { appSchema, tableSchema } from "@nozbe/watermelondb"
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core"
 
 // Mirrors the `product_stock` view fields returned by
 // GET /api/products/search?all=1&branch_id= (apps/web/app/api/products/search/route.ts)
 // — the full-set catalogue fetch this app caches locally. No incremental sync;
 // re-seeded wholesale on login/foreground/reconnect (see lib/sync/catalogue.ts).
-const products = tableSchema({
-  name: "products",
-  columns: [
-    { name: "product_id", type: "string", isIndexed: true },
-    { name: "name", type: "string" },
-    { name: "brand_name", type: "string", isOptional: true },
-    { name: "generic_name", type: "string", isOptional: true },
-    { name: "strength", type: "string", isOptional: true },
-    { name: "dosage_form", type: "string", isOptional: true },
-    { name: "base_unit", type: "string" },
-    { name: "pack_label", type: "string", isOptional: true },
-    { name: "units_per_pack", type: "number" },
-    { name: "selling_price", type: "number" },
-    { name: "cost_price", type: "number", isOptional: true },
-    { name: "reorder_level", type: "number" },
-    { name: "is_controlled", type: "boolean" },
-    { name: "requires_prescription", type: "boolean" },
-    { name: "gtin", type: "string", isOptional: true },
-    { name: "barcode_raw", type: "string", isOptional: true, isIndexed: true },
-    { name: "category_id", type: "string", isOptional: true },
-    { name: "is_active", type: "boolean" },
-    { name: "image_url", type: "string", isOptional: true },
-    { name: "max_discount_percent", type: "number", isOptional: true },
-    { name: "catalog_id", type: "string", isOptional: true },
-    { name: "stock_on_hand", type: "number" },
-    { name: "earliest_expiry", type: "string", isOptional: true },
-    { name: "batch_count", type: "number" },
-  ],
+export const products = sqliteTable("products", {
+  productId: text("product_id").primaryKey(),
+  name: text("name").notNull(),
+  brandName: text("brand_name"),
+  genericName: text("generic_name"),
+  strength: text("strength"),
+  dosageForm: text("dosage_form"),
+  baseUnit: text("base_unit").notNull(),
+  packLabel: text("pack_label"),
+  unitsPerPack: integer("units_per_pack").notNull(),
+  sellingPrice: real("selling_price").notNull(),
+  costPrice: real("cost_price"),
+  reorderLevel: integer("reorder_level").notNull(),
+  isControlled: integer("is_controlled", { mode: "boolean" }).notNull(),
+  requiresPrescription: integer("requires_prescription", { mode: "boolean" }).notNull(),
+  gtin: text("gtin"),
+  barcodeRaw: text("barcode_raw"),
+  categoryId: text("category_id"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull(),
+  imageUrl: text("image_url"),
+  maxDiscountPercent: real("max_discount_percent"),
+  catalogId: text("catalog_id"),
+  stockOnHand: integer("stock_on_hand").notNull(),
+  earliestExpiry: text("earliest_expiry"),
+  batchCount: integer("batch_count").notNull(),
 })
 
 // Mirrors the Dexie `offlineSales` store (apps/web/lib/offline/db.ts) — one row
 // per queued sale. `payload` is the JSON-serialized saleSchema request body
 // (apps/web/app/api/sales/route.ts) sent as-is to POST /api/sales once synced.
-const queuedSales = tableSchema({
-  name: "queued_sales",
-  columns: [
-    { name: "offline_reference", type: "string", isIndexed: true },
-    { name: "branch_id", type: "string" },
-    { name: "payload", type: "string" },
-    { name: "status", type: "string", isIndexed: true }, // pending | synced | rejected
-    { name: "server_response", type: "string", isOptional: true },
-    { name: "error_message", type: "string", isOptional: true },
-    { name: "created_at", type: "number" },
-  ],
+export const queuedSales = sqliteTable("queued_sales", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  offlineReference: text("offline_reference").notNull().unique(),
+  branchId: text("branch_id").notNull(),
+  payload: text("payload").notNull(),
+  status: text("status", { enum: ["pending", "synced", "rejected"] }).notNull(),
+  serverResponse: text("server_response"),
+  errorMessage: text("error_message"),
+  createdAt: integer("created_at").notNull(),
 })
 
-export const schema = appSchema({
-  version: 1,
-  tables: [products, queuedSales],
-})
+export type ProductRow = typeof products.$inferSelect
+export type QueuedSaleRow = typeof queuedSales.$inferSelect

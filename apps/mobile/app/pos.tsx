@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
 import { formatKES } from "@pharmatrack/core"
-import Product from "../src/db/models/Product"
+import type { ProductRow } from "../src/db/schema"
 import { searchLocalProducts } from "../src/lib/sync/catalogue"
 import { buildCashSalePayload, queueSale } from "../src/lib/sync/sales"
 import { useSyncEngine } from "../src/lib/sync/useSyncEngine"
@@ -25,7 +25,7 @@ export default function Pos() {
   const { items, addProduct, incrementQty, clear, subtotal, total } = useCartStore()
 
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<Product[]>([])
+  const [results, setResults] = useState<ProductRow[]>([])
   const [tendered, setTendered] = useState("")
   const [receipt, setReceipt] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)

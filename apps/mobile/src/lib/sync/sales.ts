@@ -1,7 +1,7 @@
-import { Q } from "@nozbe/watermelondb"
+import { asc, eq } from "drizzle-orm"
 import { fromCents } from "@pharmatrack/core"
-import { database } from "../../db/database"
-import QueuedSale from "../../db/models/QueuedSale"
+import { db } from "../../db/database"
+import { queuedSales } from "../../db/schema"
 import { apiFetch } from "../api-fetch"
 import type { CartItem } from "../../store/cart"
 
@@ -72,17 +72,14 @@ export function buildCashSalePayload(args: {
 }
 
 export async function queueSale(payload: SalePayload): Promise<void> {
-  const collection = database.get<QueuedSale>("queued_sales")
-  await database.write(async () => {
-    await collection.create((record) => {
-      record.offlineReference = payload.offline_reference
-      record.branchId = payload.branch_id
-      record.payload = JSON.stringify(payload)
-      record.status = "pending"
-      record.serverResponse = null
-      record.errorMessage = null
-      record.createdAt = Date.now()
-    })
+  await db.insert(queuedSales).values({
+    offlineReference: payload.offline_reference,
+    branchId: payload.branch_id,
+    payload: JSON.stringify(payload),
+    status: "pending",
+    serverResponse: null,
+    errorMessage: null,
+    createdAt: Date.now(),
   })
 }
 
@@ -90,8 +87,11 @@ export async function queueSale(payload: SalePayload): Promise<void> {
 // queued sales in order, 2xx -> synced, 4xx (not 429) -> permanent rejection,
 // 5xx/429/network error -> stop and preserve queue order for the next attempt.
 export async function syncQueuedSales(): Promise<{ synced: number; rejected: number }> {
-  const collection = database.get<QueuedSale>("queued_sales")
-  const pending = await collection.query(Q.where("status", "pending"), Q.sortBy("created_at", Q.asc)).fetch()
+  const pending = await db
+    .select()
+    .from(queuedSales)
+    .where(eq(queuedSales.status, "pending"))
+    .orderBy(asc(queuedSales.createdAt))
 
   let synced = 0
   let rejected = 0
@@ -109,12 +109,10 @@ export async function syncQueuedSales(): Promise<{ synced: number; rejected: num
 
     if (response.ok) {
       const body = await response.json().catch(() => null)
-      await database.write(async () => {
-        await sale.update((r) => {
-          r.status = "synced"
-          r.serverResponse = body ? JSON.stringify(body) : null
-        })
-      })
+      await db
+        .update(queuedSales)
+        .set({ status: "synced", serverResponse: body ? JSON.stringify(body) : null })
+        .where(eq(queuedSales.id, sale.id))
       synced++
       continue
     }
@@ -125,12 +123,10 @@ export async function syncQueuedSales(): Promise<{ synced: number; rejected: num
 
     // 4xx (not 429): permanent rejection (e.g. insufficient stock)
     const errorBody = await response.json().catch(() => ({}))
-    await database.write(async () => {
-      await sale.update((r) => {
-        r.status = "rejected"
-        r.errorMessage = (errorBody as { error?: string }).error ?? `HTTP ${response.status}`
-      })
-    })
+    await db
+      .update(queuedSales)
+      .set({ status: "rejected", errorMessage: (errorBody as { error?: string }).error ?? `HTTP ${response.status}` })
+      .where(eq(queuedSales.id, sale.id))
     rejected++
   }
 
