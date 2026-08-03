@@ -16,3 +16,21 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     },
   })
 }
+
+// For multipart uploads (e.g. POST /api/uploads/product-image) — apiFetch()
+// above unconditionally forces Content-Type: application/json, which breaks
+// multipart bodies. React Native's fetch/FormData needs to set its own
+// `multipart/form-data; boundary=...` header itself, so this variant attaches
+// the same session cookie but leaves Content-Type unset entirely.
+export async function apiFetchFormData(path: string, formData: FormData, init?: RequestInit): Promise<Response> {
+  const cookie = getCookie()
+  return fetch(`${env.EXPO_PUBLIC_API_URL}${path}`, {
+    ...init,
+    method: init?.method ?? "POST",
+    body: formData,
+    headers: {
+      ...(init?.headers ?? {}),
+      ...(cookie ? { cookie } : {}),
+    },
+  })
+}
