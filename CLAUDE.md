@@ -821,7 +821,8 @@ Recommended providers (in order):
 - No Kannel / GSM modem — Africa's Talking only
 - No e-commerce marketplace (Zendawa's lane)
 - No AI/ML forecasting (add in v2 if traction justifies)
-- No native mobile app — PWA covers offline POS
+- ~~No native mobile app — PWA covers offline POS~~ Superseded by **ADR-013**
+  (Android via React Native + WatermelonDB, for thermal-printer/Play Store needs)
 - No Postal email server at launch — Resend only
 - **No eTIMS or SHA code before Phase 8** — no columns, no jobs, no env vars, no imports
 
