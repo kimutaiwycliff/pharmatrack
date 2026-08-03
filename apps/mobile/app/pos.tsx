@@ -20,7 +20,7 @@ function randomUUID(): string {
 }
 
 export default function Pos() {
-  const { branchId, loadMe, loaded } = useSessionStore()
+  const { branchId, loadMe, loaded, error: sessionError } = useSessionStore()
   const { isOnline, lastSyncedAt } = useSyncEngine(branchId)
   const { items, addProduct, incrementQty, clear, subtotal, total } = useCartStore()
 
@@ -84,7 +84,14 @@ export default function Pos() {
         </Pressable>
       </View>
 
-      {!loaded ? (
+      {sessionError ? (
+        <View style={{ gap: 8 }}>
+          <Text style={styles.error}>{sessionError}</Text>
+          <Pressable style={styles.button} onPress={() => loadMe()}>
+            <Text style={styles.buttonText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : !loaded ? (
         <Text style={styles.receiptText}>Loading…</Text>
       ) : (
         <>
