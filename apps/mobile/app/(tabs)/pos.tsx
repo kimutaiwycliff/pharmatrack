@@ -2,18 +2,21 @@ import { useEffect, useState } from "react"
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
-import { formatKES } from "@pharmatrack/core"
+import { formatKES, fromCents } from "@pharmatrack/core"
 import type { ProductRow } from "../../src/db/schema"
 import { searchLocalProducts } from "../../src/lib/sync/catalogue"
-import { buildCashSalePayload, queueSale } from "../../src/lib/sync/sales"
+import { buildSalePayload, queueSale } from "../../src/lib/sync/sales"
 import { useSyncEngine } from "../../src/lib/sync/useSyncEngine"
+import { fetchMpesaAvailability, type MpesaAvailability } from "../../src/lib/mpesa"
 import { useSessionStore } from "../../src/store/session"
 import { useShiftStore } from "../../src/store/shift"
 import { useCartStore } from "../../src/store/cart"
 import { signOut } from "../../src/lib/auth-client"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
-import { Button, Card, EmptyState, Screen, StatusBadge } from "../../src/components"
+import { Button, Card, EmptyState, MpesaFlow, Screen, StatusBadge } from "../../src/components"
+
+type PaymentMethod = "cash" | "mpesa" | "split"
 
 function randomUUID(): string {
   // crypto.randomUUID isn't available in the Hermes runtime; RFC4122-ish v4.
@@ -38,6 +41,11 @@ export default function Pos() {
   const [receipt, setReceipt] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
+  const [mpesaAvailability, setMpesaAvailability] = useState<MpesaAvailability | null>(null)
+  const [splitCash, setSplitCash] = useState("")
+  const [splitMpesa, setSplitMpesa] = useState("")
+
   useEffect(() => {
     loadMe()
     loadActiveShift()
@@ -46,6 +54,35 @@ export default function Pos() {
   useEffect(() => {
     searchLocalProducts(query).then(setResults)
   }, [query, lastSyncedAt])
+
+  // Fetched once on screen load, not re-fetched on every render — mirrors the
+  // web POS's mpesaAvailable query (apps/web/app/(pos)/pos/page.tsx), just
+  // without the react-query staleTime plumbing.
+  useEffect(() => {
+    fetchMpesaAvailability().then(setMpesaAvailability)
+  }, [])
+
+  // M-Pesa/Split are only offered when the tenant's plan+config allow STK push
+  // at all (mirrors web's stkAvailable gating) — while this is still loading
+  // the selector stays hidden, same as "not available".
+  const mpesaOffered = mpesaAvailability?.available ?? false
+
+  const splitCashCents = splitCash.trim() === "" ? null : Math.round(Number(splitCash) * 100)
+  const splitMpesaCents = splitMpesa.trim() === "" ? null : Math.round(Number(splitMpesa) * 100)
+  const splitNumbersValid =
+    splitCashCents != null && splitMpesaCents != null && !Number.isNaN(splitCashCents) && !Number.isNaN(splitMpesaCents)
+  // "within 1 cent" per spec — the server never re-validates this sum, so the
+  // client must enforce it before allowing confirm.
+  const splitBalanced = splitNumbersValid && Math.abs(splitCashCents + splitMpesaCents - total()) <= 1
+  const splitBothPositive = splitNumbersValid && splitCashCents > 0 && splitMpesaCents > 0
+  const splitReady = splitBalanced && splitBothPositive
+
+  function splitEvenly() {
+    const totalC = total()
+    const half = Math.floor(totalC / 2)
+    setSplitCash(fromCents(half))
+    setSplitMpesa(fromCents(totalC - half))
+  }
 
   async function onCheckout() {
     setCheckoutError(null)
@@ -59,18 +96,59 @@ export default function Pos() {
       return
     }
     const offlineReference = randomUUID()
-    const payload = buildCashSalePayload({
+    const payload = buildSalePayload({
+      paymentMethod: "cash",
       branchId,
       shiftId: activeShift.id,
       items,
-      amountTendered: tenderedAmount,
       totalCents: total(),
       offlineReference,
+      amountTenderedCents: Math.round(tenderedAmount * 100),
     })
     await queueSale(payload)
     setReceipt(offlineReference)
     clear()
     setTendered("")
+  }
+
+  async function onMpesaConfirmed(reference: string | null) {
+    if (!branchId || !activeShift || items.length === 0) return
+    const offlineReference = randomUUID()
+    const payload = buildSalePayload({
+      paymentMethod: "mpesa",
+      branchId,
+      shiftId: activeShift.id,
+      items,
+      totalCents: total(),
+      offlineReference,
+      mpesaReference: reference,
+    })
+    await queueSale(payload)
+    setReceipt(offlineReference)
+    clear()
+    setPaymentMethod("cash")
+  }
+
+  async function onSplitConfirmed(reference: string | null) {
+    if (!branchId || !activeShift || items.length === 0 || splitCashCents == null || splitMpesaCents == null) return
+    const offlineReference = randomUUID()
+    const payload = buildSalePayload({
+      paymentMethod: "split",
+      branchId,
+      shiftId: activeShift.id,
+      items,
+      totalCents: total(),
+      offlineReference,
+      cashAmountCents: splitCashCents,
+      mpesaAmountCents: splitMpesaCents,
+      mpesaReference: reference,
+    })
+    await queueSale(payload)
+    setReceipt(offlineReference)
+    clear()
+    setSplitCash("")
+    setSplitMpesa("")
+    setPaymentMethod("cash")
   }
 
   if (receipt) {
@@ -206,21 +284,90 @@ export default function Pos() {
             </Card>
           ) : (
             <>
-              <TextInput
-                style={styles.input}
-                placeholder="Cash tendered (KES)"
-                placeholderTextColor={theme.textTertiary}
-                keyboardType="decimal-pad"
-                value={tendered}
-                onChangeText={setTendered}
-              />
-              {checkoutError ? <Text style={styles.error}>{checkoutError}</Text> : null}
-              <Button
-                title="Complete cash sale"
-                onPress={onCheckout}
-                disabled={items.length === 0}
-                icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
-              />
+              {mpesaOffered ? (
+                <>
+                  <View style={styles.methodRow}>
+                    <Button
+                      title="Cash"
+                      variant={paymentMethod === "cash" ? "primary" : "secondary"}
+                      onPress={() => setPaymentMethod("cash")}
+                      style={styles.methodButton}
+                    />
+                    <Button
+                      title="M-Pesa"
+                      variant={paymentMethod === "mpesa" ? "primary" : "secondary"}
+                      onPress={() => setPaymentMethod("mpesa")}
+                      disabled={!isOnline}
+                      style={styles.methodButton}
+                    />
+                    <Button
+                      title="Split"
+                      variant={paymentMethod === "split" ? "primary" : "secondary"}
+                      onPress={() => setPaymentMethod("split")}
+                      disabled={!isOnline}
+                      style={styles.methodButton}
+                    />
+                  </View>
+                  {!isOnline ? (
+                    <Text style={styles.offlineNoticeText}>M-Pesa and Split require an internet connection</Text>
+                  ) : null}
+                </>
+              ) : null}
+
+              {paymentMethod === "cash" ? (
+                <>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Cash tendered (KES)"
+                    placeholderTextColor={theme.textTertiary}
+                    keyboardType="decimal-pad"
+                    value={tendered}
+                    onChangeText={setTendered}
+                  />
+                  {checkoutError ? <Text style={styles.error}>{checkoutError}</Text> : null}
+                  <Button
+                    title="Complete cash sale"
+                    onPress={onCheckout}
+                    disabled={items.length === 0}
+                    icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
+                  />
+                </>
+              ) : null}
+
+              {paymentMethod === "mpesa" && mpesaOffered && isOnline ? (
+                <MpesaFlow amountCents={total()} onConfirmed={onMpesaConfirmed} />
+              ) : null}
+
+              {paymentMethod === "split" && mpesaOffered && isOnline ? (
+                <>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Cash portion (KES)"
+                    placeholderTextColor={theme.textTertiary}
+                    keyboardType="decimal-pad"
+                    value={splitCash}
+                    onChangeText={setSplitCash}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="M-Pesa portion (KES)"
+                    placeholderTextColor={theme.textTertiary}
+                    keyboardType="decimal-pad"
+                    value={splitMpesa}
+                    onChangeText={setSplitMpesa}
+                  />
+                  <Button title="Split evenly" variant="secondary" onPress={splitEvenly} />
+                  {splitNumbersValid && !splitBalanced ? (
+                    <Text style={styles.error}>Cash + M-Pesa must add up to {formatKES(total())}</Text>
+                  ) : null}
+                  {splitBalanced && !splitBothPositive ? (
+                    <Text style={styles.error}>Enter both a cash amount and an M-Pesa amount</Text>
+                  ) : null}
+                  {splitReady && splitMpesaCents != null ? (
+                    <MpesaFlow amountCents={splitMpesaCents} onConfirmed={onSplitConfirmed} />
+                  ) : null}
+                </>
+              ) : null}
             </>
           )}
         </>
@@ -272,6 +419,8 @@ function createStyles(theme: Theme) {
     qty: { width: 24, textAlign: "center", color: theme.text },
     totalsCard: { gap: 4 },
     errorCard: { gap: 8 },
+    methodRow: { flexDirection: "row", gap: 8 },
+    methodButton: { flex: 1, paddingVertical: 10, paddingHorizontal: 8 },
     offlineNoticeCard: { paddingVertical: 8, borderColor: theme.amber, borderWidth: 1 },
     offlineNoticeText: { color: theme.amber, fontSize: 13 },
     totalText: { fontSize: 16, fontWeight: "600", color: theme.text },
