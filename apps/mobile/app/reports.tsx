@@ -725,7 +725,11 @@ export default function Reports() {
         <ScreenHeader title="Reports" />
         <FlatList
           data={inventoryPayload?.items ?? []}
-          keyExtractor={(item) => item.product_id}
+          // product_id alone isn't unique here: with "All branches" selected,
+          // the API returns one row per product PER BRANCH sharing the same
+          // product_id (confirmed on-device — a real "All branches" tenant
+          // showed duplicate rows and a React key-collision warning).
+          keyExtractor={(item, index) => `${item.product_id}-${index}`}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.green} />}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
