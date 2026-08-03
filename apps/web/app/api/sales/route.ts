@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq, gt, gte, lte, asc, desc, ilike, inArray, sql } from "drizzle-orm"
 import {
-  withTenant, product_batch, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings,
+  withTenant, product, product_batch, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings,
 } from "@pharmatrack/db"
 import { getTenantContext } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
@@ -12,6 +12,13 @@ interface Shortfall { product_id: string; product_name: string; requested: numbe
 // Thrown to roll back the sale transaction when stock is insufficient.
 class InsufficientStockError extends Error {
   constructor(public shortfalls: Shortfall[]) { super("Insufficient stock") }
+}
+
+// Thrown when a submitted product_id doesn't resolve to a real, org-scoped
+// product — either a stale/bad client payload, or a tampered request
+// referencing a product that doesn't belong to this tenant.
+class InvalidProductError extends Error {
+  constructor(public productId: string, public productName: string) { super("Invalid product") }
 }
 
 const cartItemSchema = z.object({
@@ -114,9 +121,6 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return zodErrorResponse(parsed.error)
   const data = parsed.data
 
-  const subtotal = Number(data.items.reduce((s, i) => s + i.line_total, 0).toFixed(2))
-  const totalAmount = Math.max(0, Number((subtotal - data.discount_amount).toFixed(2)))
-
   let out
   try {
     out = await withTenant(ctx, async (db) => {
@@ -126,8 +130,36 @@ export async function POST(request: NextRequest) {
       if (dupe) return { sale: dupe, items: [], deduped: true }
     }
 
-    // ── Stock guard: never sell more than is on hand for this branch ──────────
     const productIds = [...new Set(data.items.map((i) => i.product_id))]
+
+    // ── Price guard: the server is the source of truth for money, never the
+    // client — a request payload (mobile or web) is just as easy to tamper
+    // with as any other client input, so unit_price/discount_percent/line_total
+    // submitted by the caller are never trusted for the actual charge. Each
+    // line is recomputed here from the product's current selling_price and
+    // max_discount_percent (client's discount is only ever clamped down, never
+    // trusted upward) before anything is persisted.
+    const priceRows = await db.select({
+      id: product.id, selling_price: product.selling_price, max_discount_percent: product.max_discount_percent,
+    }).from(product).where(inArray(product.id, productIds))
+    const priceMap = new Map(priceRows.map((p) => [p.id, {
+      sellingPrice: Number(p.selling_price),
+      maxDiscount: p.max_discount_percent != null ? Number(p.max_discount_percent) : 100,
+    }]))
+
+    const itemPricing = data.items.map((item) => {
+      const priced = priceMap.get(item.product_id)
+      if (!priced) throw new InvalidProductError(item.product_id, item.product_name)
+      const unitPrice = priced.sellingPrice
+      const discountPercent = Math.min(item.discount_percent, priced.maxDiscount)
+      const lineTotal = Number((item.quantity * unitPrice * (1 - discountPercent / 100)).toFixed(2))
+      return { unitPrice, discountPercent, lineTotal }
+    })
+
+    const subtotal = Number(itemPricing.reduce((s, p) => s + p.lineTotal, 0).toFixed(2))
+    const totalAmount = Math.max(0, Number((subtotal - data.discount_amount).toFixed(2)))
+
+    // ── Stock guard: never sell more than is on hand for this branch ──────────
     const availRows = await db.select({
       pid: product_batch.product_id,
       avail: sql<number>`coalesce(sum(${product_batch.quantity_remaining}), 0)::int`,
@@ -175,7 +207,9 @@ export async function POST(request: NextRequest) {
     const rows: Array<typeof sale_item.$inferInsert> = []
     const meta: Array<{ controlled: boolean; batch_number: string | null }> = []
 
-    for (const item of data.items) {
+    for (let idx = 0; idx < data.items.length; idx++) {
+      const item = data.items[idx]!
+      const priced = itemPricing[idx]!
       const batches = await db.select({
         id: product_batch.id, quantity_remaining: product_batch.quantity_remaining, batch_number: product_batch.batch_number,
       }).from(product_batch)
@@ -192,9 +226,9 @@ export async function POST(request: NextRequest) {
           .where(and(eq(product_batch.id, batch.id), eq(product_batch.quantity_remaining, batch.quantity_remaining)))
         rows.push({
           sale_id: saleRow!.id, product_id: item.product_id, batch_id: batch.id,
-          product_name: item.product_name, quantity: take, unit_price: String(item.unit_price),
-          discount_percent: String(item.discount_percent),
-          line_total: String(Number((take * item.unit_price * (1 - item.discount_percent / 100)).toFixed(2))),
+          product_name: item.product_name, quantity: take, unit_price: String(priced.unitPrice),
+          discount_percent: String(priced.discountPercent),
+          line_total: String(Number((take * priced.unitPrice * (1 - priced.discountPercent / 100)).toFixed(2))),
           base_unit: item.base_unit, product_strength: item.product_strength,
         })
         meta.push({ controlled: item.is_controlled, batch_number: batch.batch_number })
@@ -265,6 +299,12 @@ export async function POST(request: NextRequest) {
     return { sale: saleOut, items, paperWidth }
     })
   } catch (e) {
+    if (e instanceof InvalidProductError) {
+      return NextResponse.json(
+        { error: `Unknown product: ${e.productName}`, code: "invalid_product" },
+        { status: 400 },
+      )
+    }
     if (e instanceof InsufficientStockError) {
       const names = e.shortfalls.map((s) => `${s.product_name} (have ${s.available}, need ${s.requested})`).join(", ")
       // `error` carries the user-facing text (postJson surfaces it to a toast);
