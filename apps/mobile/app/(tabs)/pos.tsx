@@ -3,16 +3,17 @@ import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-na
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { formatKES } from "@pharmatrack/core"
-import type { ProductRow } from "../src/db/schema"
-import { searchLocalProducts } from "../src/lib/sync/catalogue"
-import { buildCashSalePayload, queueSale } from "../src/lib/sync/sales"
-import { useSyncEngine } from "../src/lib/sync/useSyncEngine"
-import { useSessionStore } from "../src/store/session"
-import { useCartStore } from "../src/store/cart"
-import { signOut } from "../src/lib/auth-client"
-import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Card, EmptyState, Screen, StatusBadge } from "../src/components"
+import type { ProductRow } from "../../src/db/schema"
+import { searchLocalProducts } from "../../src/lib/sync/catalogue"
+import { buildCashSalePayload, queueSale } from "../../src/lib/sync/sales"
+import { useSyncEngine } from "../../src/lib/sync/useSyncEngine"
+import { useSessionStore } from "../../src/store/session"
+import { useShiftStore } from "../../src/store/shift"
+import { useCartStore } from "../../src/store/cart"
+import { signOut } from "../../src/lib/auth-client"
+import { useTheme } from "../../src/theme/useTheme"
+import type { Theme } from "../../src/theme/tokens"
+import { Button, Card, EmptyState, Screen, StatusBadge } from "../../src/components"
 
 function randomUUID(): string {
   // crypto.randomUUID isn't available in the Hermes runtime; RFC4122-ish v4.
@@ -27,6 +28,7 @@ export default function Pos() {
   const theme = useTheme()
   const styles = createStyles(theme)
   const { branchId, loadMe, loaded, error: sessionError } = useSessionStore()
+  const { activeShift, loadActiveShift } = useShiftStore()
   const { isOnline, lastSyncedAt } = useSyncEngine(branchId)
   const { items, addProduct, incrementQty, clear, subtotal, total } = useCartStore()
 
@@ -38,7 +40,8 @@ export default function Pos() {
 
   useEffect(() => {
     loadMe()
-  }, [loadMe])
+    loadActiveShift()
+  }, [loadMe, loadActiveShift])
 
   useEffect(() => {
     searchLocalProducts(query).then(setResults)
@@ -46,6 +49,10 @@ export default function Pos() {
 
   async function onCheckout() {
     setCheckoutError(null)
+    if (!activeShift) {
+      setCheckoutError("Clock in before taking sales")
+      return
+    }
     const tenderedAmount = Number(tendered)
     if (!branchId || items.length === 0 || !tenderedAmount || tenderedAmount * 100 < total()) {
       setCheckoutError("Enter a tendered amount covering the total")
@@ -54,6 +61,7 @@ export default function Pos() {
     const offlineReference = randomUUID()
     const payload = buildCashSalePayload({
       branchId,
+      shiftId: activeShift.id,
       items,
       amountTendered: tenderedAmount,
       totalCents: total(),
@@ -176,21 +184,34 @@ export default function Pos() {
             <Text style={styles.totalText}>Total: {formatKES(total())}</Text>
           </Card>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Cash tendered (KES)"
-            placeholderTextColor={theme.textTertiary}
-            keyboardType="decimal-pad"
-            value={tendered}
-            onChangeText={setTendered}
-          />
-          {checkoutError ? <Text style={styles.error}>{checkoutError}</Text> : null}
-          <Button
-            title="Complete cash sale"
-            onPress={onCheckout}
-            disabled={items.length === 0}
-            icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
-          />
+          {!activeShift ? (
+            <Card style={styles.errorCard}>
+              <Text style={styles.receiptText}>Clock in before taking sales</Text>
+              <Button
+                title="Go to Shifts"
+                onPress={() => router.push("/shifts")}
+                icon={<Ionicons name="time-outline" size={18} color="#fff" />}
+              />
+            </Card>
+          ) : (
+            <>
+              <TextInput
+                style={styles.input}
+                placeholder="Cash tendered (KES)"
+                placeholderTextColor={theme.textTertiary}
+                keyboardType="decimal-pad"
+                value={tendered}
+                onChangeText={setTendered}
+              />
+              {checkoutError ? <Text style={styles.error}>{checkoutError}</Text> : null}
+              <Button
+                title="Complete cash sale"
+                onPress={onCheckout}
+                disabled={items.length === 0}
+                icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
+              />
+            </>
+          )}
         </>
       )}
     </Screen>

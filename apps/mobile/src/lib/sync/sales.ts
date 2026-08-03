@@ -31,21 +31,24 @@ interface SalePayload {
   offline_reference: string
 }
 
-// No shift clock-in flow on mobile yet (out of scope for this slice per
-// ADR-013) — shift_id is nullable in the schema, so cash sales queue fine
-// without one.
+// shiftId is required (not nullable): a null shift_id never joins to
+// sale.shift_id in the clock-out variance calc (payment.method='cash' joined
+// via sale.shift_id), so cash sales would silently vanish from till variance
+// and shift reporting. The caller (pos.tsx) must block checkout until a
+// shift is open — see the Shifts screen for clock-in.
 export function buildCashSalePayload(args: {
   branchId: string
+  shiftId: string
   items: CartItem[]
   amountTendered: number
   totalCents: number
   offlineReference: string
 }): SalePayload {
-  const { branchId, items, amountTendered, totalCents, offlineReference } = args
+  const { branchId, shiftId, items, amountTendered, totalCents, offlineReference } = args
   const amountTenderedCents = Math.round(amountTendered * 100)
   return {
     branch_id: branchId,
-    shift_id: null,
+    shift_id: shiftId,
     items: items.map((i) => {
       const lineTotalCents = i.unitPrice * i.quantity - Math.round((i.unitPrice * i.quantity * i.discountPercent) / 100)
       return {
