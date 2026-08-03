@@ -407,7 +407,7 @@ export default function Staff() {
         ListHeaderComponent={
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>Staff</Text>
+              <ScreenHeader title="Staff" />
               <Button
                 title={showInviteForm ? "Close" : "Invite"}
                 onPress={() => (showInviteForm ? closeInvite() : openInvite())}
