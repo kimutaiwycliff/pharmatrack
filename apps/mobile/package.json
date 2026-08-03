@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@better-auth/expo": "^1.6.25",
+    "@expo/vector-icons": "^15.0.2",
     "@pharmatrack/core": "workspace:^",
     "@react-native-community/netinfo": "^12.0.1",
     "better-auth": "^1.6.25",

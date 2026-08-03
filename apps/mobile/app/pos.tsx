@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
+import { Ionicons } from "@expo/vector-icons"
 import { formatKES } from "@pharmatrack/core"
 import type { ProductRow } from "../src/db/schema"
 import { searchLocalProducts } from "../src/lib/sync/catalogue"
@@ -11,6 +12,7 @@ import { useCartStore } from "../src/store/cart"
 import { signOut } from "../src/lib/auth-client"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
+import { Button, Card, EmptyState, Screen, StatusBadge } from "../src/components"
 
 function randomUUID(): string {
   // crypto.randomUUID isn't available in the Hermes runtime; RFC4122-ish v4.
@@ -65,83 +67,114 @@ export default function Pos() {
 
   if (receipt) {
     return (
-      <View style={styles.container}>
+      <Screen style={styles.receiptContainer}>
+        <Ionicons name="checkmark-circle-outline" size={56} color={theme.green} />
         <Text style={styles.title}>Sale recorded</Text>
         <Text style={styles.receiptText}>Reference: {receipt}</Text>
         <Text style={styles.receiptText}>{isOnline ? "Syncing to server…" : "Queued — will sync once back online"}</Text>
-        <Pressable style={styles.button} onPress={() => setReceipt(null)}>
-          <Text style={styles.buttonText}>New sale</Text>
-        </Pressable>
-      </View>
+        <Button title="New sale" onPress={() => setReceipt(null)} style={styles.newSaleButton} />
+      </Screen>
     )
   }
 
   return (
-    <View style={styles.container}>
+    <Screen style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.statusBadge}>{isOnline ? "Online" : "Offline — sales will queue"}</Text>
-        <Pressable onPress={() => router.push("/scan")}>
-          <Text style={styles.link}>Scan barcode</Text>
-        </Pressable>
-        <Pressable onPress={() => signOut()}>
-          <Text style={styles.link}>Sign out</Text>
-        </Pressable>
+        <StatusBadge
+          status={isOnline ? "ok" : "warning"}
+          label={isOnline ? "Online" : "Offline — sales will queue"}
+        />
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => router.push("/scan")}
+            style={styles.iconButton}
+            accessibilityLabel="Scan barcode"
+          >
+            <Ionicons name="barcode-outline" size={22} color={theme.text} />
+          </Pressable>
+          <Pressable onPress={() => signOut()} style={styles.iconButton} accessibilityLabel="Sign out">
+            <Ionicons name="log-out-outline" size={22} color={theme.text} />
+          </Pressable>
+        </View>
       </View>
 
       {sessionError ? (
-        <View style={{ gap: 8 }}>
+        <Card style={styles.errorCard}>
           <Text style={styles.error}>{sessionError}</Text>
-          <Pressable style={styles.button} onPress={() => loadMe()}>
-            <Text style={styles.buttonText}>Retry</Text>
-          </Pressable>
-        </View>
+          <Button
+            title="Retry"
+            variant="secondary"
+            onPress={() => loadMe()}
+            icon={<Ionicons name="refresh-outline" size={18} color={theme.text} />}
+          />
+        </Card>
       ) : !loaded ? (
         <Text style={styles.receiptText}>Loading…</Text>
       ) : (
         <>
-          <TextInput
-            style={styles.input}
-            placeholder="Search products"
-            placeholderTextColor={theme.textTertiary}
-            value={query}
-            onChangeText={setQuery}
-          />
+          <View style={styles.searchRow}>
+            <Ionicons name="search-outline" size={18} color={theme.textTertiary} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search products"
+              placeholderTextColor={theme.textTertiary}
+              value={query}
+              onChangeText={setQuery}
+            />
+          </View>
           <FlatList
             data={results}
             keyExtractor={(p) => p.productId}
-            style={{ maxHeight: 260 }}
+            style={styles.productList}
             renderItem={({ item }) => (
-              <Pressable style={styles.productRow} onPress={() => addProduct(item)}>
-                <Text style={styles.productName}>
-                  {item.name}
-                  {item.strength ? ` (${item.strength})` : ""}
-                </Text>
-                <Text style={styles.priceText}>{formatKES(Math.round(item.sellingPrice * 100))}</Text>
+              <Pressable onPress={() => addProduct(item)}>
+                <Card style={styles.productCard}>
+                  <View style={styles.productRow}>
+                    <Text style={styles.productName}>
+                      {item.name}
+                      {item.strength ? ` (${item.strength})` : ""}
+                    </Text>
+                    <Text style={styles.priceText}>{formatKES(Math.round(item.sellingPrice * 100))}</Text>
+                  </View>
+                </Card>
               </Pressable>
             )}
+            ListEmptyComponent={
+              <EmptyState
+                icon={<Ionicons name="search-outline" size={32} color={theme.textTertiary} />}
+                message={query ? "No products match your search" : "Start typing to search products"}
+              />
+            }
           />
 
           <Text style={styles.title}>Cart</Text>
           <FlatList
             data={items}
             keyExtractor={(i) => i.productId}
-            style={{ maxHeight: 200 }}
+            style={styles.cartList}
             renderItem={({ item }) => (
-              <View style={styles.cartRow}>
-                <Text style={styles.cartItemName}>{item.productName}</Text>
-                <Pressable onPress={() => incrementQty(item.productId, -1)}>
-                  <Text style={styles.qtyButton}>−</Text>
-                </Pressable>
-                <Text style={styles.qty}>{item.quantity}</Text>
-                <Pressable onPress={() => incrementQty(item.productId, 1)}>
-                  <Text style={styles.qtyButton}>+</Text>
-                </Pressable>
-              </View>
+              <Card style={styles.cartCard}>
+                <View style={styles.cartRow}>
+                  <Text style={styles.cartItemName}>{item.productName}</Text>
+                  <Pressable onPress={() => incrementQty(item.productId, -1)} hitSlop={8}>
+                    <Text style={styles.qtyButton}>−</Text>
+                  </Pressable>
+                  <Text style={styles.qty}>{item.quantity}</Text>
+                  <Pressable onPress={() => incrementQty(item.productId, 1)} hitSlop={8}>
+                    <Text style={styles.qtyButton}>+</Text>
+                  </Pressable>
+                </View>
+              </Card>
             )}
+            ListEmptyComponent={
+              <EmptyState icon={<Ionicons name="cart-outline" size={32} color={theme.textTertiary} />} message="Cart is empty" />
+            }
           />
 
-          <Text style={styles.totalText}>Subtotal: {formatKES(subtotal())}</Text>
-          <Text style={styles.totalText}>Total: {formatKES(total())}</Text>
+          <Card style={styles.totalsCard}>
+            <Text style={styles.totalText}>Subtotal: {formatKES(subtotal())}</Text>
+            <Text style={styles.totalText}>Total: {formatKES(total())}</Text>
+          </Card>
 
           <TextInput
             style={styles.input}
@@ -152,22 +185,39 @@ export default function Pos() {
             onChangeText={setTendered}
           />
           {checkoutError ? <Text style={styles.error}>{checkoutError}</Text> : null}
-          <Pressable style={styles.button} onPress={onCheckout} disabled={items.length === 0}>
-            <Text style={styles.buttonText}>Complete cash sale</Text>
-          </Pressable>
+          <Button
+            title="Complete cash sale"
+            onPress={onCheckout}
+            disabled={items.length === 0}
+            icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
+          />
         </>
       )}
-    </View>
+    </Screen>
   )
 }
 
 function createStyles(theme: Theme) {
   return StyleSheet.create({
-    container: { flex: 1, padding: 16, gap: 8, backgroundColor: theme.bg },
+    container: { gap: 8 },
+    receiptContainer: { alignItems: "center", justifyContent: "center", gap: 8 },
     header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-    statusBadge: { fontSize: 12, color: theme.textSecondary },
-    link: { color: theme.green },
+    headerActions: { flexDirection: "row", gap: 4 },
+    iconButton: { padding: 8, borderRadius: 8 },
     title: { fontSize: 18, fontWeight: "700", marginTop: 8, color: theme.text },
+    searchRow: { position: "relative", justifyContent: "center" },
+    searchIcon: { position: "absolute", left: 12, zIndex: 1 },
+    searchInput: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 8,
+      paddingVertical: 10,
+      paddingLeft: 36,
+      paddingRight: 10,
+      fontSize: 15,
+      backgroundColor: theme.surface,
+      color: theme.text,
+    },
     input: {
       borderWidth: 1,
       borderColor: theme.border,
@@ -177,22 +227,21 @@ function createStyles(theme: Theme) {
       backgroundColor: theme.surface,
       color: theme.text,
     },
-    productRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      paddingVertical: 8,
-      borderBottomWidth: 1,
-      borderColor: theme.border,
-    },
+    productList: { maxHeight: 260 },
+    productCard: { marginBottom: 8, paddingVertical: 10 },
+    productRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     productName: { flex: 1, color: theme.text },
     priceText: { color: theme.text },
-    cartRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, gap: 8 },
+    cartList: { maxHeight: 200 },
+    cartCard: { marginBottom: 8, paddingVertical: 8 },
+    cartRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     cartItemName: { flex: 1, color: theme.text },
     qtyButton: { fontSize: 20, paddingHorizontal: 10, color: theme.text },
     qty: { width: 24, textAlign: "center", color: theme.text },
+    totalsCard: { gap: 4 },
+    errorCard: { gap: 8 },
     totalText: { fontSize: 16, fontWeight: "600", color: theme.text },
-    button: { backgroundColor: theme.greenCta, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 8 },
-    buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+    newSaleButton: { marginTop: 16, minWidth: 160 },
     error: { color: theme.red },
     receiptText: { fontSize: 16, textAlign: "center", marginTop: 8, color: theme.text },
   })

@@ -1,9 +1,11 @@
 import { useState } from "react"
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
+import { Ionicons } from "@expo/vector-icons"
 import { signInEmail, signInPin } from "../src/lib/auth-client"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
+import { Button, Screen } from "../src/components"
 
 type Mode = "email" | "pin"
 
@@ -42,14 +44,16 @@ export default function Login() {
   }
 
   return (
-    <View style={styles.container}>
+    <Screen style={styles.container}>
       <Text style={styles.title}>PharmaTrack</Text>
 
       <View style={styles.tabs}>
         <Pressable onPress={() => setMode("pin")} style={[styles.tab, mode === "pin" && styles.tabActive]}>
+          <Ionicons name="keypad-outline" size={16} color={mode === "pin" ? "#fff" : theme.textSecondary} />
           <Text style={mode === "pin" ? styles.tabTextActive : styles.tabText}>Till PIN</Text>
         </Pressable>
         <Pressable onPress={() => setMode("email")} style={[styles.tab, mode === "email" && styles.tabActive]}>
+          <Ionicons name="mail-outline" size={16} color={mode === "email" ? "#fff" : theme.textSecondary} />
           <Text style={mode === "email" ? styles.tabTextActive : styles.tabText}>Email</Text>
         </Pressable>
       </View>
@@ -100,16 +104,14 @@ export default function Login() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Pressable style={styles.button} onPress={onSubmit} disabled={pending}>
-        {pending ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in</Text>}
-      </Pressable>
-    </View>
+      <Button title="Sign in" onPress={onSubmit} loading={pending} style={styles.submitButton} />
+    </Screen>
   )
 }
 
 function createStyles(theme: Theme) {
   return StyleSheet.create({
-    container: { flex: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: theme.bg },
+    container: { justifyContent: "center", padding: 24, gap: 12 },
     title: { fontSize: 28, fontWeight: "700", textAlign: "center", marginBottom: 24, color: theme.text },
     tabs: {
       flexDirection: "row",
@@ -119,7 +121,15 @@ function createStyles(theme: Theme) {
       borderWidth: 1,
       borderColor: theme.border,
     },
-    tab: { flex: 1, paddingVertical: 10, alignItems: "center", backgroundColor: theme.muted },
+    tab: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 10,
+      backgroundColor: theme.muted,
+    },
     tabActive: { backgroundColor: theme.greenCta },
     tabText: { color: theme.textSecondary },
     tabTextActive: { color: "#fff" },
@@ -132,8 +142,7 @@ function createStyles(theme: Theme) {
       backgroundColor: theme.surface,
       color: theme.text,
     },
-    button: { backgroundColor: theme.greenCta, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 8 },
-    buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+    submitButton: { marginTop: 8 },
     error: { color: theme.red, textAlign: "center" },
   })
 }
