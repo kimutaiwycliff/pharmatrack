@@ -9,6 +9,8 @@ import { useSyncEngine } from "../src/lib/sync/useSyncEngine"
 import { useSessionStore } from "../src/store/session"
 import { useCartStore } from "../src/store/cart"
 import { signOut } from "../src/lib/auth-client"
+import { useTheme } from "../src/theme/useTheme"
+import type { Theme } from "../src/theme/tokens"
 
 function randomUUID(): string {
   // crypto.randomUUID isn't available in the Hermes runtime; RFC4122-ish v4.
@@ -20,6 +22,8 @@ function randomUUID(): string {
 }
 
 export default function Pos() {
+  const theme = useTheme()
+  const styles = createStyles(theme)
   const { branchId, loadMe, loaded, error: sessionError } = useSessionStore()
   const { isOnline, lastSyncedAt } = useSyncEngine(branchId)
   const { items, addProduct, incrementQty, clear, subtotal, total } = useCartStore()
@@ -95,7 +99,13 @@ export default function Pos() {
         <Text style={styles.receiptText}>Loading…</Text>
       ) : (
         <>
-          <TextInput style={styles.input} placeholder="Search products" value={query} onChangeText={setQuery} />
+          <TextInput
+            style={styles.input}
+            placeholder="Search products"
+            placeholderTextColor={theme.textTertiary}
+            value={query}
+            onChangeText={setQuery}
+          />
           <FlatList
             data={results}
             keyExtractor={(p) => p.productId}
@@ -106,7 +116,7 @@ export default function Pos() {
                   {item.name}
                   {item.strength ? ` (${item.strength})` : ""}
                 </Text>
-                <Text>{formatKES(Math.round(item.sellingPrice * 100))}</Text>
+                <Text style={styles.priceText}>{formatKES(Math.round(item.sellingPrice * 100))}</Text>
               </Pressable>
             )}
           />
@@ -118,7 +128,7 @@ export default function Pos() {
             style={{ maxHeight: 200 }}
             renderItem={({ item }) => (
               <View style={styles.cartRow}>
-                <Text style={{ flex: 1 }}>{item.productName}</Text>
+                <Text style={styles.cartItemName}>{item.productName}</Text>
                 <Pressable onPress={() => incrementQty(item.productId, -1)}>
                   <Text style={styles.qtyButton}>−</Text>
                 </Pressable>
@@ -136,6 +146,7 @@ export default function Pos() {
           <TextInput
             style={styles.input}
             placeholder="Cash tendered (KES)"
+            placeholderTextColor={theme.textTertiary}
             keyboardType="decimal-pad"
             value={tendered}
             onChangeText={setTendered}
@@ -150,21 +161,39 @@ export default function Pos() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, gap: 8, backgroundColor: "#fff" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  statusBadge: { fontSize: 12, color: "#555" },
-  link: { color: "#2563eb" },
-  title: { fontSize: 18, fontWeight: "700", marginTop: 8 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 10, fontSize: 15 },
-  productRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderColor: "#eee" },
-  productName: { flex: 1 },
-  cartRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, gap: 8 },
-  qtyButton: { fontSize: 20, paddingHorizontal: 10 },
-  qty: { width: 24, textAlign: "center" },
-  totalText: { fontSize: 16, fontWeight: "600" },
-  button: { backgroundColor: "#111", borderRadius: 8, padding: 14, alignItems: "center", marginTop: 8 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  error: { color: "#c0392b" },
-  receiptText: { fontSize: 16, textAlign: "center", marginTop: 8 },
-})
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
+    container: { flex: 1, padding: 16, gap: 8, backgroundColor: theme.bg },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+    statusBadge: { fontSize: 12, color: theme.textSecondary },
+    link: { color: theme.green },
+    title: { fontSize: 18, fontWeight: "700", marginTop: 8, color: theme.text },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 8,
+      padding: 10,
+      fontSize: 15,
+      backgroundColor: theme.surface,
+      color: theme.text,
+    },
+    productRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderColor: theme.border,
+    },
+    productName: { flex: 1, color: theme.text },
+    priceText: { color: theme.text },
+    cartRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, gap: 8 },
+    cartItemName: { flex: 1, color: theme.text },
+    qtyButton: { fontSize: 20, paddingHorizontal: 10, color: theme.text },
+    qty: { width: 24, textAlign: "center", color: theme.text },
+    totalText: { fontSize: 16, fontWeight: "600", color: theme.text },
+    button: { backgroundColor: theme.greenCta, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 8 },
+    buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+    error: { color: theme.red },
+    receiptText: { fontSize: 16, textAlign: "center", marginTop: 8, color: theme.text },
+  })
+}
