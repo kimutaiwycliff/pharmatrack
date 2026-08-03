@@ -2,10 +2,10 @@ import { Tabs } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useTheme } from "../../src/theme/useTheme"
 
-// The app's first top-level tab navigator: POS + Shifts today, with
-// Dashboard/Inventory/Appointments joining as later phases land (per ADR-013's
-// phased plan). Route groups don't change the URL, so /pos and /shifts
-// resolve exactly as before the reorganization.
+// The app's first top-level tab navigator: POS + Shifts + Dashboard today,
+// with Inventory/Appointments joining as later phases land (per ADR-013's
+// phased plan). Route groups don't change the URL, so /pos, /shifts, and
+// /dashboard resolve exactly as before the reorganization.
 export default function TabsLayout() {
   const theme = useTheme()
   return (
@@ -29,6 +29,13 @@ export default function TabsLayout() {
         options={{
           title: "Shifts",
           tabBarIcon: ({ color, size }) => <Ionicons name="time-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: "Dashboard",
+          tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart-outline" size={size} color={color} />,
         }}
       />
     </Tabs>
