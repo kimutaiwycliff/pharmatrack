@@ -50,4 +50,9 @@ sqliteDb.execSync(`
     created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_queued_sales_status ON queued_sales(status);
+
+  CREATE TABLE IF NOT EXISTS kv_store (
+    key TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
+  );
 `)

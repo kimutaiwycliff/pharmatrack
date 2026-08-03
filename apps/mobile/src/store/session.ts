@@ -1,10 +1,20 @@
 import { create } from "zustand"
 import { apiFetch } from "../lib/api-fetch"
+import { kvGet, kvSet } from "../lib/kv"
 
 interface Branch {
   id: string
   name: string
 }
+
+interface CachedSession {
+  organizationId: string
+  role: string
+  branchId: string | null
+  branches: Branch[]
+}
+
+const CACHE_KEY = "session"
 
 interface SessionState {
   organizationId: string | null
@@ -13,6 +23,7 @@ interface SessionState {
   branches: Branch[]
   loaded: boolean
   error: string | null
+  stale: boolean
   loadMe: () => Promise<void>
   setBranchId: (id: string) => void
 }
@@ -22,6 +33,11 @@ interface SessionState {
 // resolves server-side via a layout component (lib/auth/app-shell.ts). Surfaces
 // failures (network error, non-2xx, unparseable body) as `error` instead of
 // leaving the caller stuck on a loading state with no way to retry.
+// On failure, falls back to the last-known session cached in local SQLite
+// (kv.ts) instead of leaving the app blocked — this is what lets POS survive
+// a cold start with no connectivity, per CLAUDE.md's "offline POS must work
+// indefinitely" rule. `stale: true` marks that fallback so callers can show a
+// non-blocking "offline" notice rather than hard-gating the whole screen.
 export const useSessionStore = create<SessionState>((set) => ({
   organizationId: null,
   role: null,
@@ -29,29 +45,33 @@ export const useSessionStore = create<SessionState>((set) => ({
   branches: [],
   loaded: false,
   error: null,
+  stale: false,
   async loadMe() {
     set({ error: null })
     try {
       const res = await apiFetch("/api/mobile/me")
-      if (!res.ok) {
-        set({ error: `Could not load session (HTTP ${res.status})` })
-        return
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = (await res.json()) as {
         organizationId: string
         role: string
         branchId: string | null
         branches: Branch[]
       }
-      set({
+      const cached: CachedSession = {
         organizationId: data.organizationId,
         role: data.role,
         branchId: data.branchId ?? data.branches[0]?.id ?? null,
         branches: data.branches,
-        loaded: true,
-      })
+      }
+      set({ ...cached, loaded: true, stale: false })
+      await kvSet(CACHE_KEY, cached)
     } catch {
-      set({ error: "Could not reach the server. Check your connection and try again." })
+      const cached = await kvGet<CachedSession>(CACHE_KEY)
+      if (cached) {
+        set({ ...cached, loaded: true, stale: true, error: "Offline — showing last known data" })
+      } else {
+        set({ error: "Could not reach the server. Check your connection and try again." })
+      }
     }
   },
   setBranchId(id) {

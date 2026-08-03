@@ -106,20 +106,31 @@ export default function Pos() {
         </View>
       </View>
 
-      {sessionError ? (
-        <Card style={styles.errorCard}>
-          <Text style={styles.error}>{sessionError}</Text>
-          <Button
-            title="Retry"
-            variant="secondary"
-            onPress={() => loadMe()}
-            icon={<Ionicons name="refresh-outline" size={18} color={theme.text} />}
-          />
-        </Card>
-      ) : !loaded ? (
-        <Text style={styles.receiptText}>Loading…</Text>
+      {!loaded ? (
+        sessionError ? (
+          <Card style={styles.errorCard}>
+            <Text style={styles.error}>{sessionError}</Text>
+            <Button
+              title="Retry"
+              variant="secondary"
+              onPress={() => loadMe()}
+              icon={<Ionicons name="refresh-outline" size={18} color={theme.text} />}
+            />
+          </Card>
+        ) : (
+          <Text style={styles.receiptText}>Loading…</Text>
+        )
       ) : (
         <>
+          {/* branchId (and the active shift) can come from the offline cache
+              (kv.ts) when the network is down — the catalogue is local SQLite
+              regardless, so the sale flow below still works. This banner is
+              informational only; it must never block the UI beneath it. */}
+          {sessionError ? (
+            <Card style={styles.offlineNoticeCard}>
+              <Text style={styles.offlineNoticeText}>{sessionError}</Text>
+            </Card>
+          ) : null}
           <View style={styles.searchRow}>
             <Ionicons name="search-outline" size={18} color={theme.textTertiary} style={styles.searchIcon} />
             <TextInput
@@ -261,6 +272,8 @@ function createStyles(theme: Theme) {
     qty: { width: 24, textAlign: "center", color: theme.text },
     totalsCard: { gap: 4 },
     errorCard: { gap: 8 },
+    offlineNoticeCard: { paddingVertical: 8, borderColor: theme.amber, borderWidth: 1 },
+    offlineNoticeText: { color: theme.amber, fontSize: 13 },
     totalText: { fontSize: 16, fontWeight: "600", color: theme.text },
     newSaleButton: { marginTop: 16, minWidth: 160 },
     error: { color: theme.red },

@@ -14,6 +14,15 @@ export function useSyncEngine(branchId: string | null) {
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
   const syncingRef = useRef(false)
 
+  // Tracked unconditionally (not gated on branchId) so the Online/Offline
+  // badge reflects real connectivity even on a cold start before any branch
+  // context has been cached — see kv.ts / store/session.ts.
+  useEffect(() => {
+    NetInfo.fetch().then((state) => setIsOnline(!!state.isConnected))
+    const netUnsubscribe = NetInfo.addEventListener((state) => setIsOnline(!!state.isConnected))
+    return () => netUnsubscribe()
+  }, [])
+
   useEffect(() => {
     if (!branchId) return
 
@@ -34,9 +43,7 @@ export function useSyncEngine(branchId: string | null) {
     runSync()
 
     const netUnsubscribe = NetInfo.addEventListener((state) => {
-      const online = !!state.isConnected
-      setIsOnline(online)
-      if (online) runSync()
+      if (state.isConnected) runSync()
     })
 
     const appStateSubscription = AppState.addEventListener("change", (nextState) => {

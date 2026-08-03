@@ -45,5 +45,14 @@ export const queuedSales = sqliteTable("queued_sales", {
   createdAt: integer("created_at").notNull(),
 })
 
+// Last-known-good cache for data that's normally server-fetched (session/branch
+// context, active shift) so a cold app start with no connectivity can still
+// serve the offline POS instead of blocking behind a network error — see
+// lib/kv.ts. Not a general settings store; only what POS needs offline.
+export const kvStore = sqliteTable("kv_store", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+})
+
 export type ProductRow = typeof products.$inferSelect
 export type QueuedSaleRow = typeof queuedSales.$inferSelect
