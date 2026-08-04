@@ -11,7 +11,7 @@ import { fetchMpesaAvailability, type MpesaAvailability } from "../../src/lib/mp
 import { useSessionStore } from "../../src/store/session"
 import { useShiftStore } from "../../src/store/shift"
 import { useCartStore } from "../../src/store/cart"
-import { signOut } from "../../src/lib/auth-client"
+import { confirmSignOut } from "../../src/lib/auth-client"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
 import { Button, Card, EmptyState, MpesaFlow, Screen, StatusBadge } from "../../src/components"
@@ -82,16 +82,6 @@ export default function Pos() {
     const half = Math.floor(totalC / 2)
     setSplitCash(fromCents(half))
     setSplitMpesa(fromCents(totalC - half))
-  }
-
-  // index.tsx's session-based redirect only ever runs once, at the root "/"
-  // route on cold start — it never re-evaluates reactively while already on
-  // a tab. Without this explicit redirect, signOut() cleared the session
-  // cookie but left the cashier staring at the same POS screen with no
-  // visible change, indistinguishable from the button doing nothing at all.
-  async function handleSignOut() {
-    await signOut()
-    router.replace("/login")
   }
 
   async function onCheckout() {
@@ -188,7 +178,7 @@ export default function Pos() {
           >
             <Ionicons name="barcode-outline" size={22} color={theme.text} />
           </Pressable>
-          <Pressable onPress={handleSignOut} style={styles.iconButton} accessibilityLabel="Sign out">
+          <Pressable onPress={confirmSignOut} style={styles.iconButton} accessibilityLabel="Sign out">
             <Ionicons name="log-out-outline" size={22} color={theme.text} />
           </Pressable>
         </View>

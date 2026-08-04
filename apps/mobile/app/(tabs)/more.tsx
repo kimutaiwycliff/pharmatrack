@@ -1,7 +1,7 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
-import { signOut } from "../../src/lib/auth-client"
+import { confirmSignOut } from "../../src/lib/auth-client"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
@@ -34,24 +34,6 @@ export default function More() {
 
   const visibleItems = MENU_ITEMS.filter((item) => role && item.roles.includes(role))
 
-  // The only sign-out affordance before this was a small icon in the POS
-  // header — easy to miss, and it didn't even navigate anywhere after
-  // clearing the session (fixed separately in pos.tsx). This one is visible
-  // to every role, not just the ones with admin menu items above.
-  function handleSignOut() {
-    Alert.alert("Log out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log out",
-        style: "destructive",
-        onPress: async () => {
-          await signOut()
-          router.replace("/login")
-        },
-      },
-    ])
-  }
-
   return (
     <Screen>
       <Text style={styles.title}>More</Text>
@@ -76,7 +58,7 @@ export default function More() {
         )}
 
         <Card style={styles.listCard}>
-          <Pressable onPress={handleSignOut}>
+          <Pressable onPress={confirmSignOut}>
             <View style={styles.row}>
               <Ionicons name="log-out-outline" size={22} color={theme.red} />
               <Text style={[styles.rowLabel, { color: theme.red }]}>Log out</Text>

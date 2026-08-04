@@ -1,3 +1,5 @@
+import { Alert } from "react-native"
+import { router } from "expo-router"
 import { createAuthClient } from "better-auth/react"
 import { expoClient } from "@better-auth/expo/client"
 import * as SecureStore from "expo-secure-store"
@@ -29,6 +31,24 @@ export const authClient = createAuthClient({
 
 export const { useSession, signOut } = authClient
 export const getCookie = (authClient as any).getCookie as () => string
+
+// Shared by every sign-out entry point (POS header icon, More tab) so the
+// confirm-then-redirect behavior can't drift between them again — index.tsx's
+// session redirect only evaluates once at cold start, so callers must
+// explicitly navigate to /login after signOut() resolves.
+export function confirmSignOut() {
+  Alert.alert("Log out", "Are you sure you want to log out?", [
+    { text: "Cancel", style: "cancel" },
+    {
+      text: "Log out",
+      style: "destructive",
+      onPress: async () => {
+        await signOut()
+        router.replace("/login")
+      },
+    },
+  ])
+}
 
 export async function signInEmail(email: string, password: string) {
   return authClient.signIn.email({ email, password })
