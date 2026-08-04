@@ -19,7 +19,9 @@ const config: ExpoConfig = {
   android: {
     package: BUNDLE_ID,
     adaptiveIcon: {
-      backgroundColor: "#E6F4FE",
+      // Fallback only — backgroundImage (the actual green gradient) takes
+      // precedence wherever the launcher supports it. Matches the brand mark.
+      backgroundColor: "#15803d",
       foregroundImage: "./assets/android-icon-foreground.png",
       backgroundImage: "./assets/android-icon-background.png",
       monochromeImage: "./assets/android-icon-monochrome.png",
@@ -51,6 +53,29 @@ const config: ExpoConfig = {
     // browser-redirect path; harmless to include even though PharmaTrack
     // mobile only uses email/password + PIN login.
     "expo-web-browser",
+    [
+      "expo-splash-screen",
+      {
+        image: "./assets/splash-icon.png",
+        imageWidth: 200,
+        resizeMode: "contain",
+        // Matches src/theme/tokens.ts's light/dark `bg` exactly.
+        backgroundColor: "#f9fafb",
+        dark: {
+          image: "./assets/splash-icon.png",
+          backgroundColor: "#0e1116",
+        },
+      },
+    ],
+    [
+      "expo-build-properties",
+      {
+        android: {
+          enableProguardInReleaseBuilds: true,
+          enableShrinkResourcesInReleaseBuilds: true,
+        },
+      },
+    ],
   ],
 }
 

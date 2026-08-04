@@ -65,12 +65,15 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       set({ activeShift: active, loaded: true, stale: false })
       if (active) await kvSet(CACHE_KEY, active)
       else await kvDelete(CACHE_KEY)
-    } catch {
+    } catch (err) {
+      // See session.ts's loadMe() catch block for why the real message is
+      // surfaced instead of a generic string.
+      const detail = err instanceof Error ? err.message : String(err)
       const cached = await kvGet<ActiveShift>(CACHE_KEY)
       if (cached) {
-        set({ activeShift: cached, loaded: true, stale: true, error: "Offline — showing last known shift" })
+        set({ activeShift: cached, loaded: true, stale: true, error: `Offline — showing last known shift (${detail})` })
       } else {
-        set({ error: "Could not reach the server. Check your connection and try again." })
+        set({ error: `Could not reach the server: ${detail}` })
       }
     }
   },
@@ -90,8 +93,8 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       const active = toActiveShift(data.shift)
       set({ activeShift: active, stale: false })
       await kvSet(CACHE_KEY, active)
-    } catch {
-      set({ error: "Could not reach the server. Check your connection and try again." })
+    } catch (err) {
+      set({ error: `Could not reach the server: ${err instanceof Error ? err.message : String(err)}` })
     }
   },
   async clockOut(closingCash, notes) {
@@ -115,8 +118,8 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       set({ activeShift: null })
       await kvDelete(CACHE_KEY)
       return { shift: data.shift, variance: data.shift.variance }
-    } catch {
-      set({ error: "Could not reach the server. Check your connection and try again." })
+    } catch (err) {
+      set({ error: `Could not reach the server: ${err instanceof Error ? err.message : String(err)}` })
       return null
     }
   },

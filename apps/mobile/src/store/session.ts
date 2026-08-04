@@ -65,12 +65,20 @@ export const useSessionStore = create<SessionState>((set) => ({
       }
       set({ ...cached, loaded: true, stale: false })
       await kvSet(CACHE_KEY, cached)
-    } catch {
+    } catch (err) {
+      // The underlying message (DNS failure, TLS error, timeout, etc.) is
+      // appended rather than shown alone — a generic "check your connection"
+      // string was indistinguishable, twice already during development,
+      // from an actual reachable-network-but-server-unreachable failure
+      // (a real carrier DNS outage) versus a genuine app bug. Surfacing it
+      // directly means the next occurrence is self-diagnosing from a
+      // screenshot instead of needing an instrumented rebuild.
+      const detail = err instanceof Error ? err.message : String(err)
       const cached = await kvGet<CachedSession>(CACHE_KEY)
       if (cached) {
-        set({ ...cached, loaded: true, stale: true, error: "Offline — showing last known data" })
+        set({ ...cached, loaded: true, stale: true, error: `Offline — showing last known data (${detail})` })
       } else {
-        set({ error: "Could not reach the server. Check your connection and try again." })
+        set({ error: `Could not reach the server: ${detail}` })
       }
     }
   },
