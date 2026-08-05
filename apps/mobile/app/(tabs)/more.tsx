@@ -13,21 +13,24 @@ import { Card, EmptyState, Screen } from "../../src/components"
 // Mirrors the role gates enforced server-side for each area (verified against
 // the actual API routes, not from memory): staff and reports are owner/manager
 // only; the catalogue screens (products/categories/suppliers) also allow
-// pharmacist. This screen only hides menu entries a role can't use — the
+// pharmacist; sales (receipt lookup) is open to every role including cashier,
+// same as web's Sidebar entry for it — a cashier needs to find their own past
+// receipts. This screen only hides menu entries a role can't use — the
 // destination screens re-check on their own writes too, same as web.
 // `feature` mirrors apps/web/components/layout/Sidebar.tsx's per-item plan
 // gate exactly (Products/Suppliers -> "inventory", Reports -> "reports");
-// Staff and Categories have no feature entry on web's sidebar either, so they
-// stay role-only here too, rather than inventing a gate web doesn't have.
+// Staff, Categories, and Sales have no feature entry on web's sidebar either,
+// so they stay role-only here too, rather than inventing a gate web doesn't have.
 interface MenuItem {
   label: string
   icon: keyof typeof Ionicons.glyphMap
-  href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers"
+  href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers" | "/sales"
   roles: string[]
   feature?: Feature
 }
 
 const MENU_ITEMS: MenuItem[] = [
+  { label: "Sales", icon: "receipt-outline", href: "/sales", roles: ["owner", "manager", "pharmacist", "cashier"] },
   { label: "Staff", icon: "people-outline", href: "/staff", roles: ["owner", "manager"] },
   { label: "Reports", icon: "bar-chart-outline", href: "/reports", roles: ["owner", "manager"], feature: "reports" },
   { label: "Products", icon: "medkit-outline", href: "/products", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
