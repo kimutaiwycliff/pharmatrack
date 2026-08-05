@@ -1,5 +1,5 @@
-import { Alert } from "react-native"
 import { create } from "zustand"
+import { toast } from "../lib/toast"
 import { applyDiscount, sumCents, toCents, type Cents } from "@pharmatrack/core"
 import type { ProductRow } from "../db/schema"
 
@@ -56,7 +56,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       const existing = state.items.find((i) => i.productId === product.productId)
       if (existing) {
         if (existing.quantity + 1 > stock) {
-          Alert.alert(stock > 0 ? "Limited stock" : "Out of stock", stock > 0 ? `Only ${stock} of ${product.name} in stock` : `${product.name} is out of stock`)
+          toast.error(stock > 0 ? `Only ${stock} of ${product.name} in stock` : `${product.name} is out of stock`)
           return state
         }
         return {
@@ -68,7 +68,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         }
       }
       if (stock <= 0) {
-        Alert.alert("Out of stock", `${product.name} is out of stock`)
+        toast.error(`${product.name} is out of stock`)
         return state
       }
       const newItem: CartItem = {
@@ -93,8 +93,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           if (i.productId !== productId) return i
           const target = i.quantity + delta
           if (delta > 0 && target > i.stockOnHand) {
-            Alert.alert(
-              i.stockOnHand > 0 ? "Limited stock" : "Out of stock",
+            toast.error(
               i.stockOnHand > 0 ? `Only ${i.stockOnHand} of ${i.productName} in stock` : `${i.productName} is out of stock`,
             )
             return i

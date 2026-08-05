@@ -1,6 +1,7 @@
 import { Stack } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import { SafeAreaProvider } from "react-native-safe-area-context"
+import { ToastHost } from "../src/components"
 import { useTheme } from "../src/theme/useTheme"
 
 export default function RootLayout() {
@@ -8,6 +9,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }} />
+      <ToastHost />
       <StatusBar style="auto" />
     </SafeAreaProvider>
   )
