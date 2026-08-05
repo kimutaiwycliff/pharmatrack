@@ -157,7 +157,17 @@ export async function POST(request: NextRequest) {
     })
 
     const subtotal = Number(itemPricing.reduce((s, p) => s + p.lineTotal, 0).toFixed(2))
-    const totalAmount = Math.max(0, Number((subtotal - data.discount_amount).toFixed(2)))
+
+    // ── Discount guard: mirrors CartPanel.tsx's maxAllowedDiscount UI warning,
+    // except enforced here — that banner is cosmetic only ("manager approval
+    // required") and nothing previously stopped a tampered request from
+    // submitting any discount_amount at all. Capped by the most restrictive
+    // max_discount_percent across the cart's actual products (server-fetched
+    // priceMap, not client-claimed), same rule the UI computes for display.
+    const discountCapPercent = Math.min(...data.items.map((item) => priceMap.get(item.product_id)!.maxDiscount))
+    const maxDiscountAmount = (subtotal * discountCapPercent) / 100
+    const discountAmount = Math.min(data.discount_amount, maxDiscountAmount)
+    const totalAmount = Math.max(0, Number((subtotal - discountAmount).toFixed(2)))
 
     // ── Stock guard: never sell more than is on hand for this branch ──────────
     const availRows = await db.select({
@@ -191,7 +201,7 @@ export async function POST(request: NextRequest) {
       receipt_number: receipt,
       status: "completed",
       subtotal: String(subtotal),
-      discount_amount: String(data.discount_amount),
+      discount_amount: String(discountAmount),
       tax_amount: "0",
       total_amount: String(totalAmount),
       payment_method: data.payment_method,
