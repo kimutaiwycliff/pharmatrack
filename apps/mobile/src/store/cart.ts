@@ -17,6 +17,11 @@ export interface CartItem {
   // CartItem.stock_on_hand: caps qty at what's on hand so a cashier can't sell
   // more than the branch actually has, matching web's overselling guard exactly.
   stockOnHand: number
+  // Snapshotted from ProductRow.maxDiscountPercent at add-time, same pattern
+  // as stockOnHand above. Mirrors web's CartItem.max_discount_percent: caps
+  // how much discountPercent setDiscountPercent() may apply to this line.
+  // null = no product-specific cap (server still enforces its own default).
+  maxDiscountPercent: number | null
 }
 
 interface CartState {
@@ -28,6 +33,14 @@ interface CartState {
   subtotal: () => Cents
   discountTotal: () => Cents
   total: () => Cents
+  // Applies one whole-cart discount % request to every line, each clamped by
+  // its own maxDiscountPercent — mirrors how the server would clamp per line
+  // anyway (apps/web/app/api/sales/route.ts's itemPricing computation).
+  setDiscountPercent: (percent: number) => void
+  // Most restrictive cap across current cart items, mirroring web's
+  // CartPanel.tsx maxAllowedDiscount Math.min(...limits) logic. null means no
+  // cap applies (empty cart, or every item has maxDiscountPercent === null).
+  maxAllowedDiscountPercent: () => number | null
 }
 
 function lineDiscount(item: CartItem): Cents {
@@ -48,7 +61,9 @@ export const useCartStore = create<CartState>((set, get) => ({
         }
         return {
           items: state.items.map((i) =>
-            i.productId === product.productId ? { ...i, quantity: i.quantity + 1, stockOnHand: stock } : i,
+            i.productId === product.productId
+              ? { ...i, quantity: i.quantity + 1, stockOnHand: stock, maxDiscountPercent: product.maxDiscountPercent }
+              : i,
           ),
         }
       }
@@ -66,6 +81,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         baseUnit: product.baseUnit,
         isControlled: product.isControlled,
         stockOnHand: stock,
+        maxDiscountPercent: product.maxDiscountPercent,
       }
       return { items: [...state.items, newItem] }
     })
@@ -102,5 +118,20 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
   total() {
     return get().subtotal() - get().discountTotal()
+  },
+  setDiscountPercent(percent) {
+    set((state) => ({
+      items: state.items.map((i) => ({
+        ...i,
+        discountPercent: Math.max(0, Math.min(percent, i.maxDiscountPercent ?? 100)),
+      })),
+    }))
+  },
+  maxAllowedDiscountPercent() {
+    const limits = get()
+      .items.map((i) => i.maxDiscountPercent)
+      .filter((v): v is number => v !== null && v !== undefined)
+    if (limits.length === 0) return null
+    return Math.min(...limits)
   },
 }))

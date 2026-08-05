@@ -33,13 +33,15 @@ export default function Pos() {
   const { branchId, loadMe, loaded, error: sessionError } = useSessionStore()
   const { activeShift, loadActiveShift } = useShiftStore()
   const { isOnline, lastSyncedAt } = useSyncEngine(branchId)
-  const { items, addProduct, incrementQty, clear, subtotal, total } = useCartStore()
+  const { items, addProduct, incrementQty, clear, subtotal, discountTotal, total, setDiscountPercent, maxAllowedDiscountPercent } =
+    useCartStore()
 
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<ProductRow[]>([])
   const [tendered, setTendered] = useState("")
   const [receipt, setReceipt] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [discountInput, setDiscountInput] = useState("")
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
   const [mpesaAvailability, setMpesaAvailability] = useState<MpesaAvailability | null>(null)
@@ -77,6 +79,21 @@ export default function Pos() {
   const splitBothPositive = splitNumbersValid && splitCashCents > 0 && splitMpesaCents > 0
   const splitReady = splitBalanced && splitBothPositive
 
+  // Most restrictive product discount cap across current cart items — mirrors
+  // web's CartPanel.tsx maxAllowedDiscount. The store already clamps every
+  // line to its own cap when setDiscountPercent() runs; this is purely for
+  // the "(max X%)" label and the "we capped it" notice below.
+  const maxDiscountPct = maxAllowedDiscountPercent()
+  const requestedDiscountPct = discountInput.trim() === "" ? 0 : Number(discountInput)
+  const discountExceedsCap =
+    maxDiscountPct !== null && !Number.isNaN(requestedDiscountPct) && requestedDiscountPct > maxDiscountPct
+
+  function onDiscountChange(text: string) {
+    setDiscountInput(text)
+    const pct = text.trim() === "" ? 0 : Number(text)
+    if (!Number.isNaN(pct)) setDiscountPercent(pct)
+  }
+
   function splitEvenly() {
     const totalC = total()
     const half = Math.floor(totalC / 2)
@@ -109,6 +126,7 @@ export default function Pos() {
     setReceipt(offlineReference)
     clear()
     setTendered("")
+    setDiscountInput("")
   }
 
   async function onMpesaConfirmed(reference: string | null) {
@@ -126,6 +144,7 @@ export default function Pos() {
     await queueSale(payload)
     setReceipt(offlineReference)
     clear()
+    setDiscountInput("")
     setPaymentMethod("cash")
   }
 
@@ -148,6 +167,7 @@ export default function Pos() {
     clear()
     setSplitCash("")
     setSplitMpesa("")
+    setDiscountInput("")
     setPaymentMethod("cash")
   }
 
@@ -273,8 +293,30 @@ export default function Pos() {
             }
           />
 
+          {items.length > 0 ? (
+            <Card style={styles.discountCard}>
+              <Text style={styles.discountLabel}>
+                Discount % {maxDiscountPct !== null ? `(max ${maxDiscountPct}%)` : ""}
+              </Text>
+              <TextInput
+                style={styles.input}
+                placeholder="0"
+                placeholderTextColor={theme.textTertiary}
+                keyboardType="decimal-pad"
+                value={discountInput}
+                onChangeText={onDiscountChange}
+              />
+              {discountExceedsCap ? (
+                <Text style={styles.discountWarning}>
+                  Discount capped at {maxDiscountPct}% for one or more items
+                </Text>
+              ) : null}
+            </Card>
+          ) : null}
+
           <Card style={styles.totalsCard}>
             <Text style={styles.totalText}>Subtotal: {formatKES(subtotal())}</Text>
+            <Text style={styles.totalText}>Discount: {formatKES(discountTotal())}</Text>
             <Text style={styles.totalText}>Total: {formatKES(total())}</Text>
           </Card>
 
@@ -431,6 +473,9 @@ function createStyles(theme: Theme) {
     qtyButton: { fontSize: 20, paddingHorizontal: 10, color: theme.text },
     qty: { width: 24, textAlign: "center", color: theme.text },
     totalsCard: { gap: 4 },
+    discountCard: { gap: 6 },
+    discountLabel: { fontSize: 13, fontWeight: "600", color: theme.textSecondary },
+    discountWarning: { color: theme.amber, fontSize: 13 },
     errorCard: { gap: 8 },
     methodRow: { flexDirection: "row", gap: 8 },
     methodButton: { flex: 1, paddingVertical: 10, paddingHorizontal: 8 },
