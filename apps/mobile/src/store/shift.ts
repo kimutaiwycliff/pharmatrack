@@ -35,6 +35,11 @@ interface ShiftState {
   loadActiveShift: () => Promise<void>
   clockIn: (openingFloat: number, branchId: string) => Promise<void>
   clockOut: (closingCash: number, notes?: string) => Promise<{ shift: ShiftResponse; variance: number | null } | null>
+  // Used when switching the active till user offline (src/lib/device-users.ts)
+  // — the incoming cashier's shift is unknown until back online, so this
+  // clears both the in-memory state and the cached kv row rather than
+  // leaving the previous cashier's shift visible under the new identity.
+  resetShift: () => Promise<void>
 }
 
 function toActiveShift(shift: ShiftResponse): ActiveShift {
@@ -122,5 +127,9 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       set({ error: `Could not reach the server: ${err instanceof Error ? err.message : String(err)}` })
       return null
     }
+  },
+  async resetShift() {
+    set({ activeShift: null, loaded: false, error: null, stale: false })
+    await kvDelete(CACHE_KEY)
   },
 }))

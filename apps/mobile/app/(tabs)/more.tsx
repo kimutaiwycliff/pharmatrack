@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { hasFeature, type Feature } from "@pharmatrack/core"
 import { confirmSignOut } from "../../src/lib/auth-client"
+import { listDeviceUsers } from "../../src/lib/device-users"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
@@ -37,6 +39,11 @@ export default function More() {
   const theme = useTheme()
   const styles = createStyles(theme)
   const { role, planCode } = useSessionStore()
+  const [hasDeviceUsers, setHasDeviceUsers] = useState(false)
+
+  useEffect(() => {
+    listDeviceUsers().then((users) => setHasDeviceUsers(users.length > 0))
+  }, [])
 
   const visibleItems = MENU_ITEMS.filter(
     (item) => role && item.roles.includes(role) && (!item.feature || hasFeature(planCode, item.feature)),
@@ -66,8 +73,17 @@ export default function More() {
         )}
 
         <Card style={styles.listCard}>
+          {hasDeviceUsers ? (
+            <Pressable onPress={() => router.push("/login")}>
+              <View style={styles.row}>
+                <Ionicons name="swap-horizontal-outline" size={22} color={theme.text} />
+                <Text style={styles.rowLabel}>Switch user</Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
+              </View>
+            </Pressable>
+          ) : null}
           <Pressable onPress={confirmSignOut}>
-            <View style={styles.row}>
+            <View style={[styles.row, hasDeviceUsers && styles.rowBorder]}>
               <Ionicons name="log-out-outline" size={22} color={theme.red} />
               <Text style={[styles.rowLabel, { color: theme.red }]}>Log out</Text>
             </View>

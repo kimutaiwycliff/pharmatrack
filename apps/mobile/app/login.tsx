@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { signInEmail, signInPin } from "../src/lib/auth-client"
+import { cacheDeviceUserAfterPinLogin, tryOfflinePinLogin } from "../src/lib/device-users"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
 import { Button, Screen } from "../src/components"
@@ -31,10 +32,24 @@ export default function Login() {
           return
         }
       } else {
-        const { error: pinError } = await signInPin(phone, pin)
-        if (pinError) {
-          setError((pinError as { message?: string }).message ?? "Invalid phone or PIN")
-          return
+        // A reachable server's own answer is authoritative — a definite
+        // "wrong PIN" (or similar) 401 here must never be second-guessed by
+        // falling back to the offline cache below. Only a genuine network
+        // failure (authClient.$fetch throwing, since catchAllError isn't set)
+        // reaches the catch block and attempts the offline PIN check.
+        try {
+          const { error: pinError } = await signInPin(phone, pin)
+          if (pinError) {
+            setError((pinError as { message?: string }).message ?? "Invalid phone or PIN")
+            return
+          }
+          await cacheDeviceUserAfterPinLogin(phone, pin)
+        } catch {
+          const offline = await tryOfflinePinLogin(phone, pin)
+          if (!offline.ok) {
+            setError(offline.error)
+            return
+          }
         }
       }
       router.replace("/pos")
