@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
+import { hasFeature, type Feature } from "@pharmatrack/core"
 import { confirmSignOut } from "../../src/lib/auth-client"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
@@ -12,27 +13,34 @@ import { Card, EmptyState, Screen } from "../../src/components"
 // only; the catalogue screens (products/categories/suppliers) also allow
 // pharmacist. This screen only hides menu entries a role can't use — the
 // destination screens re-check on their own writes too, same as web.
+// `feature` mirrors apps/web/components/layout/Sidebar.tsx's per-item plan
+// gate exactly (Products/Suppliers -> "inventory", Reports -> "reports");
+// Staff and Categories have no feature entry on web's sidebar either, so they
+// stay role-only here too, rather than inventing a gate web doesn't have.
 interface MenuItem {
   label: string
   icon: keyof typeof Ionicons.glyphMap
   href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers"
   roles: string[]
+  feature?: Feature
 }
 
 const MENU_ITEMS: MenuItem[] = [
   { label: "Staff", icon: "people-outline", href: "/staff", roles: ["owner", "manager"] },
-  { label: "Reports", icon: "bar-chart-outline", href: "/reports", roles: ["owner", "manager"] },
-  { label: "Products", icon: "medkit-outline", href: "/products", roles: ["owner", "manager", "pharmacist"] },
+  { label: "Reports", icon: "bar-chart-outline", href: "/reports", roles: ["owner", "manager"], feature: "reports" },
+  { label: "Products", icon: "medkit-outline", href: "/products", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
   { label: "Categories", icon: "folder-outline", href: "/categories", roles: ["owner", "manager", "pharmacist"] },
-  { label: "Suppliers", icon: "business-outline", href: "/suppliers", roles: ["owner", "manager", "pharmacist"] },
+  { label: "Suppliers", icon: "business-outline", href: "/suppliers", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
 ]
 
 export default function More() {
   const theme = useTheme()
   const styles = createStyles(theme)
-  const { role } = useSessionStore()
+  const { role, planCode } = useSessionStore()
 
-  const visibleItems = MENU_ITEMS.filter((item) => role && item.roles.includes(role))
+  const visibleItems = MENU_ITEMS.filter(
+    (item) => role && item.roles.includes(role) && (!item.feature || hasFeature(planCode, item.feature)),
+  )
 
   return (
     <Screen>

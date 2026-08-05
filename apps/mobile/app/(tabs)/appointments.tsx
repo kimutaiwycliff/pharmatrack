@@ -122,6 +122,7 @@ export default function Appointments() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [featureLocked, setFeatureLocked] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   // Bumped by retry/pull-to-refresh to re-run the effect below without
   // exposing the fetch function itself as a captured effect dependency
@@ -158,12 +159,25 @@ export default function Appointments() {
         const trimmed = query.trim()
         if (trimmed.length >= 2) params.set("q", trimmed)
         const res = await apiFetch(`/api/appointments?${params.toString()}`)
+        if (res.status === 403) {
+          const body = await res.json().catch(() => null)
+          if (body?.code === "feature_locked") {
+            setFeatureLocked(true)
+            setError(null)
+            setLoaded(true)
+            return
+          }
+          setError("You don't have permission to view appointments.")
+          setLoaded(true)
+          return
+        }
         if (!res.ok) {
           setError(`Could not load appointments (HTTP ${res.status})`)
           return
         }
         const json = (await res.json()) as AppointmentsResponse
         setAppointments(json.appointments)
+        setFeatureLocked(false)
         setLoaded(true)
         setError(null)
       } catch {
@@ -289,6 +303,26 @@ export default function Appointments() {
     return (
       <Screen style={styles.centered}>
         <Text style={styles.label}>Loading…</Text>
+      </Screen>
+    )
+  }
+
+  if (featureLocked) {
+    return (
+      <Screen style={styles.centered}>
+        <Card style={styles.errorCard}>
+          <Ionicons name="lock-closed-outline" size={28} color={theme.textTertiary} />
+          <Text style={styles.lockedTitle}>Appointments aren&apos;t included in your current plan</Text>
+          <Text style={styles.lockedMessage}>
+            Ask your account owner to upgrade the subscription to unlock appointment booking and reminders.
+          </Text>
+          <Button
+            title="Check again"
+            variant="secondary"
+            onPress={retry}
+            icon={<Ionicons name="refresh-outline" size={18} color={theme.text} />}
+          />
+        </Card>
       </Screen>
     )
   }
@@ -490,6 +524,8 @@ function createStyles(theme: Theme) {
     error: { color: theme.red },
     errorCard: { gap: 8 },
     inlineError: { color: theme.red, fontSize: 13 },
+    lockedTitle: { fontSize: 16, fontWeight: "700", color: theme.text, textAlign: "center" },
+    lockedMessage: { fontSize: 13, color: theme.textSecondary, textAlign: "center" },
 
     listContent: { paddingBottom: 24 },
     header: { gap: 10, marginBottom: 12 },

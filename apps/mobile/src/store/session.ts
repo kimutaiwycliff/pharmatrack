@@ -7,11 +7,23 @@ interface Branch {
   name: string
 }
 
+interface Contact {
+  whatsappLink: string
+  mailtoLink: string
+}
+
+// planCode/subStatus mirror apps/web/lib/auth/app-shell.ts's AppShell shape
+// (packages/core's PlanCode union: "starter" | "growth" | "enterprise").
+// subStatus is the raw subscription table status string
+// ("trialing" | "active" | "past_due" | "suspended" | "cancelled" | null).
 interface CachedSession {
   organizationId: string
   role: string
   branchId: string | null
   branches: Branch[]
+  subStatus: string | null
+  planCode: string
+  contact: Contact | null
 }
 
 const CACHE_KEY = "session"
@@ -21,6 +33,9 @@ interface SessionState {
   role: string | null
   branchId: string | null
   branches: Branch[]
+  subStatus: string | null
+  planCode: string | null
+  contact: Contact | null
   loaded: boolean
   error: string | null
   stale: boolean
@@ -43,6 +58,9 @@ export const useSessionStore = create<SessionState>((set) => ({
   role: null,
   branchId: null,
   branches: [],
+  subStatus: null,
+  planCode: null,
+  contact: null,
   loaded: false,
   error: null,
   stale: false,
@@ -56,12 +74,18 @@ export const useSessionStore = create<SessionState>((set) => ({
         role: string
         branchId: string | null
         branches: Branch[]
+        subStatus: string | null
+        planCode: string
+        contact: Contact | null
       }
       const cached: CachedSession = {
         organizationId: data.organizationId,
         role: data.role,
         branchId: data.branchId ?? data.branches[0]?.id ?? null,
         branches: data.branches,
+        subStatus: data.subStatus,
+        planCode: data.planCode,
+        contact: data.contact,
       }
       set({ ...cached, loaded: true, stale: false })
       await kvSet(CACHE_KEY, cached)

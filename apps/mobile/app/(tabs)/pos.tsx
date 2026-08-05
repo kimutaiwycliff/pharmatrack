@@ -227,10 +227,15 @@ export default function Pos() {
               <Pressable onPress={() => addProduct(item)}>
                 <Card style={styles.productCard}>
                   <View style={styles.productRow}>
-                    <Text style={styles.productName}>
-                      {item.name}
-                      {item.strength ? ` (${item.strength})` : ""}
-                    </Text>
+                    <View style={styles.productInfo}>
+                      <Text style={styles.productName}>
+                        {item.name}
+                        {item.strength ? ` (${item.strength})` : ""}
+                      </Text>
+                      <Text style={item.stockOnHand > 0 ? styles.stockText : styles.stockTextEmpty}>
+                        {item.stockOnHand > 0 ? `${item.stockOnHand} in stock` : "Out of stock"}
+                      </Text>
+                    </View>
                     <Text style={styles.priceText}>{formatKES(Math.round(item.sellingPrice * 100))}</Text>
                   </View>
                 </Card>
@@ -414,7 +419,10 @@ function createStyles(theme: Theme) {
     productList: { maxHeight: 260 },
     productCard: { marginBottom: 8, paddingVertical: 10 },
     productRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    productName: { flex: 1, color: theme.text },
+    productInfo: { flex: 1, gap: 2 },
+    productName: { color: theme.text },
+    stockText: { fontSize: 12, color: theme.textSecondary },
+    stockTextEmpty: { fontSize: 12, color: theme.red },
     priceText: { color: theme.text },
     cartList: { maxHeight: 200 },
     cartCard: { marginBottom: 8, paddingVertical: 8 },

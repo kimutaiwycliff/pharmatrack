@@ -1,3 +1,4 @@
+import { Alert } from "react-native"
 import { create } from "zustand"
 import { applyDiscount, sumCents, toCents, type Cents } from "@pharmatrack/core"
 import type { ProductRow } from "../db/schema"
@@ -11,6 +12,11 @@ export interface CartItem {
   discountPercent: number
   baseUnit: string
   isControlled: boolean
+  // Snapshotted from ProductRow.stockOnHand at add-time (the local SQLite
+  // catalogue cache — see src/db/schema.ts). Mirrors apps/web/lib/store/cartStore.ts's
+  // CartItem.stock_on_hand: caps qty at what's on hand so a cashier can't sell
+  // more than the branch actually has, matching web's overselling guard exactly.
+  stockOnHand: number
 }
 
 interface CartState {
@@ -33,11 +39,22 @@ export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   addProduct(product) {
     set((state) => {
+      const stock = product.stockOnHand
       const existing = state.items.find((i) => i.productId === product.productId)
       if (existing) {
-        return {
-          items: state.items.map((i) => (i.productId === product.productId ? { ...i, quantity: i.quantity + 1 } : i)),
+        if (existing.quantity + 1 > stock) {
+          Alert.alert(stock > 0 ? "Limited stock" : "Out of stock", stock > 0 ? `Only ${stock} of ${product.name} in stock` : `${product.name} is out of stock`)
+          return state
         }
+        return {
+          items: state.items.map((i) =>
+            i.productId === product.productId ? { ...i, quantity: i.quantity + 1, stockOnHand: stock } : i,
+          ),
+        }
+      }
+      if (stock <= 0) {
+        Alert.alert("Out of stock", `${product.name} is out of stock`)
+        return state
       }
       const newItem: CartItem = {
         productId: product.productId,
@@ -48,6 +65,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         discountPercent: 0,
         baseUnit: product.baseUnit,
         isControlled: product.isControlled,
+        stockOnHand: stock,
       }
       return { items: [...state.items, newItem] }
     })
@@ -55,7 +73,18 @@ export const useCartStore = create<CartState>((set, get) => ({
   incrementQty(productId, delta) {
     set((state) => ({
       items: state.items
-        .map((i) => (i.productId === productId ? { ...i, quantity: i.quantity + delta } : i))
+        .map((i) => {
+          if (i.productId !== productId) return i
+          const target = i.quantity + delta
+          if (delta > 0 && target > i.stockOnHand) {
+            Alert.alert(
+              i.stockOnHand > 0 ? "Limited stock" : "Out of stock",
+              i.stockOnHand > 0 ? `Only ${i.stockOnHand} of ${i.productName} in stock` : `${i.productName} is out of stock`,
+            )
+            return i
+          }
+          return { ...i, quantity: target }
+        })
         .filter((i) => i.quantity > 0),
     }))
   },
