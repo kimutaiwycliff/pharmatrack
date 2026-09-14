@@ -7,12 +7,12 @@ import { launchOfferActive, LAUNCH_TRIAL_DAYS, LAUNCH_OFFER_ENDS_AT } from "@/li
 const PLANS = [
   {
     name: "Starter", price: "1,500", tagline: "Single pharmacy finding its feet.",
-    features: ["1 branch", "Up to 5 staff", "POS, inventory & M-Pesa", "Offline POS", "Owner dashboard", "Email support"],
+    features: ["1 branch", "Up to 5 staff", "POS, inventory & M-Pesa", "Offline POS", "Owner dashboard", "Appointments & reminders", "Reports & analytics", "Email support"],
     cta: "Start free trial", highlight: false,
   },
   {
     name: "Growth", price: "4,500", tagline: "Busy shops & small chains.",
-    features: ["Up to 3 branches", "Unlimited staff", "Everything in Starter", "Appointments & reminders", "Prescriptions & DUR", "Reports & analytics", "Priority support"],
+    features: ["Up to 3 branches", "Unlimited staff", "Everything in Starter", "M-Pesa STK push", "Prescriptions & DUR", "Priority support"],
     cta: "Start free trial", highlight: true,
   },
   {
