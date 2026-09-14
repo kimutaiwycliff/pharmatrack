@@ -3,7 +3,7 @@ import { z } from "zod"
 import { eq, sql } from "drizzle-orm"
 import { dbAdmin, staff_profile, user, member, session, sale } from "@pharmatrack/db"
 import { auth } from "@/lib/auth/server"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { hashPin, validatePin } from "@/lib/auth/pin"
 import { normalizeKePhone } from "@/lib/auth/phone"
@@ -46,6 +46,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   if (id === ctx.userId) return NextResponse.json({ error: "Cannot edit your own profile here" }, { status: 400 })
 
@@ -126,6 +128,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   if (id === ctx.userId) return NextResponse.json({ error: "You can't delete your own account" }, { status: 400 })
 

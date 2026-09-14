@@ -4,7 +4,7 @@ import { and, eq, gt, gte, lte, asc, desc, ilike, inArray, sql } from "drizzle-o
 import {
   withTenant, product, product_batch, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings,
 } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
 
@@ -72,6 +72,8 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   return withTenant(ctx, async (db) => {
     const where = and(
@@ -116,6 +118,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const parsed = saleSchema.safeParse(await request.json())
   if (!parsed.success) return zodErrorResponse(parsed.error)

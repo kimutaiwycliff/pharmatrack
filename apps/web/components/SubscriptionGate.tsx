@@ -1,17 +1,24 @@
 import { ShieldAlert, LogOut, Mail, MessageCircle } from "lucide-react"
 import { signOut } from "@/app/(auth)/login/actions"
 import { platformContact } from "@/lib/platform-contact"
+import { PaymentClaimBox } from "@/components/billing/PaymentClaimBox"
 
 const MESSAGES: Record<string, string> = {
-  past_due: "Your subscription payment is overdue.",
+  // Generic enough to cover both a lapsed trial (never paid) and a missed
+  // renewal — the nicer, trial-specific copy below only applies in the window
+  // before the expiry sweep flips the stored status away from "trialing".
+  past_due: "Your free trial or subscription payment is due.",
   suspended: "Your subscription has been suspended.",
   cancelled: "Your subscription has been cancelled.",
   none: "No active subscription was found for this pharmacy.",
 }
 
-export function SubscriptionGate({ status, isOwner, orgName }: { status: string; isOwner: boolean; orgName?: string }) {
+export function SubscriptionGate({
+  status, trialExpired, isOwner, orgName,
+}: { status: string; trialExpired?: boolean; isOwner: boolean; orgName?: string }) {
   const contact = platformContact()
   const hasContact = !!(contact.mailtoLink || contact.whatsappLink)
+  const message = trialExpired && status === "past_due" ? "Your free trial has ended." : (MESSAGES[status] ?? MESSAGES.none)
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--pt-bg)] text-[var(--pt-text)] p-6">
       <div className="max-w-md w-full bg-[var(--pt-surface)] rounded-2xl border border-[var(--pt-border)] p-8 text-center">
@@ -20,12 +27,14 @@ export function SubscriptionGate({ status, isOwner, orgName }: { status: string;
         </div>
         <h1 className="text-lg font-bold">Access paused</h1>
         {orgName && <p className="text-sm text-[var(--pt-text-secondary)] mt-1">{orgName}</p>}
-        <p className="text-sm text-[var(--pt-text-secondary)] mt-3">{MESSAGES[status] ?? MESSAGES.none}</p>
+        <p className="text-sm text-[var(--pt-text-secondary)] mt-3">{message}</p>
         <p className="text-sm text-[var(--pt-text-secondary)] mt-2">
           {isOwner
-            ? "Please contact PharmaTrack to restore access for your pharmacy."
+            ? "Pay below, or contact PharmaTrack to restore access for your pharmacy."
             : "Please ask your pharmacy owner to renew the PharmaTrack subscription."}
         </p>
+
+        {isOwner && <PaymentClaimBox />}
 
         {/* Contact the platform operator (env-configurable) */}
         {hasContact && (

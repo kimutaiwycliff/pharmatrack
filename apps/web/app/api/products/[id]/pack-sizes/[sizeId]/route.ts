@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { eq } from "drizzle-orm"
 import { withTenant, product_pack_size } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serializePackSize } from "@/lib/products/packsize"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
 
@@ -22,6 +22,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { sizeId } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!canWrite(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = updateSchema.safeParse(await request.json())
@@ -57,6 +59,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const { sizeId } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!canWrite(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   await withTenant(ctx, (db) => db.delete(product_pack_size).where(eq(product_pack_size.id, sizeId)))

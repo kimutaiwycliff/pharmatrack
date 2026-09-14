@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq } from "drizzle-orm"
 import { withTenant, appointment, appointment_reminder, appointment_service } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serviceRecurrenceWeeks } from "@/lib/appointments/services"
 import { queueReminders } from "@/lib/appointments/queue"
 import { fetchAppointment } from "@/lib/appointments/serialize"
@@ -23,6 +23,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = updateSchema.safeParse(await request.json())
@@ -74,6 +76,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const out = await withTenant(ctx, async (db) => {

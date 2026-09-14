@@ -3,6 +3,7 @@ import { dbAdmin, staff_profile, branch as branchTable, subscription, plan } fro
 import { effectivePlanCode, type PlanCode } from "@pharmatrack/core"
 import type { Profile, Branch, UserRole } from "@pharmatrack/types"
 import { getSession } from "./helpers"
+import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 
 export interface AppShell {
   userId: string
@@ -10,6 +11,10 @@ export interface AppShell {
   profile: Profile
   branches: Branch[]
   subStatus: string | null
+  /** True when the effective status is "past_due" purely because a trial ran out
+   *  (never had a paid period) — lets the gate show "trial ended" instead of
+   *  "payment overdue" without adding a new subscription.status enum value. */
+  trialExpired: boolean
   planCode: PlanCode
 }
 
@@ -36,7 +41,12 @@ export async function loadAppShell(): Promise<AppShell | null> {
     created_at: sp.created_at.toISOString(),
   }
 
-  const [sub] = await db.select({ status: subscription.status, planCode: plan.code }).from(subscription)
+  const [sub] = await db.select({
+    status: subscription.status,
+    trial_ends_at: subscription.trial_ends_at,
+    current_period_end: subscription.current_period_end,
+    planCode: plan.code,
+  }).from(subscription)
     .leftJoin(plan, eq(plan.id, subscription.plan_id))
     .where(eq(subscription.organization_id, sp.organization_id)).limit(1)
 
@@ -48,5 +58,17 @@ export async function loadAppShell(): Promise<AppShell | null> {
     address: b.address, phone: b.phone, is_active: b.is_active, created_at: b.created_at.toISOString(),
   }))
 
-  return { userId: session.user.id, email: session.user.email ?? "", profile, branches, subStatus: sub?.status ?? null, planCode: effectivePlanCode(sub?.status, sub?.planCode) }
+  const effective = sub ? effectiveSubscriptionStatus(sub) : null
+  return {
+    userId: session.user.id,
+    email: session.user.email ?? "",
+    profile,
+    branches,
+    subStatus: effective,
+    // True when the stored status is still "trialing" (the sweep hasn't run,
+    // or never will if nobody reopens the app) but the trial has actually run
+    // out — i.e. this block is a lapsed trial, not a missed renewal.
+    trialExpired: sub?.status === "trialing" && effective !== "trialing",
+    planCode: effectivePlanCode(sub?.status, sub?.planCode),
+  }
 }

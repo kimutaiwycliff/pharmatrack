@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, asc, eq, ilike, isNull } from "drizzle-orm"
 import { withTenant, category } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 
 const createSchema = z.object({
@@ -15,6 +15,8 @@ const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 export async function GET() {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const rows = await withTenant(ctx, (db) =>
     db.select({ id: category.id, name: category.name, parent_id: category.parent_id })
@@ -25,6 +27,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = createSchema.safeParse(await request.json())

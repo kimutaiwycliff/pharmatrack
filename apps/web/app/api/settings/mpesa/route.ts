@@ -3,7 +3,7 @@ import { z } from "zod"
 import { eq } from "drizzle-orm"
 import { dbAdmin, mpesa_config } from "@pharmatrack/db"
 import { hasFeature } from "@pharmatrack/core"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { encryptSecret } from "@/lib/crypto"
 import { getMpesaConfig, isConfigured } from "@/lib/mpesa/config"
 import { planCodeForOrg } from "@/lib/entitlements"
@@ -12,6 +12,8 @@ import { planCodeForOrg } from "@/lib/entitlements"
 export async function GET() {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (ctx.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 })
 
   const cfg = await getMpesaConfig(ctx.organizationId)
@@ -40,6 +42,8 @@ const schema = z.object({
 export async function PUT(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (ctx.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 })
 
   const parsed = schema.safeParse(await request.json())

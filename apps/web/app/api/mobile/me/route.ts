@@ -4,6 +4,7 @@ import { withTenant, branch, subscription, plan } from "@pharmatrack/db"
 import { effectivePlanCode } from "@pharmatrack/core"
 import { getTenantContext } from "@/lib/auth/helpers"
 import { platformContact } from "@/lib/platform-contact"
+import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 
 // ADR-013 — the only new backend surface the Android app needed. Mirrors the
 // tenant/branch context the web app gets for free from a server-rendered
@@ -32,7 +33,12 @@ export async function GET() {
 
   const [sub] = await withTenant(ctx, (db) =>
     db
-      .select({ status: subscription.status, planCode: plan.code })
+      .select({
+        status: subscription.status,
+        trial_ends_at: subscription.trial_ends_at,
+        current_period_end: subscription.current_period_end,
+        planCode: plan.code,
+      })
       .from(subscription)
       .leftJoin(plan, eq(plan.id, subscription.plan_id))
       .where(eq(subscription.organization_id, ctx.organizationId))
@@ -46,7 +52,7 @@ export async function GET() {
     role: ctx.role,
     branchId: ctx.branchId,
     branches,
-    subStatus: sub?.status ?? null,
+    subStatus: sub ? effectiveSubscriptionStatus(sub) : null,
     planCode: effectivePlanCode(sub?.status, sub?.planCode),
     contact: { whatsappLink: contact.whatsappLink, mailtoLink: contact.mailtoLink },
   })

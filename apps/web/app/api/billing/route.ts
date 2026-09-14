@@ -6,8 +6,10 @@ import { paystackConfigured } from "@/lib/billing/paystack"
 import { platformContact } from "@/lib/platform-contact"
 
 // Owner-facing billing summary: their subscription + plan + recent payments.
+// Must keep working while locked out — it's what PaymentClaimBox reads on the
+// SubscriptionGate screen.
 export async function GET() {
-  const ctx = await getApiContext()
+  const ctx = await getApiContext({ allowInactiveSubscription: true })
   if ("error" in ctx) return ctx.error
 
   return withTenant(ctx, async (db) => {

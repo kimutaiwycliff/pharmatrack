@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, or, eq, gt, asc } from "drizzle-orm"
 import { withTenant, product, product_batch } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCostInContext, omitCost } from "@/lib/auth/costVisibility"
 import { redis } from "@/lib/redis"
 
@@ -42,6 +42,8 @@ export async function GET(request: NextRequest) {
   const context = request.nextUrl.searchParams.get("context")
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const effectiveBranchId = branchId ?? ctx.branchId
   const cacheKey = `product:${ctx.organizationId}:${effectiveBranchId ?? "-"}:${barcode}`

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { sql } from "drizzle-orm"
 import { withTenant, branch } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { requireCapacityApi } from "@/lib/entitlements"
 
 const branchSchema = z.object({
@@ -14,6 +14,8 @@ const branchSchema = z.object({
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (ctx.role !== "owner") return NextResponse.json({ error: "Only owners can create branches" }, { status: 403 })
 
   const parsed = branchSchema.safeParse(await request.json())

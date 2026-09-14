@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { and, desc, eq, isNull, inArray } from "drizzle-orm"
 import { withTenant, shift, sale, payment } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serializeShift } from "@/lib/shifts/serialize"
 
 // The open (not-yet-clocked-out) shift for the signed-in cashier, or null.
@@ -12,6 +12,8 @@ import { serializeShift } from "@/lib/shifts/serialize"
 export async function GET() {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   return withTenant(ctx, async (db) => {
     const [row] = await db.select().from(shift)

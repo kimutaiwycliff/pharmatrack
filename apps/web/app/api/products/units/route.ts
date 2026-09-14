@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { isNotNull } from "drizzle-orm"
 import { withTenant, product } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 
 // Distinct base_unit / dosage_form values already used by this org's products —
 // feeds the "create your own" combobox in NewProductDialog / EditProductSheet so
@@ -10,6 +10,8 @@ import { getTenantContext } from "@/lib/auth/helpers"
 export async function GET() {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const { base_units, dosage_forms } = await withTenant(ctx, async (db) => {
     const [baseUnitRows, dosageFormRows] = await Promise.all([

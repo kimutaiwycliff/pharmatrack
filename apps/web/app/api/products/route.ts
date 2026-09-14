@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, or, ilike, asc, sql, eq, isNull } from "drizzle-orm"
 import { withTenant, product } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { deriveGenericName } from "@/lib/generic-name"
@@ -33,6 +33,8 @@ const createProductSchema = z.object({
 export async function GET(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const { searchParams } = new URL(request.url)
   const q = (searchParams.get("q") ?? "").trim()
@@ -56,6 +58,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }

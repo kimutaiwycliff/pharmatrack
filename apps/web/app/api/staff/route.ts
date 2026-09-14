@@ -4,7 +4,7 @@ import { randomUUID, randomBytes } from "node:crypto"
 import { asc, eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, user, branch, member } from "@pharmatrack/db"
 import { auth } from "@/lib/auth/server"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { normalizeKePhone } from "@/lib/auth/phone"
 import { requireCapacityApi } from "@/lib/entitlements"
@@ -22,6 +22,8 @@ const WRITE_ROLES: Role[] = ["owner", "manager"]
 export async function GET(_request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const rows = await dbAdmin().select({
@@ -42,6 +44,8 @@ export async function GET(_request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = inviteSchema.safeParse(await request.json())

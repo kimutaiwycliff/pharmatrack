@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq } from "drizzle-orm"
 import { withTenant, branch as branchTable, product, product_batch, category as categoryTable } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 
 const MAX_ROWS = 2000
 
@@ -53,6 +53,8 @@ const payloadSchema = z.object({
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }

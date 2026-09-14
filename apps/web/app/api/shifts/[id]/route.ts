@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, inArray } from "drizzle-orm"
 import { withTenant, shift, sale, payment, user, staff_profile } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serializeShift } from "@/lib/shifts/serialize"
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   return withTenant(ctx, async (db) => {
     const [found] = await db.select({ row: shift, full_name: user.name, role: staff_profile.role })

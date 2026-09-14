@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { getMpesaConfig, mpesaStkAvailability } from "@/lib/mpesa/config"
 import { stkPush } from "@/lib/mpesa/daraja"
 
@@ -16,6 +16,8 @@ const stkSchema = z.object({
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const parsed = stkSchema.safeParse(await request.json())
   if (!parsed.success) {

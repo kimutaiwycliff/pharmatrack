@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, user } from "@pharmatrack/db"
 import { auth } from "@/lib/auth/server"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 
 const WRITE_ROLES: Role[] = ["owner", "manager"]
 
@@ -12,6 +12,8 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const db = dbAdmin()

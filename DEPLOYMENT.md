@@ -342,9 +342,14 @@ new migration files — if you added migrations, `rsync` `infra/` to the box fir
 ## Notes
 
 - The **worker** (`apps/worker/server.js`) is a small dependency-free scheduler
-  that calls `/api/cron/appointment-reminders` (Bearer `CRON_SECRET`) on an
-  interval — default hourly, override with `REMINDER_INTERVAL_MS` /
-  `CRON_TARGET_URL` in `.env`. The endpoint is idempotent. It's the future home
-  for a BullMQ worker; no queue jobs run yet.
+  that calls two idempotent, `CRON_SECRET`-guarded endpoints on an interval:
+  `/api/cron/appointment-reminders` (default hourly, override with
+  `REMINDER_INTERVAL_MS`) and `/api/cron/subscription-expiry` (default every 6h,
+  override with `SUBSCRIPTION_SWEEP_INTERVAL_MS`) — the latter flips
+  `trialing`/`active` subscriptions to `past_due`/`suspended` once
+  `trial_ends_at`/`current_period_end` has passed, so a lapsed trial or unpaid
+  renewal actually loses access instead of a stale status lingering forever.
+  Both targets are controlled by `CRON_TARGET_URL` in `.env`. It's the future
+  home for a BullMQ worker; no queue jobs run yet.
 - RLS is the tenant boundary. Before shipping schema changes, keep `make test-rls`
   green — it proves two orgs cannot see each other's rows.

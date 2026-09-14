@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, isNotNull, asc } from "drizzle-orm"
 import { withTenant, product, product_batch, product_stock } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription, type Role } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { z } from "zod"
 
@@ -24,6 +24,8 @@ async function requireManager() {
   if (!(["owner", "manager"] as Role[]).includes(ctx.role)) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
   }
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return { error: subErr }
   return { ctx }
 }
 

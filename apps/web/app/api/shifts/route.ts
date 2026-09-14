@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, desc, eq, gte, lte, inArray, isNull } from "drizzle-orm"
 import { withTenant, shift, sale, payment, user, staff_profile } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { serializeShift } from "@/lib/shifts/serialize"
 
@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   return withTenant(ctx, async (db) => {
     const where = and(
@@ -98,6 +100,8 @@ export async function GET(request: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const parsed = clockInSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 })
@@ -118,6 +122,8 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const parsed = clockOutSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 })

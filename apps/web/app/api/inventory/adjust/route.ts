@@ -5,7 +5,7 @@ import {
   withTenant, dbAdmin, product, product_batch, stock_adjustment,
   controlled_substance_log, user,
 } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
 import { zodErrorResponse } from "@/lib/api/errors"
@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
   if (!productId) return NextResponse.json({ error: "product_id required" }, { status: 400 })
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const rows = await withTenant(ctx, (db) =>
     db.select({
@@ -56,6 +58,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!(["owner", "manager"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = adjustSchema.safeParse(await request.json())

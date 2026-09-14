@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq, asc } from "drizzle-orm"
 import { withTenant, product, product_batch } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const rows = await withTenant(ctx, (db) =>
     db.select().from(product_batch)
@@ -51,6 +53,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) return apiError("Forbidden", 403)
 
   const parsed = createBatchSchema.safeParse(await request.json())
@@ -93,6 +97,8 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) return apiError("Forbidden", 403)
 
   const parsed = updateBatchSchema.safeParse(await request.json())

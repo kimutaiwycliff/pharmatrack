@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq } from "drizzle-orm"
 import { withTenant, product_stock, subscription } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 
 // Live-computed notification bell data - no notification table, just reads of
 // existing stock/expiry/subscription state. Scoped to the three cases that
@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   return withTenant(ctx, async (db) => {
     const stockRows = await db.select({

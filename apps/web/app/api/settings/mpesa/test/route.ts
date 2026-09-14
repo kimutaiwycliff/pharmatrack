@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { eq } from "drizzle-orm"
 import { dbAdmin, mpesa_config } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { getMpesaConfig, isConfigured } from "@/lib/mpesa/config"
 import { getDarajaToken, stkPush } from "@/lib/mpesa/daraja"
 
@@ -13,6 +13,8 @@ const schema = z.object({ stkPhone: z.string().trim().optional() })
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (ctx.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 })
 
   const parsed = schema.safeParse(await request.json().catch(() => ({})))

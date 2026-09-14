@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
 import { putProductImage } from "@/lib/storage/minio"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 
 const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
@@ -13,6 +13,8 @@ const ALLOWED = /^image\/(png|jpe?g|webp|gif|avif)$/
 export async function POST(request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const form = await request.formData().catch(() => null)

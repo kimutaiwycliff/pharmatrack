@@ -50,7 +50,13 @@ async function createOrgScaffold(opts: { pharmacyName: string; branchName?: stri
     plan_id: planRow?.id ?? null,
     status: opts.trialDays > 0 ? "trialing" : "active",
     trial_ends_at: opts.trialDays > 0 ? trialEnds : null,
-    current_period_end: trialEnds,
+    // Only meaningful once a real paid period exists. Left null for a trial
+    // (expiry is driven by trial_ends_at) and for a zero-trial "active,
+    // pay-upfront" provision (no period end yet — an operator sets one when
+    // they record the first payment); otherwise effectiveSubscriptionStatus()
+    // would treat "now" as an already-lapsed period and start the dunning
+    // clock on tenants the moment they're created.
+    current_period_end: opts.trialDays > 0 ? trialEnds : null,
   })
   await db.insert(appointment_service).values(
     DEFAULT_SERVICES.map(([slug, label, recurrence_weeks, sort_order]) => ({

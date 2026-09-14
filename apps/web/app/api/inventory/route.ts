@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, or, ilike, asc, sql } from "drizzle-orm"
 import { withTenant, product_stock } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { searchThreshold } from "@/lib/search"
 
@@ -40,6 +40,8 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const where = and(
     eq(product_stock.branch_id, branchId),

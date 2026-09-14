@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, asc, eq } from "drizzle-orm"
 import { withTenant, product, product_pack_size, product_batch, sale_item } from "@pharmatrack/db"
-import { getTenantContext, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { serializePackSize } from "@/lib/products/packsize"
@@ -43,6 +43,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   return withTenant(ctx, async (db) => {
     const [p] = await db.select().from(product).where(eq(product.id, id)).limit(1)
@@ -58,6 +60,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const parsed = updateSchema.safeParse(await request.json())
@@ -104,6 +108,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const { id } = await params
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
   if (!DELETE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const out = await withTenant(ctx, async (db) => {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm"
 import { withTenant, sale, sale_item, product_stock } from "@pharmatrack/db"
-import { getTenantContext } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 
 const num = (v: string | number | null) => (v == null ? null : Number(v))
@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
 
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const subErr = await requireActiveSubscription(ctx.organizationId)
+  if (subErr) return subErr
 
   const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000)
 
