@@ -3,10 +3,15 @@ import { ArrowRight, ShieldCheck, WifiOff, Smartphone, TrendingUp } from "lucide
 import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 import { getLatestDesktopRelease } from "@/lib/desktop/release"
 import { DesktopDownload } from "@/components/marketing/DesktopDownload"
+import { getLatestAndroidRelease } from "@/lib/android/release"
+import { AndroidDownload } from "@/components/marketing/AndroidDownload"
 
 export async function Hero() {
   const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
-  const desktopRelease = await getLatestDesktopRelease()
+  const [desktopRelease, androidRelease] = await Promise.all([
+    getLatestDesktopRelease(),
+    getLatestAndroidRelease(),
+  ])
   return (
     <section className="relative overflow-hidden mk-mesh mk-grain">
       <div className="absolute inset-0 mk-crosses pointer-events-none" />
@@ -108,6 +113,7 @@ export async function Hero() {
           <Smartphone size={14} /> Works on any phone, tablet or till — installs like an app, runs offline.
         </p>
         <DesktopDownload release={desktopRelease} />
+        <AndroidDownload release={androidRelease} />
       </div>
     </section>
   )
