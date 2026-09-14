@@ -24,7 +24,7 @@ import { Card, EmptyState, Screen } from "../../src/components"
 interface MenuItem {
   label: string
   icon: keyof typeof Ionicons.glyphMap
-  href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers" | "/sales" | "/billing" | "/settings" | "/catalog-seed"
+  href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers" | "/sales" | "/billing" | "/settings" | "/catalog-seed" | "/prescriptions"
   roles: string[]
   feature?: Feature
 }
@@ -35,6 +35,7 @@ const MENU_ITEMS: MenuItem[] = [
   { label: "Billing", icon: "card-outline", href: "/billing", roles: ["owner"] },
   { label: "Settings", icon: "settings-outline", href: "/settings", roles: ["owner", "manager", "pharmacist", "cashier"] },
   { label: "Reports", icon: "bar-chart-outline", href: "/reports", roles: ["owner", "manager"], feature: "reports" },
+  { label: "Prescriptions", icon: "document-text-outline", href: "/prescriptions", roles: ["owner", "manager", "pharmacist"], feature: "prescriptions" },
   { label: "Products", icon: "medkit-outline", href: "/products", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
   { label: "Categories", icon: "folder-outline", href: "/categories", roles: ["owner", "manager", "pharmacist"] },
   { label: "Suppliers", icon: "business-outline", href: "/suppliers", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
