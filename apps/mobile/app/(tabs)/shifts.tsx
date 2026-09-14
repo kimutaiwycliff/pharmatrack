@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { StyleSheet, Text, TextInput } from "react-native"
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { useSessionStore } from "../../src/store/session"
@@ -139,7 +140,13 @@ export default function Shifts() {
   if (activeShift) {
     return (
       <Screen style={styles.container}>
-        <Text style={styles.title}>Current shift</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Current shift</Text>
+          <Pressable onPress={() => router.push("/shift-history")} hitSlop={8} style={styles.historyLink}>
+            <Ionicons name="time-outline" size={16} color={theme.textSecondary} />
+            <Text style={styles.historyLinkText}>History</Text>
+          </Pressable>
+        </View>
         <Card style={styles.shiftCard}>
           <Text style={styles.label}>Opening float: {formatKES(Math.round(activeShift.openingFloat * 100))}</Text>
           <Text style={styles.label}>Clocked in at: {formatTime(activeShift.clockedInAt)}</Text>
@@ -180,7 +187,13 @@ export default function Shifts() {
 
   return (
     <Screen style={styles.container}>
-      <Text style={styles.title}>Clock in</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>Clock in</Text>
+        <Pressable onPress={() => router.push("/shift-history")} hitSlop={8} style={styles.historyLink}>
+          <Ionicons name="time-outline" size={16} color={theme.textSecondary} />
+          <Text style={styles.historyLinkText}>History</Text>
+        </Pressable>
+      </View>
       <Text style={styles.subtitle}>Clock in with an opening cash float before taking sales.</Text>
       <TextInput
         style={styles.input}
@@ -205,6 +218,9 @@ function createStyles(theme: Theme) {
   return StyleSheet.create({
     container: { gap: 12 },
     centered: { alignItems: "center", justifyContent: "center", gap: 8 },
+    headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    historyLink: { flexDirection: "row", alignItems: "center", gap: 4 },
+    historyLinkText: { fontSize: 13, fontWeight: "600", color: theme.textSecondary },
     title: { fontSize: 18, fontWeight: "700", color: theme.text },
     subtitle: { fontSize: 14, color: theme.textSecondary },
     label: { fontSize: 15, color: theme.text },

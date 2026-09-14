@@ -114,6 +114,9 @@ export default function Login() {
             value={password}
             onChangeText={setPassword}
           />
+          <Pressable onPress={() => router.push("/forgot-password")} hitSlop={8}>
+            <Text style={styles.forgotLink}>Forgot password?</Text>
+          </Pressable>
         </>
       )}
 
@@ -128,6 +131,7 @@ function createStyles(theme: Theme) {
   return StyleSheet.create({
     container: { justifyContent: "center", padding: 24, gap: 12 },
     title: { fontSize: 28, fontWeight: "700", textAlign: "center", marginBottom: 24, color: theme.text },
+    forgotLink: { fontSize: 13, fontWeight: "600", color: theme.green, textAlign: "right" },
     tabs: {
       flexDirection: "row",
       marginBottom: 12,
