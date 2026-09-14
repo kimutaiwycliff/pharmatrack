@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { router } from "expo-router"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { hasFeature, type Feature } from "@pharmatrack/core"
 import { confirmSignOut } from "../../src/lib/auth-client"
 import { listDeviceUsers } from "../../src/lib/device-users"

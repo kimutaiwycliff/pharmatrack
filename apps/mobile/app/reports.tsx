@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { apiFetch } from "../src/lib/api-fetch"
 import { useSessionStore } from "../src/store/session"

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES, fromCents } from "@pharmatrack/core"
 import type { ProductRow } from "../../src/db/schema"
 import { searchLocalProducts } from "../../src/lib/sync/catalogue"

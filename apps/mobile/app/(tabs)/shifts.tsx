@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { StyleSheet, Text, TextInput } from "react-native"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { useSessionStore } from "../../src/store/session"
 import { useShiftStore, type ShiftResponse } from "../../src/store/shift"

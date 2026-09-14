@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiFetch } from "../src/lib/api-fetch"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"

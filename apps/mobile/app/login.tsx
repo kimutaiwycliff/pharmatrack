@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { signInEmail, signInPin } from "../src/lib/auth-client"
 import { cacheDeviceUserAfterPinLogin, tryOfflinePinLogin } from "../src/lib/device-users"
 import { useTheme } from "../src/theme/useTheme"
