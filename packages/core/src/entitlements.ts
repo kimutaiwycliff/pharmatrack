@@ -49,15 +49,15 @@ const STARTER_FEATURES = [
   "offline_pos",
   "mpesa",
   "dashboard",
+  "appointments",
+  "reminders",
+  "reports",
 ] as const satisfies readonly Feature[]
 
 const GROWTH_FEATURES = [
   ...STARTER_FEATURES,
   "mpesa_stk",
-  "appointments",
-  "reminders",
   "prescriptions",
-  "reports",
   "multi_branch",
 ] as const satisfies readonly Feature[]
 
