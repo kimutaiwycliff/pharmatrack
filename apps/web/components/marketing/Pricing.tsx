@@ -1,26 +1,61 @@
 import Link from "next/link"
 import { Check, Sparkles } from "lucide-react"
 import { launchOfferActive, LAUNCH_TRIAL_DAYS, LAUNCH_OFFER_ENDS_AT } from "@/lib/launch-offer"
+import { PLAN_MATRIX, PLAN_ORDER, FEATURE_LABELS, type PlanCode, type Feature } from "@pharmatrack/core"
 
-// Tiers mirror the entitlements catalog (packages/core/entitlements.ts) and the
-// `plan` table prices. Keep features/limits in sync with PLAN_MATRIX.
-const PLANS = [
-  {
-    name: "Starter", price: "1,500", tagline: "Single pharmacy finding its feet.",
-    features: ["1 branch", "Up to 5 staff", "POS, inventory & M-Pesa", "Offline POS", "Owner dashboard", "Appointments & reminders", "Reports & analytics", "Email support"],
-    cta: "Start free trial", highlight: false,
+// Feature bullets are DERIVED from PLAN_MATRIX (packages/core/entitlements.ts)
+// below, so this card can never drift from what a tier actually gates again —
+// only price/tagline/CTA and non-gated perks (support tier, hosting, onboarding)
+// are hand-written here, since those aren't Feature entitlements.
+const MARKETING: Record<PlanCode, { price: string; tagline: string; cta: string; extras: string[] }> = {
+  starter: {
+    price: "1,500", tagline: "Single pharmacy finding its feet.",
+    cta: "Start free trial", extras: ["Email support"],
   },
-  {
-    name: "Growth", price: "4,500", tagline: "Busy shops & small chains.",
-    features: ["Up to 3 branches", "Unlimited staff", "Everything in Starter", "M-Pesa STK push", "Prescriptions & DUR", "Priority support"],
-    cta: "Start free trial", highlight: true,
+  growth: {
+    price: "4,500", tagline: "Busy shops & small chains.",
+    cta: "Start free trial", extras: ["Priority support"],
   },
-  {
-    name: "Enterprise", price: "Custom", tagline: "Multi-branch groups.",
-    features: ["Unlimited branches", "Everything in Growth", "Centralised reporting", "Self-hosted option", "Onboarding & training", "Dedicated account manager"],
-    cta: "Talk to sales", highlight: false,
+  enterprise: {
+    price: "Custom", tagline: "Multi-branch groups.",
+    cta: "Talk to sales", extras: ["Self-hosted option", "Onboarding & training", "Dedicated account manager"],
   },
-]
+}
+
+// Features that shouldn't get their own marketing bullet: multi_branch is
+// already conveyed by the branches limit line below, and etims/sha are Phase 8
+// — present in PLAN_MATRIX for future gating but not built/marketed yet.
+const HIDDEN_FROM_MARKETING = new Set<Feature>(["multi_branch", "etims", "sha"])
+
+function limitLines(code: PlanCode): string[] {
+  const { branches, staff } = PLAN_MATRIX[code].limits
+  return [
+    branches === Infinity ? "Unlimited branches" : branches === 1 ? "1 branch" : `Up to ${branches} branches`,
+    staff === Infinity ? "Unlimited staff" : `Up to ${staff} staff`,
+  ]
+}
+
+// A tier's own features, minus whatever the tier below it already has — so
+// each card reads as "everything below, plus X" instead of repeating itself.
+function featureLines(code: PlanCode): string[] {
+  const tierIndex = PLAN_ORDER.indexOf(code)
+  const previousCode = tierIndex > 0 ? PLAN_ORDER[tierIndex - 1] : null
+  const ownFeatures = PLAN_MATRIX[code].features.filter((f) => !HIDDEN_FROM_MARKETING.has(f))
+
+  if (!previousCode) return ownFeatures.map((f) => FEATURE_LABELS[f])
+
+  const previousFeatures = new Set(PLAN_MATRIX[previousCode].features)
+  const added = ownFeatures.filter((f) => !previousFeatures.has(f))
+  return [`Everything in ${PLAN_MATRIX[previousCode].label}`, ...added.map((f) => FEATURE_LABELS[f])]
+}
+
+const PLANS = PLAN_ORDER.map((code) => ({
+  code,
+  name: PLAN_MATRIX[code].label,
+  ...MARKETING[code],
+  highlight: code === "growth",
+  features: [...limitLines(code), ...featureLines(code), ...MARKETING[code].extras],
+}))
 
 export function Pricing() {
   return (
@@ -42,7 +77,7 @@ export function Pricing() {
 
       <div className="mt-12 grid md:grid-cols-3 gap-5 items-start">
         {PLANS.map((p) => (
-          <div key={p.name} className={`relative rounded-3xl border p-7 ${
+          <div key={p.code} className={`relative rounded-3xl border p-7 ${
             p.highlight
               ? "border-[var(--pt-green)] bg-[var(--pt-surface)] shadow-2xl shadow-[var(--pt-green)]/10 md:-translate-y-3"
               : "border-[var(--pt-border)] bg-[var(--pt-surface)]"
@@ -63,7 +98,7 @@ export function Pricing() {
                     <span className="text-sm text-[var(--pt-text-tertiary)]">/mo</span>
                   </>}
             </div>
-            <Link href={p.name === "Enterprise" ? "#demo" : "/signup"}
+            <Link href={p.code === "enterprise" ? "#demo" : "/signup"}
               className={`mt-6 flex items-center justify-center h-11 rounded-xl font-semibold text-sm transition-colors ${
                 p.highlight
                   ? "bg-[var(--pt-green)] text-white hover:bg-[var(--pt-green-600)]"

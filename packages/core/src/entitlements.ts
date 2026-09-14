@@ -32,6 +32,30 @@ export type Feature =
   | "etims"           // Phase 8 — KRA eTIMS
   | "sha"             // Phase 8 — SHA / NHIF claims
 
+/** Human-readable label per feature — the single source for any UI (upgrade
+ *  toasts, the marketing pricing table, …) that needs to describe a Feature
+ *  key to a person instead of just gating on it. */
+export const FEATURE_LABELS: Record<Feature, string> = {
+  pos: "Point of sale & payments",
+  inventory: "Inventory, batches & FEFO",
+  offline_pos: "Offline-first POS",
+  mpesa: "M-Pesa at the till",
+  mpesa_stk: "M-Pesa STK push",
+  dashboard: "Owner dashboard",
+  appointments: "Appointments & reminders",
+  reminders: "SMS / WhatsApp / email reminders",
+  prescriptions: "Prescriptions & DUR",
+  reports: "Reports & analytics",
+  multi_branch: "Multiple branches",
+  central_reporting: "Centralised reporting",
+  etims: "KRA eTIMS invoicing",
+  sha: "SHA / NHIF claims",
+}
+
+/** Lowest → highest tier. Lets UI compute "everything in the tier below, plus
+ *  X, Y" without hand-copying each tier's feature list. */
+export const PLAN_ORDER: readonly PlanCode[] = ["starter", "growth", "enterprise"]
+
 /** Numeric caps. Use Infinity for "unlimited". */
 export type Limit = "branches" | "staff"
 
