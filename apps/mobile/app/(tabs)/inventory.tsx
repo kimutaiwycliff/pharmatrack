@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { apiFetch } from "../../src/lib/api-fetch"
@@ -244,7 +245,11 @@ export default function Inventory() {
             {error ? <Text style={styles.inlineError}>{error}</Text> : null}
           </View>
         }
-        renderItem={({ item }) => <ProductRow product={item} theme={theme} styles={styles} />}
+        renderItem={({ item }) => (
+          <Pressable onPress={() => router.push({ pathname: "/product-batches", params: { productId: item.product_id, productName: item.name } })}>
+            <ProductRow product={item} theme={theme} styles={styles} />
+          </Pressable>
+        )}
         ItemSeparatorComponent={() => <View style={styles.rowGap} />}
         ListEmptyComponent={
           <EmptyState
