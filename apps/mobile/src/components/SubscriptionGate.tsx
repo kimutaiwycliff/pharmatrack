@@ -1,6 +1,6 @@
 import { Linking, ScrollView, StyleSheet, Text, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { Button, Screen } from "./index"
+import { Button, PaymentClaimBox, Screen } from "./index"
 import { confirmSignOut } from "../lib/auth-client"
 import { useTheme } from "../theme/useTheme"
 import type { Theme } from "../theme/tokens"
@@ -44,9 +44,11 @@ export function SubscriptionGate({ status, isOwner, contact }: SubscriptionGateP
           <Text style={styles.message}>{MESSAGES[status] ?? MESSAGES.none}</Text>
           <Text style={styles.instruction}>
             {isOwner
-              ? "Please contact PharmaTrack to restore access for your pharmacy."
+              ? "Pay below, or contact PharmaTrack to restore access for your pharmacy."
               : "Please ask your pharmacy owner to renew the PharmaTrack subscription."}
           </Text>
+
+          {isOwner && <PaymentClaimBox />}
 
           {hasContact && (
             <View style={styles.contactRow}>
