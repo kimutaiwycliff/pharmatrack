@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { X, Upload, Trash2, Plus, Loader2, ImageIcon, PackageOpen, ScanBarcode } from "lucide-react"
+import { X, Upload, Trash2, Plus, Loader2, ImageIcon, PackageOpen, ScanBarcode, Tag } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,9 @@ import { useSessionStore } from "@/lib/store/sessionStore"
 import { CategorySelect } from "./CategorySelect"
 import { SuggestInput } from "./SuggestInput"
 import { CameraScanner } from "@/components/pos/CameraScanner"
-import type { Product, ProductPackSize } from "@pharmatrack/types"
+import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
+import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
+import type { Product, ProductPackSize, Organization } from "@pharmatrack/types"
 
 interface Props {
   productId: string | null
@@ -94,7 +96,14 @@ function ImageUploader({ value, onChange }: { value: string | null; onChange: (u
 }
 
 // ─── Pack sizes editor ───────────────────────────────────────────────────────
-function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit: string }) {
+function PackSizesEditor({
+  productId, baseUnit, productName, onPrintLabel,
+}: {
+  productId: string
+  baseUnit: string
+  productName: string
+  onPrintLabel: (item: LabelItem) => void
+}) {
   const queryClient = useQueryClient()
   const { data: sizes = [], isLoading } = useQuery<ProductPackSize[]>({
     queryKey: ["pack-sizes", productId],
@@ -197,6 +206,16 @@ function PackSizesEditor({ productId, baseUnit }: { productId: string; baseUnit:
             </div>
             <div className="flex items-center gap-3">
               <span className="font-bold tabular-nums">{formatKES(s.selling_price)}</span>
+              {s.barcode && (
+                <button
+                  onClick={() => onPrintLabel({ code: s.barcode!, productName: `${productName} — ${s.pack_label}`, price: s.selling_price, copies: 1 })}
+                  title="Print label"
+                  aria-label="Print barcode label for this pack size"
+                  className="text-[var(--pt-text-tertiary)] hover:text-[var(--pt-green-600)] p-1 rounded"
+                >
+                  <Tag size={13} />
+                </button>
+              )}
               <button onClick={() => setScanningSizeId(s.id)} title="Scan barcode" aria-label="Scan barcode for this pack size" className="text-[var(--pt-text-tertiary)] hover:text-[var(--pt-green-600)] p-1 rounded">
                 <ScanBarcode size={13} />
               </button>
@@ -305,6 +324,18 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
   })
 
   const product = data?.product
+
+  const { data: settingsData } = useQuery<{ org: Organization }>({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings")
+      if (!res.ok) throw new Error("Failed to load settings")
+      return res.json() as Promise<{ org: Organization }>
+    },
+    staleTime: 60_000,
+  })
+  const labelSize: LabelSize = settingsData?.org.label_size ?? "40x30mm"
+  const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
 
   const { data: suppliersData } = useQuery<{ suppliers: Array<{ id: string; name: string }> }>({
     queryKey: ["suppliers"],
@@ -444,6 +475,22 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                       >
                         <ScanBarcode size={16} />
                       </button>
+                      {(form.gtin || form.barcode_raw) && (
+                        <button
+                          type="button"
+                          onClick={() => setLabelItems([{
+                            code: (form.gtin ?? form.barcode_raw)!,
+                            productName: form.name ?? "",
+                            price: form.selling_price ?? null,
+                            copies: 1,
+                          }])}
+                          aria-label="Print barcode label"
+                          title="Print label"
+                          className="h-10 w-10 shrink-0 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)] hover:text-[var(--pt-green-600)] hover:bg-[var(--pt-muted)] transition-colors"
+                        >
+                          <Tag size={16} />
+                        </button>
+                      )}
                     </div>
                   </Field>
                   <Field label="Strength">
@@ -528,7 +575,12 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
 
               {/* Pack sizes */}
               <Section title="Pack Sizes">
-                <PackSizesEditor productId={productId!} baseUnit={form.base_unit ?? "unit"} />
+                <PackSizesEditor
+                  productId={productId!}
+                  baseUnit={form.base_unit ?? "unit"}
+                  productName={form.name ?? ""}
+                  onPrintLabel={(item) => setLabelItems([item])}
+                />
               </Section>
             </>
           )}
@@ -557,6 +609,13 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
           onClose={() => setScanning(false)}
         />
       )}
+
+      <LabelPrintDialog
+        open={labelItems !== null}
+        onOpenChange={(v) => !v && setLabelItems(null)}
+        items={labelItems ?? []}
+        labelSize={labelSize}
+      />
     </Dialog>
   )
 }

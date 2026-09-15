@@ -2,18 +2,20 @@
 
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree, Trash2 } from "lucide-react"
+import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree, Trash2, Tag } from "lucide-react"
 import { toast } from "sonner"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { EditProductSheet } from "@/components/inventory/EditProductSheet"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { CategoryManager } from "@/components/inventory/CategoryManager"
 import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
+import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
-import type { Product } from "@pharmatrack/types"
+import type { Product, Organization } from "@pharmatrack/types"
+import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
 
 type ProductRow = Product & { category_name?: string }
 
@@ -70,7 +72,19 @@ export default function ProductsPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
   const [catMgrOpen, setCatMgrOpen] = useState(false)
+  const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
   const search = useDebounce(rawSearch, 300)
+
+  const { data: settingsData } = useQuery<{ org: Organization }>({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings")
+      if (!res.ok) throw new Error("Failed to load settings")
+      return res.json() as Promise<{ org: Organization }>
+    },
+    staleTime: 60_000,
+  })
+  const labelSize: LabelSize = settingsData?.org.label_size ?? "40x30mm"
 
   const { data: categoriesData } = useQuery({
     queryKey: ["categories"],
@@ -285,6 +299,20 @@ export default function ProductsPage() {
                         >
                           Edit
                         </button>
+                        {(p.gtin || p.barcode_raw) && (
+                          <button
+                            onClick={() => setLabelItems([{
+                              code: (p.gtin ?? p.barcode_raw)!,
+                              productName: p.name,
+                              price: p.selling_price ?? null,
+                              copies: 1,
+                            }])}
+                            className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+                            title="Print barcode label"
+                          >
+                            <Tag size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleToggle(p)}
                           className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
@@ -356,6 +384,13 @@ export default function ProductsPage() {
       )}
 
       <CategoryManager open={catMgrOpen} onOpenChange={setCatMgrOpen} />
+
+      <LabelPrintDialog
+        open={labelItems !== null}
+        onOpenChange={(v) => !v && setLabelItems(null)}
+        items={labelItems ?? []}
+        labelSize={labelSize}
+      />
     </div>
   )
 }

@@ -64,6 +64,9 @@ const config: ExpoConfig = {
     // Given by `npx expo install expo-sharing` (it can't auto-write to a
     // dynamic app.config.ts) — needed by the report CSV export share sheet.
     "expo-sharing",
+    // Same reasoning — needed by barcode label printing (product-batches.tsx,
+    // products.tsx): hands off to the Android system print sheet.
+    "expo-print",
     // Required by @better-auth/expo's client for its (unused by us) OAuth
     // browser-redirect path; harmless to include even though PharmaTrack
     // mobile only uses email/password + PIN login.

@@ -1,21 +1,19 @@
 "use client"
 
 import { useEffect, useRef, useCallback } from "react"
-import { parseBarcode, type BarcodeScanEvent } from "./barcodeParser"
+import {
+  parseBarcode,
+  type BarcodeScanEvent,
+  COMPLETION_TIMEOUT_MS,
+  MIN_BARCODE_LENGTH,
+  isStaleGap,
+  canAcceptScan,
+} from "@pharmatrack/core"
 
 interface UseBarcodeScanner {
   onScan: (event: BarcodeScanEvent) => void
   enabled?: boolean
 }
-
-// If 2+ chars arrive within this window → scanner (not human typing)
-const SCANNER_THRESHOLD_MS = 50
-// After this much silence with chars buffered → process the scan
-const COMPLETION_TIMEOUT_MS = 100
-// Minimum buffer length to treat as a barcode
-const MIN_BARCODE_LENGTH = 3
-// Minimum gap between two scans (prevent double-scan)
-const DEBOUNCE_MS = 300
 
 export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScanner) {
   const bufferRef = useRef<string>("")
@@ -31,10 +29,8 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScanner)
     const raw = bufferRef.current.trim()
     bufferRef.current = ""
 
-    if (raw.length < MIN_BARCODE_LENGTH) return
-
     const now = Date.now()
-    if (now - lastScanTimeRef.current < DEBOUNCE_MS) return
+    if (!canAcceptScan(raw.length, now, lastScanTimeRef.current)) return
     lastScanTimeRef.current = now
 
     onScanRef.current(parseBarcode(raw))
@@ -73,7 +69,7 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScanner)
       }
 
       // If the gap since last char is too long, this is human typing — reset buffer
-      if (bufferRef.current.length > 0 && gap > SCANNER_THRESHOLD_MS * 2) {
+      if (bufferRef.current.length > 0 && isStaleGap(gap)) {
         bufferRef.current = ""
       }
 

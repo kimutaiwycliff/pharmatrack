@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { asc, eq } from "drizzle-orm"
 import { withTenant, product, product_pack_size } from "@pharmatrack/db"
+import { generateInternalBarcode } from "@pharmatrack/core"
 import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serializePackSize } from "@/lib/products/packsize"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
+
+const MAX_BARCODE_GENERATION_ATTEMPTS = 5
 
 const packSizeSchema = z.object({
   pack_label: z.string().min(1),
@@ -43,15 +46,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const [p] = await db.select({ id: product.id }).from(product).where(eq(product.id, id)).limit(1)
     if (!p) return { status: 404 as const, body: { error: "Product not found" } }
 
-    if (parsed.data.barcode) {
-      const conflictName = await findBarcodeConflict(db, ctx.organizationId, [parsed.data.barcode])
+    let barcode = parsed.data.barcode || null
+    if (barcode) {
+      const conflictName = await findBarcodeConflict(db, ctx.organizationId, [barcode])
       if (conflictName) return { status: 409 as const, body: { error: `That barcode is already assigned to "${conflictName}"` } }
+    } else {
+      // No barcode supplied — generate an internal one so this pack size
+      // (e.g. a box vs. a strip of the same product) is still scannable.
+      for (let attempt = 0; attempt < MAX_BARCODE_GENERATION_ATTEMPTS; attempt++) {
+        const candidate = generateInternalBarcode()
+        const conflict = await findBarcodeConflict(db, ctx.organizationId, [candidate])
+        if (!conflict) {
+          barcode = candidate
+          break
+        }
+      }
     }
 
     const [row] = await db.insert(product_pack_size).values({
       product_id: id, label: parsed.data.pack_label,
       unit_count: parsed.data.units_per_pack, selling_price: String(parsed.data.selling_price),
-      barcode: parsed.data.barcode || null,
+      barcode,
     }).returning()
     return { status: 201 as const, body: { packSize: serializePackSize(row!) } }
   })

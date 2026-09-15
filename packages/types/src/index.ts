@@ -17,6 +17,7 @@ export interface Organization {
   settings: Record<string, unknown>
   created_at: string
   receipt_paper_width?: "58mm" | "80mm" | null
+  label_size?: "40x30mm" | "50x30mm" | null
 }
 
 export interface Branch {

@@ -3,15 +3,19 @@
 import { useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { Search, PackagePlus, ChevronLeft, ChevronRight, Upload } from "lucide-react"
+import { Search, PackagePlus, ChevronLeft, ChevronRight, Upload, Tag, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
 import { BulkImportDialog } from "@/components/inventory/BulkImportDialog"
 import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
+import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useDebounce } from "@/lib/hooks/useDebounce"
+import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
+import type { Organization } from "@pharmatrack/types"
 
 type StatusFilter = "all" | "out_of_stock" | "low_stock" | "expiring" | "controlled"
 
@@ -88,10 +92,41 @@ export default function InventoryPage() {
   const [status, setStatus] = useState<StatusFilter>("all")
   const [page, setPage] = useState(1)
   const [showImport, setShowImport] = useState(false)
+  const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
+  const [backfilling, setBackfilling] = useState(false)
 
   const q = useDebounce(rawSearch, 300)
 
   const { data, isLoading, isFetching } = useInventory(branchId, q, status, page)
+
+  const { data: settingsData } = useQuery<{ org: Organization }>({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings")
+      if (!res.ok) throw new Error("Failed to load settings")
+      return res.json() as Promise<{ org: Organization }>
+    },
+    staleTime: 60_000,
+  })
+  const labelSize: LabelSize = settingsData?.org.label_size ?? "40x30mm"
+
+  async function backfillAndPrint() {
+    setBackfilling(true)
+    try {
+      const res = await fetch("/api/products/backfill-barcodes", { method: "POST" })
+      const json = (await res.json()) as { items?: { code: string; productName: string }[]; error?: string }
+      if (!res.ok) throw new Error(json.error ?? "Failed to generate barcodes")
+      if (!json.items || json.items.length === 0) {
+        toast.info("Every product and pack size already has a barcode")
+        return
+      }
+      setLabelItems(json.items.map((i) => ({ code: i.code, productName: i.productName, price: null, copies: 1 })))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error")
+    } finally {
+      setBackfilling(false)
+    }
+  }
 
   const handleStatusChange = useCallback((s: StatusFilter) => {
     setStatus(s)
@@ -124,6 +159,15 @@ export default function InventoryPage() {
           >
             <Upload size={16} />
             Import CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={backfillAndPrint}
+            disabled={backfilling}
+            className="gap-2"
+          >
+            {backfilling ? <Loader2 size={16} className="animate-spin" /> : <Tag size={16} />}
+            Print Labels
           </Button>
           <Button
             onClick={() => router.push("/inventory/receive")}
@@ -237,6 +281,13 @@ export default function InventoryPage() {
           onClose={() => setShowImport(false)}
         />
       )}
+
+      <LabelPrintDialog
+        open={labelItems !== null}
+        onOpenChange={(v) => !v && setLabelItems(null)}
+        items={labelItems ?? []}
+        labelSize={labelSize}
+      />
     </div>
   )
 }

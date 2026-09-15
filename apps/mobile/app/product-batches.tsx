@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { useLocalSearchParams } from "expo-router"
+import { eq } from "drizzle-orm"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiFetch } from "../src/lib/api-fetch"
 import { toast } from "../src/lib/toast"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
+import { db } from "../src/db/database"
+import { products } from "../src/db/schema"
+import { printLabel, shareLabelPDF } from "../src/lib/labels/printLabel"
 import type { Theme } from "../src/theme/tokens"
 import { Button, Card, EmptyState, Screen, ScreenHeader } from "../src/components"
 
@@ -45,6 +49,9 @@ export default function ProductBatches() {
   const [qtyReceived, setQtyReceived] = useState("")
   const [costPrice, setCostPrice] = useState("")
   const [receiving, setReceiving] = useState(false)
+  const [productBarcode, setProductBarcode] = useState<string | null>(null)
+  const [lastReceivedQty, setLastReceivedQty] = useState<number | null>(null)
+  const [printing, setPrinting] = useState<"print" | "share" | null>(null)
 
   const [adjustingBatch, setAdjustingBatch] = useState<Batch | null>(null)
   const [adjustDelta, setAdjustDelta] = useState("")
@@ -71,6 +78,16 @@ export default function ProductBatches() {
     load()
   }, [productId, branchId])
 
+  useEffect(() => {
+    if (!productId) return
+    async function loadBarcode() {
+      const [row] = await db.select({ gtin: products.gtin, barcodeRaw: products.barcodeRaw })
+        .from(products).where(eq(products.productId, productId)).limit(1)
+      setProductBarcode(row ? (row.gtin ?? row.barcodeRaw) : null)
+    }
+    loadBarcode()
+  }, [productId])
+
   async function receiveStock() {
     const qty = parseInt(qtyReceived, 10)
     if (!batchNumber.trim()) { toast.error("Enter a batch number"); return }
@@ -90,12 +107,27 @@ export default function ProductBatches() {
       if (!res.ok) throw new Error(json.error ?? "Could not receive stock")
       toast.success("Stock received")
       setShowReceive(false)
+      setLastReceivedQty(qty)
       setBatchNumber(""); setExpiryDate(""); setQtyReceived(""); setCostPrice("")
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
     } finally {
       setReceiving(false)
+    }
+  }
+
+  async function handlePrintLabels(mode: "print" | "share") {
+    if (!productBarcode) return
+    setPrinting(mode)
+    try {
+      const input = { code: productBarcode, productName: productName ?? "", copies: lastReceivedQty ?? 1 }
+      if (mode === "print") await printLabel(input)
+      else await shareLabelPDF(input)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not print labels")
+    } finally {
+      setPrinting(null)
     }
   }
 
@@ -160,6 +192,28 @@ export default function ProductBatches() {
         <Button title="Receive stock" onPress={() => setShowReceive(true)} icon={<Ionicons name="add-circle-outline" size={18} color="#fff" />} style={styles.receiveButton} />
       )}
 
+      {lastReceivedQty != null && productBarcode && !showReceive && !adjustingBatch && (
+        <Card style={styles.printPromptCard}>
+          <Text style={styles.printPromptText}>Print stickers for the {lastReceivedQty} unit(s) just received?</Text>
+          <View style={styles.formActions}>
+            <Button
+              title="Print"
+              onPress={() => handlePrintLabels("print")}
+              loading={printing === "print"}
+              icon={<Ionicons name="print-outline" size={16} color="#fff" />}
+              style={styles.formButton}
+            />
+            <Button
+              title="Share PDF"
+              variant="secondary"
+              onPress={() => handlePrintLabels("share")}
+              loading={printing === "share"}
+              style={styles.formButton}
+            />
+          </View>
+        </Card>
+      )}
+
       {loading ? (
         <View style={styles.centered}><ActivityIndicator color={theme.green} /></View>
       ) : (
@@ -191,6 +245,8 @@ function createStyles(theme: Theme) {
     receiveButton: { marginBottom: 12 },
     formCard: { gap: 10, marginBottom: 12 },
     formTitle: { fontSize: 15, fontWeight: "700", color: theme.text },
+    printPromptCard: { gap: 8, marginBottom: 12, borderColor: theme.green, borderWidth: 1 },
+    printPromptText: { fontSize: 13, color: theme.green, fontWeight: "600" },
     hint: { fontSize: 12, color: theme.textSecondary, marginTop: -4 },
     input: {
       borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12,

@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, or, ilike, asc, sql, eq, isNull } from "drizzle-orm"
 import { withTenant, product } from "@pharmatrack/db"
+import { generateInternalBarcode } from "@pharmatrack/core"
 import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { deriveGenericName } from "@/lib/generic-name"
+import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
+
+const MAX_BARCODE_GENERATION_ATTEMPTS = 5
 
 const createProductSchema = z.object({
   name: z.string().min(1),
@@ -90,6 +94,22 @@ export async function POST(request: NextRequest) {
       .from(product).where(or(...dupeConds)).limit(1)
     if (dupe) return { ok: false, dupe }
 
+    // No manufacturer GTIN or barcode supplied — generate an internal one so
+    // this product is still printable/scannable (common for repackaged or
+    // loose pharmacy stock). Retries on the rare conflict; falls back to no
+    // barcode rather than failing the whole product creation.
+    let barcodeRaw = d.barcode_raw ?? null
+    if (!d.gtin && !barcodeRaw) {
+      for (let attempt = 0; attempt < MAX_BARCODE_GENERATION_ATTEMPTS; attempt++) {
+        const candidate = generateInternalBarcode()
+        const conflict = await findBarcodeConflict(db, ctx.organizationId, [candidate])
+        if (!conflict) {
+          barcodeRaw = candidate
+          break
+        }
+      }
+    }
+
     const [created] = await db.insert(product).values({
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
@@ -98,7 +118,7 @@ export async function POST(request: NextRequest) {
       generic_name: d.generic_name ?? deriveGenericName(d.name),
       manufacturer: d.manufacturer ?? null,
       gtin: d.gtin ?? null,
-      barcode_raw: d.barcode_raw ?? null,
+      barcode_raw: barcodeRaw,
       strength: d.strength ?? null,
       dosage_form: d.dosage_form ?? null,
       category_id: d.category_id ?? null,

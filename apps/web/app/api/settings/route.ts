@@ -14,6 +14,7 @@ const orgSchema = z.object({
   email: z.string().email().optional(),
   address: z.string().optional(),
   receipt_paper_width: z.enum(["58mm", "80mm"]).optional(),
+  label_size: z.enum(["40x30mm", "50x30mm"]).optional(),
 })
 const profileSchema = z.object({
   full_name: z.string().min(2).optional(),
@@ -21,7 +22,7 @@ const profileSchema = z.object({
 })
 
 // Org profile fields beyond name live in org_settings.settings (jsonb).
-const ORG_SETTING_KEYS = ["registration_number", "phone", "email", "address", "receipt_paper_width"] as const
+const ORG_SETTING_KEYS = ["registration_number", "phone", "email", "address", "receipt_paper_width", "label_size"] as const
 type OrgSettings = Partial<Record<(typeof ORG_SETTING_KEYS)[number], string>>
 
 export async function GET(_request: NextRequest) {

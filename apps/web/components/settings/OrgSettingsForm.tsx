@@ -24,6 +24,7 @@ export function OrgSettingsForm({ org, readonly }: Props) {
     email: org.email ?? "",
     address: org.address ?? "",
     receipt_paper_width: org.receipt_paper_width ?? "80mm",
+    label_size: org.label_size ?? "40x30mm",
   })
   const [loading, setLoading] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -47,6 +48,7 @@ export function OrgSettingsForm({ org, readonly }: Props) {
           email: form.email || undefined,
           address: form.address || undefined,
           receipt_paper_width: form.receipt_paper_width,
+          label_size: form.label_size,
         }),
       })
       const json = (await res.json()) as { error?: string }
@@ -148,6 +150,24 @@ export function OrgSettingsForm({ org, readonly }: Props) {
         </select>
         <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-1">
           Match your thermal printer&apos;s paper width so receipts print at the right size
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+          Barcode Label Size
+        </label>
+        <select
+          className={selectCls}
+          value={form.label_size}
+          onChange={(e) => set("label_size", e.target.value)}
+          disabled={readonly}
+        >
+          <option value="40x30mm">40 × 30mm</option>
+          <option value="50x30mm">50 × 30mm</option>
+        </select>
+        <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-1">
+          Match your label printer&apos;s stock size when printing single barcode labels
         </p>
       </div>
 

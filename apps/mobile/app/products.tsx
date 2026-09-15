@@ -5,6 +5,8 @@ import { toCents, formatKES } from "@pharmatrack/core"
 import { apiFetch } from "../src/lib/api-fetch"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
+import { toast } from "../src/lib/toast"
+import { printLabel } from "../src/lib/labels/printLabel"
 import type { Theme } from "../src/theme/tokens"
 import { Button, Card, EmptyState, Screen, ScreenHeader, StatusBadge } from "../src/components"
 
@@ -597,6 +599,15 @@ export default function Products() {
     }
   }
 
+  async function handlePrintPackLabel(ps: PackSize) {
+    if (!ps.barcode) return
+    try {
+      await printLabel({ code: ps.barcode, productName: `${form.name} — ${ps.pack_label}`, price: ps.selling_price, copies: 1 })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not print label")
+    }
+  }
+
   function startEditPack(ps: PackSize) {
     setEditingPackId(ps.id)
     setEditPackLabel(ps.pack_label)
@@ -933,6 +944,11 @@ export default function Products() {
                             </Text>
                           </View>
                           <View style={styles.packActions}>
+                            {ps.barcode && (
+                              <Pressable onPress={() => handlePrintPackLabel(ps)} hitSlop={8} style={styles.iconButton}>
+                                <Ionicons name="print-outline" size={18} color={theme.textSecondary} />
+                              </Pressable>
+                            )}
                             <Pressable onPress={() => startEditPack(ps)} hitSlop={8} style={styles.iconButton}>
                               <Ionicons name="pencil-outline" size={18} color={theme.textSecondary} />
                             </Pressable>

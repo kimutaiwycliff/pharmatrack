@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { X, Loader2, CameraOff } from "lucide-react"
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser"
-import { parseBarcode, type BarcodeScanEvent } from "@/lib/barcode/barcodeParser"
+import { parseBarcode, type BarcodeScanEvent } from "@pharmatrack/core"
 
 // Camera barcode scanner (zxing). Reuses parseBarcode, so results flow through the
 // same GTIN lookup as the USB wedge. Prefers the rear camera; keeps scanning so

@@ -2,9 +2,9 @@ import { useEffect, useState } from "react"
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { formatKES, fromCents } from "@pharmatrack/core"
+import { formatKES, fromCents, type BarcodeScanEvent } from "@pharmatrack/core"
 import type { ProductRow } from "../../src/db/schema"
-import { searchLocalProducts } from "../../src/lib/sync/catalogue"
+import { findByBarcode, searchLocalProducts } from "../../src/lib/sync/catalogue"
 import { buildSalePayload, queueSale } from "../../src/lib/sync/sales"
 import { useSyncEngine } from "../../src/lib/sync/useSyncEngine"
 import { fetchMpesaAvailability, type MpesaAvailability } from "../../src/lib/mpesa"
@@ -12,9 +12,10 @@ import { useSessionStore } from "../../src/store/session"
 import { useShiftStore } from "../../src/store/shift"
 import { useCartStore } from "../../src/store/cart"
 import { confirmSignOut } from "../../src/lib/auth-client"
+import { toast } from "../../src/lib/toast"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
-import { Button, Card, EmptyState, MpesaFlow, Screen, StatusBadge } from "../../src/components"
+import { Button, Card, EmptyState, HardwareScanCatcher, MpesaFlow, Screen, StatusBadge } from "../../src/components"
 
 type PaymentMethod = "cash" | "mpesa" | "split"
 
@@ -87,6 +88,17 @@ export default function Pos() {
   const requestedDiscountPct = discountInput.trim() === "" ? 0 : Number(discountInput)
   const discountExceedsCap =
     maxDiscountPct !== null && !Number.isNaN(requestedDiscountPct) && requestedDiscountPct > maxDiscountPct
+
+  async function onHardwareScan(event: BarcodeScanEvent) {
+    const code = event.gtin ?? event.raw
+    const product = await findByBarcode(code)
+    if (!product) {
+      toast.error(`No product found for "${code}"`)
+      return
+    }
+    addProduct(product)
+    toast.success(product.name)
+  }
 
   function onDiscountChange(text: string) {
     setDiscountInput(text)
@@ -220,6 +232,7 @@ export default function Pos() {
         )
       ) : (
         <>
+          <HardwareScanCatcher onScan={onHardwareScan} />
           {/* branchId (and the active shift) can come from the offline cache
               (kv.ts) when the network is down — the catalogue is local SQLite
               regardless, so the sale flow below still works. This banner is

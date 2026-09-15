@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { ScanLine, Trash2, CheckCircle2, Info, Plus, Search } from "lucide-react"
+import { ScanLine, Trash2, CheckCircle2, Info, Plus, Search, Tag } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -9,12 +9,15 @@ import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
 import { useProductLookup } from "@/lib/hooks/useProductLookup"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { formatKES } from "@/lib/store/cartStore"
-import type { ProductWithStock } from "@pharmatrack/types"
+import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
+import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
+import type { ProductWithStock, Organization } from "@pharmatrack/types"
 
 interface ReceiveItem {
   productId: string
   productName: string
   gtin: string | null
+  barcodeRaw: string | null
   batchNumber: string
   expiryDate: string
   qty: number
@@ -23,6 +26,11 @@ interface ReceiveItem {
   costPrice: number | null
   supplierId: string | null
 }
+
+// Cap per-item copies for the post-receipt "print labels" prompt — a huge
+// delivery shouldn't silently generate a thousand-page PDF; the pharmacist
+// can always re-run it in batches from the product/pack-size screens instead.
+const MAX_LABEL_COPIES_PER_ITEM = 100
 
 interface Props {
   branchId: string
@@ -74,6 +82,7 @@ function ReceiveItemCard({ item, index, onRemove }: { item: ReceiveItem; index: 
 export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
   const [receiveList, setReceiveList] = useState<ReceiveItem[]>([])
+  const [lastReceived, setLastReceived] = useState<ReceiveItem[]>([])
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("")
   const [posting, setPosting] = useState(false)
 
@@ -85,6 +94,18 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
   const [pendingCost, setPendingCost] = useState<string>("")
 
   const { data: lookupData, isFetching } = useProductLookup(scannedBarcode, branchId, "receive")
+
+  const { data: settingsData } = useQuery<{ org: Organization }>({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings")
+      if (!res.ok) throw new Error("Failed to load settings")
+      return res.json() as Promise<{ org: Organization }>
+    },
+    staleTime: 60_000,
+  })
+  const labelSize: LabelSize = settingsData?.org.label_size ?? "40x30mm"
+  const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
 
   // Search products by name/brand (alternative to scanning).
   const [searchText, setSearchText] = useState("")
@@ -145,12 +166,14 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
       toast.error("Fill in all fields before adding")
       return
     }
+    setLastReceived([])
     setReceiveList((prev) => [
       ...prev,
       {
         productId: pendingProduct.product_id!,
         productName: pendingProduct.name!,
         gtin: pendingProduct.gtin,
+        barcodeRaw: pendingProduct.barcode_raw,
         batchNumber: pendingBatch,
         expiryDate: pendingExpiry,
         qty: pendingQty,
@@ -198,9 +221,26 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
       toast.error(`${failed} item(s) failed to post`)
     } else {
       toast.success(`${receiveList.length} batch(es) posted successfully`)
+      setLastReceived(receiveList)
       setReceiveList([])
       onPosted()
     }
+  }
+
+  function printLabelsForBatch() {
+    const items: LabelItem[] = lastReceived
+      .filter((item) => item.gtin || item.barcodeRaw)
+      .map((item) => ({
+        code: (item.gtin ?? item.barcodeRaw)!,
+        productName: item.productName,
+        price: null,
+        copies: Math.min(item.qty, MAX_LABEL_COPIES_PER_ITEM),
+      }))
+    if (items.length === 0) {
+      toast.error("None of the received items have a barcode yet")
+      return
+    }
+    setLabelItems(items)
   }
 
   const totalCost = receiveList.reduce(
@@ -389,6 +429,18 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           </div>
         )}
 
+        {/* Print labels for the batch just posted */}
+        {lastReceived.length > 0 && receiveList.length === 0 && (
+          <div className="flex items-center justify-between gap-3 bg-[var(--pt-green-50)] border border-[var(--pt-green)] rounded-xl p-4">
+            <p className="text-xs text-[var(--pt-green-600)] font-medium">
+              {lastReceived.length} item{lastReceived.length !== 1 ? "s" : ""} posted — print stickers for this delivery?
+            </p>
+            <Button size="sm" onClick={printLabelsForBatch} className="gap-1.5 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white shrink-0">
+              <Tag size={13} /> Print labels
+            </Button>
+          </div>
+        )}
+
         {/* Tip */}
         <div className="flex gap-2.5 bg-blue-50 dark:bg-blue-500/15 border border-blue-100 rounded-xl p-4">
           <Info size={14} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
@@ -451,6 +503,13 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           </Button>
         </div>
       </div>
+
+      <LabelPrintDialog
+        open={labelItems !== null}
+        onOpenChange={(v) => !v && setLabelItems(null)}
+        items={labelItems ?? []}
+        labelSize={labelSize}
+      />
     </div>
   )
 }

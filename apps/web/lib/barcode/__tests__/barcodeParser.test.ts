@@ -4,7 +4,7 @@ import {
   isGS1,
   normalizeGTIN,
   detectBarcodeType,
-} from "../barcodeParser"
+} from "@pharmatrack/core"
 
 describe("normalizeGTIN", () => {
   it("strips leading zero from GTIN-14 to produce GTIN-13", () => {
