@@ -483,10 +483,6 @@ jobs:
             "cd pharmatrack && bash infra/upload-desktop-release.sh /tmp/latest.json latest.json"
 
   # ── Android app (ADR-013) ─────────────────────────────────────────────────────
-  # No EAS build here — that's triggered manually via the developer's own EAS
-  # account (see eas.json), not wired into CI. This job is just the same fast
-  # typecheck/lint gate the web app gets, path-filtered so it doesn't run on
-  # every unrelated push.
   mobile-changes:
     name: detect mobile app changes
     runs-on: ubuntu-latest
@@ -535,3 +531,80 @@ jobs:
 
       - name: Lint
         run: pnpm --filter mobile lint
+
+  # ── Build + ship the Android APK ─────────────────────────────────────────────
+  # EAS builds Android in Expo's own cloud (no Android SDK needed on this
+  # runner) — `--wait` blocks the job until it finishes, then we download the
+  # artifact and re-host it ourselves. That re-hosting is the whole point:
+  # EAS build artifacts expire after 14 days (confirmed via `eas build:view`),
+  # so without this, the landing-page download link would quietly start
+  # 404ing two weeks after every release. Mirrors the desktop installer
+  # jobs exactly (SSH to the box, upload to MinIO via a small shell script) —
+  # see infra/upload-android-release.sh.
+  #
+  # Requires an EXPO_TOKEN repo secret (an Expo access token — expo.dev >
+  # Account Settings > Access Tokens — there's no CLI-only way to mint one
+  # non-interactively). Same `needs: deploy` security reasoning as
+  # desktop-windows/desktop-macos above: deploy only runs on a push to main
+  # outside pull_request, so this job (which touches SSH_PRIVATE_KEY) never
+  # runs on a fork's PR.
+  mobile-android:
+    name: build + ship Android APK
+    needs: [mobile-changes, mobile-verify, deploy]
+    if: needs.mobile-changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build on EAS (direct-download profile) and wait
+        id: eas
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx -y eas-cli build --platform android --profile direct-download \
+            --non-interactive --wait --json > build.json
+          cat build.json
+
+          STATUS=$(node -p "require('./build.json')[0].status")
+          if [ "$STATUS" != "FINISHED" ]; then
+            echo "::error::EAS build did not finish (status=$STATUS) — see the EAS dashboard for logs"
+            exit 1
+          fi
+
+          echo "url=$(node -p "require('./build.json')[0].artifacts.applicationArchiveUrl")" >> "$GITHUB_OUTPUT"
+          APP_VERSION=$(node -p "require('./build.json')[0].appVersion")
+          BUILD_VERSION=$(node -p "require('./build.json')[0].appBuildVersion")
+          echo "version=${APP_VERSION}-${BUILD_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download the built APK
+        run: curl -fL "${{ steps.eas.outputs.url }}" -o apps/mobile/pharmatrack.apk
+
+      - name: Ship to the box + upload to MinIO
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          VERSION: ${{ steps.eas.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          SSH="ssh -i $HOME/.ssh/deploy_key -o ConnectTimeout=20"
+          SCP="scp -i $HOME/.ssh/deploy_key -o ConnectTimeout=20"
+
+          $SCP apps/mobile/pharmatrack.apk "$DEPLOY_USER@$DEPLOY_HOST:/tmp/pharmatrack-${VERSION}.apk"
+          $SSH "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd pharmatrack && bash infra/upload-android-release.sh /tmp/pharmatrack-${VERSION}.apk ${VERSION}"
