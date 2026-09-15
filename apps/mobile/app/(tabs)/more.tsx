@@ -24,7 +24,7 @@ import { Card, EmptyState, Screen } from "../../src/components"
 interface MenuItem {
   label: string
   icon: keyof typeof Ionicons.glyphMap
-  href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers" | "/sales" | "/billing" | "/settings" | "/catalog-seed" | "/prescriptions"
+  href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers" | "/sales" | "/billing" | "/settings" | "/catalog-seed" | "/prescriptions" | "/inventory-import"
   roles: string[]
   feature?: Feature
 }
@@ -40,6 +40,7 @@ const MENU_ITEMS: MenuItem[] = [
   { label: "Categories", icon: "folder-outline", href: "/categories", roles: ["owner", "manager", "pharmacist"] },
   { label: "Suppliers", icon: "business-outline", href: "/suppliers", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
   { label: "Drug catalog", icon: "medical-outline", href: "/catalog-seed", roles: ["owner", "manager"], feature: "inventory" },
+  { label: "Bulk import", icon: "cloud-upload-outline", href: "/inventory-import", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
 ]
 
 export default function More() {

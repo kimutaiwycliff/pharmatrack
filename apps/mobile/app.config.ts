@@ -61,6 +61,9 @@ const config: ExpoConfig = {
       },
     ],
     "expo-sqlite",
+    // Given by `npx expo install expo-sharing` (it can't auto-write to a
+    // dynamic app.config.ts) — needed by the report CSV export share sheet.
+    "expo-sharing",
     // Required by @better-auth/expo's client for its (unused by us) OAuth
     // browser-redirect path; harmless to include even though PharmaTrack
     // mobile only uses email/password + PIN login.

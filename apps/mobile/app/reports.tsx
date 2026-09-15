@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react"
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
+import { File, Paths } from "expo-file-system"
+import * as Sharing from "expo-sharing"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { formatKES } from "@pharmatrack/core"
+import { formatKES, toCSV } from "@pharmatrack/core"
 import { apiFetch } from "../src/lib/api-fetch"
+import { toast } from "../src/lib/toast"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
@@ -670,18 +673,69 @@ export default function Reports() {
   const inventoryPayload = data?.type === "inventory" ? data.payload : null
   const financialPayload = data?.type === "financial" ? data.payload : null
 
+  // Every report table gets a CSV export, matching web's "CSV export on every
+  // report table" (CLAUDE.md §6.8). Builds the CSV client-side from whatever's
+  // already loaded (no new API call), writes it to the cache dir, then opens
+  // the OS share sheet so the user can save it to Drive/Files or send it on —
+  // there's no direct "download" concept on Android the way a browser has one.
+  async function exportCurrentReport() {
+    if (!data) return
+    let filename: string
+    let csv: string
+    if (data.type === "sales") {
+      const p = data.payload
+      csv = toCSV(
+        ["Receipt", "Date", "Cashier", "Branch", "Payment method", "Items", "Discount (KES)", "Total (KES)"],
+        p.transactions.map((t) => [t.receipt_number, t.created_at, t.cashier, t.branch, t.payment_method, t.item_count, t.discount_amount, t.total_amount]),
+      )
+      filename = `pharmatrack-sales-report-${Date.now()}.csv`
+    } else if (data.type === "inventory") {
+      const p = data.payload
+      csv = toCSV(
+        ["Product", "Brand", "Strength", "Stock on hand", "Reorder level", "Status", "Selling price (KES)", "Cost price (KES)"],
+        p.items.map((i) => [i.name, i.brand_name ?? "", i.strength ?? "", i.stock_on_hand ?? 0, i.reorder_level ?? 0, i.status, i.selling_price ?? "", i.cost_price ?? ""]),
+      )
+      filename = `pharmatrack-inventory-report-${Date.now()}.csv`
+    } else {
+      const p = data.payload
+      csv = toCSV(
+        ["Month", "Revenue (KES)", "Discounts (KES)", "Transactions", "Profit (KES)"],
+        p.monthlyChart.map((m) => [m.month, m.revenue, m.discounts, m.count, m.profit]),
+      )
+      filename = `pharmatrack-financial-report-${Date.now()}.csv`
+    }
+    try {
+      const file = new File(Paths.cache, filename)
+      file.write(csv)
+      await Sharing.shareAsync(file.uri, { mimeType: "text/csv", UTI: "public.comma-separated-values-text" })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not export CSV")
+    }
+  }
+
   const controls = (
-    <ReportControls
-      styles={styles}
-      reportType={reportType}
-      onSelectReportType={setReportType}
-      branches={branches}
-      selectedBranchId={selectedBranchId}
-      onSelectBranch={setSelectedBranchId}
-      datePreset={datePreset}
-      onSelectDatePreset={setDatePreset}
-      error={error}
-    />
+    <>
+      <ReportControls
+        styles={styles}
+        reportType={reportType}
+        onSelectReportType={setReportType}
+        branches={branches}
+        selectedBranchId={selectedBranchId}
+        onSelectBranch={setSelectedBranchId}
+        datePreset={datePreset}
+        onSelectDatePreset={setDatePreset}
+        error={error}
+      />
+      {data && (
+        <Button
+          title="Export CSV"
+          variant="secondary"
+          onPress={exportCurrentReport}
+          icon={<Ionicons name="share-outline" size={16} color={theme.text} />}
+          style={styles.exportButton}
+        />
+      )}
+    </>
   )
 
   if (reportType === "sales") {
@@ -797,6 +851,7 @@ function createStyles(theme: Theme) {
 
     listContent: { paddingBottom: 24 },
     headerGap: { gap: 12, marginBottom: 4 },
+    exportButton: { alignSelf: "flex-start", paddingHorizontal: 14, paddingVertical: 8 },
 
     controls: { gap: 10 },
     methodRow: { flexDirection: "row", gap: 8 },

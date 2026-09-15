@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react"
 import { Loader2, X, Upload, Download, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
+import { parseCSV, INVENTORY_IMPORT_HEADERS, INVENTORY_IMPORT_EXAMPLE_ROW } from "@pharmatrack/core"
 import { Button } from "@/components/ui/button"
 
 interface Props {
@@ -34,48 +35,9 @@ const FIELDS: Array<{ key: string; label: string; required?: boolean; hint?: str
   { key: "expiry_date", label: "Expiry date", hint: "YYYY-MM-DD" },
 ]
 
-const TEMPLATE_HEADERS = [
-  "name", "brand_name", "manufacturer", "gtin", "strength", "dosage_form",
-  "base_unit", "category", "subcategory", "units_per_pack", "cost_price", "selling_price", "reorder_level",
-  "is_controlled", "requires_prescription", "opening_qty", "batch_number", "expiry_date",
-]
-const TEMPLATE_EXAMPLE = [
-  "Paracetamol", "Panadol", "GSK", "", "500mg", "Tablet",
-  "tablet", "OTC Medicines", "Pain & Fever", "1000", "1.50", "3.00", "100",
-  "no", "no", "500", "B-2026-01", "2027-06-30",
-]
-
-/** Minimal RFC-4180 CSV parser: handles quoted fields, escaped quotes, CRLF. */
-function parseCSV(text: string): string[][] {
-  const rows: string[][] = []
-  let field = ""
-  let row: string[] = []
-  let inQuotes = false
-  // Strip a leading UTF-8 BOM if present.
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++ } else inQuotes = false
-      } else field += c
-    } else if (c === '"') {
-      inQuotes = true
-    } else if (c === ",") {
-      row.push(field); field = ""
-    } else if (c === "\n") {
-      row.push(field); rows.push(row); row = []; field = ""
-    } else if (c === "\r") {
-      // ignore; handled by \n
-    } else field += c
-  }
-  // flush last field/row
-  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row) }
-  return rows.filter((r) => r.some((c) => c.trim() !== ""))
-}
 
 function downloadTemplate() {
-  const csv = [TEMPLATE_HEADERS.join(","), TEMPLATE_EXAMPLE.join(",")].join("\n")
+  const csv = [INVENTORY_IMPORT_HEADERS.join(","), INVENTORY_IMPORT_EXAMPLE_ROW.join(",")].join("\n")
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
