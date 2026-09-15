@@ -21,7 +21,9 @@ export interface AndroidRelease {
  */
 export async function getLatestAndroidRelease(): Promise<AndroidRelease | null> {
   try {
-    const res = await fetch(`${RELEASES_BASE_URL}/android/latest.json`, { next: { revalidate: 60 } })
+    // cache: "no-store" — see the identical comment in lib/desktop/release.ts;
+    // ISR wasn't reliably revalidating this in the self-hosted deployment.
+    const res = await fetch(`${RELEASES_BASE_URL}/android/latest.json`, { cache: "no-store" })
     if (!res.ok) return null
     const manifest = (await res.json()) as UpdaterManifest
     if (!manifest.version) return null

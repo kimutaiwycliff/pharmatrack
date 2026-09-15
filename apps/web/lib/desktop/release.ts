@@ -27,7 +27,13 @@ export interface DesktopRelease {
  */
 export async function getLatestDesktopRelease(): Promise<DesktopRelease | null> {
   try {
-    const res = await fetch(`${RELEASES_BASE_URL}/desktop/latest.json`, { next: { revalidate: 60 } })
+    // cache: "no-store", not next.revalidate: the S3 SDK call this replaced
+    // was never subject to Next's fetch Data Cache at all, and ISR background
+    // revalidation isn't reliably triggering in this self-hosted (non-Vercel)
+    // deployment — found live: the landing page kept rendering a stale/null
+    // release for over an hour after a real one existed on R2. R2 requests
+    // are fast and cheap; correctness matters more than shaving one fetch.
+    const res = await fetch(`${RELEASES_BASE_URL}/desktop/latest.json`, { cache: "no-store" })
     if (!res.ok) return null
     const manifest = (await res.json()) as UpdaterManifest
     if (!manifest.version) return null
