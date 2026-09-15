@@ -9,6 +9,18 @@ const config: ExpoConfig = {
   slug: "pharmatrack-mobile",
   version: "1.0.0",
   scheme: "pharmatrack",
+  // EAS Update (OTA JS/asset pushes without a full APK re-download) — exact
+  // keys given by `eas update:configure` for this project, not hand-typed.
+  // "appVersion" runtime policy: an update is only offered to installs whose
+  // native `version` matches — bump `version` above whenever a build adds a
+  // native dependency or permission, so old installs never get a JS bundle
+  // that assumes native code they don't have.
+  updates: {
+    url: "https://u.expo.dev/1e6c2a1b-3273-42ab-8ff6-aa0f1ff5295b",
+  },
+  runtimeVersion: {
+    policy: "appVersion",
+  },
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
