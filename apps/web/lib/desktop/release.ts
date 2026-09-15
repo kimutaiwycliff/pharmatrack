@@ -1,4 +1,4 @@
-import { getDesktopReleaseObject } from "@/lib/storage/minio"
+import { RELEASES_BASE_URL } from "@/lib/releases"
 
 interface UpdaterManifest {
   version: string
@@ -18,17 +18,18 @@ export interface DesktopRelease {
 
 /**
  * Reads the latest.json manifest CI publishes on every desktop release (see
- * .github/workflows/ci.yml `desktop-publish-manifest`). Returns null before the
- * first release exists yet, or if the object is missing/malformed - callers
- * should hide the download UI entirely rather than error, since "no desktop
- * release yet" is an expected state, not a failure.
+ * .github/workflows/ci.yml `desktop-publish-manifest`) — served publicly from
+ * Cloudflare R2's custom domain, no credentials needed to read it. Returns
+ * null before the first release exists yet, or if the fetch/object is
+ * missing/malformed - callers should hide the download UI entirely rather
+ * than error, since "no desktop release yet" is an expected state, not a
+ * failure.
  */
 export async function getLatestDesktopRelease(): Promise<DesktopRelease | null> {
-  const obj = await getDesktopReleaseObject("latest.json")
-  if (!obj) return null
-
   try {
-    const manifest = JSON.parse(new TextDecoder().decode(obj.body)) as UpdaterManifest
+    const res = await fetch(`${RELEASES_BASE_URL}/desktop/latest.json`, { next: { revalidate: 60 } })
+    if (!res.ok) return null
+    const manifest = (await res.json()) as UpdaterManifest
     if (!manifest.version) return null
     return {
       version: manifest.version,

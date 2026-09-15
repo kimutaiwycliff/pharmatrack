@@ -32,18 +32,18 @@ docker run --rm --network "${PROJECT}_default" \
   -e DATABASE_URL="$DBMATE_URL" \
   ghcr.io/amacneil/dbmate:2 --migrations-dir /db/migrations --no-dump-schema up
 
-echo "==> Ensuring MinIO buckets (${MINIO_BUCKET_PRODUCTS}, ${MINIO_BUCKET_DESKTOP_RELEASES:-pharmatrack-desktop-releases}, ${MINIO_BUCKET_ANDROID_RELEASES:-pharmatrack-android-releases})"
-docker run --rm --network "${PROJECT}_default" --entrypoint sh minio/mc -c "\
+echo "==> Ensuring MinIO bucket (${MINIO_BUCKET_PRODUCTS})"
+# quay.io/minio/mc, not minio/mc: MinIO stopped publishing the `mc` client
+# image to Docker Hub (only minio/minio, their server image, is still there).
+# Found the hard way — this whole step had been silently swallowed by the
+# `|| echo "(bucket step skipped)"` below on every deploy until this fix.
+# Desktop/Android release buckets removed from here — those moved to
+# Cloudflare R2 (see lib/releases.ts), MinIO now only ever holds product images.
+docker run --rm --network "${PROJECT}_default" --entrypoint sh quay.io/minio/mc -c "\
   mc alias set m http://minio:9000 '${MINIO_ACCESS_KEY}' '${MINIO_SECRET_KEY}' >/dev/null && \
   mc mb -p m/${MINIO_BUCKET_PRODUCTS} >/dev/null 2>&1 || true; \
-  mc anonymous set download m/${MINIO_BUCKET_PRODUCTS} >/dev/null 2>&1 || true; \
-  mc mb -p m/${MINIO_BUCKET_DESKTOP_RELEASES:-pharmatrack-desktop-releases} >/dev/null 2>&1 || true; \
-  mc mb -p m/${MINIO_BUCKET_ANDROID_RELEASES:-pharmatrack-android-releases} >/dev/null 2>&1 || true" \
+  mc anonymous set download m/${MINIO_BUCKET_PRODUCTS} >/dev/null 2>&1 || true" \
   || echo "  (bucket step skipped)"
-# Desktop + Android releases buckets stay private (no anonymous policy) -
-# they're only ever read by the app server via /api/desktop/download/<key> and
-# /api/android/download/<key>, same as MinIO itself never being reachable from
-# the internet directly.
 
 echo "==> Starting web + worker + Caddy"
 "${COMPOSE[@]}" --profile app --profile edge up -d
