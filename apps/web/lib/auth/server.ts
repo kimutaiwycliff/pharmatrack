@@ -6,6 +6,7 @@ import { expo } from "@better-auth/expo"
 import { dbAdmin, user, session, account, verification, organization as organizationTable, member, invitation } from "@pharmatrack/db"
 import { sendEmail } from "@/lib/notifications/email"
 import { pinLogin } from "@/lib/auth/pin-plugin"
+import { OFFLINE_MODE } from "@/lib/offline-mode"
 
 // Third-party integrations are opt-in via env so local/dev runs without keys.
 const googleConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
@@ -108,7 +109,11 @@ export const auth = betterAuth({
     // Reject passwords found in known breaches (k-anonymity range query to HIBP;
     // no API key, password never leaves as plaintext). Applies to sign-up,
     // password change and reset — including our signup (provision → signUpEmail).
-    haveIBeenPwned({ customPasswordCompromisedMessage: "This password has appeared in a known data breach. Please choose a different one." }),
+    // Skipped entirely in OFFLINE_MODE (ADR-014): this is the one unconditional
+    // network call in the whole auth stack, and an offline install never has
+    // internet to make it — leaving it enabled would hang/fail every signup,
+    // password change, and reset on that build.
+    ...(OFFLINE_MODE ? [] : [haveIBeenPwned({ customPasswordCompromisedMessage: "This password has appeared in a known data breach. Please choose a different one." })]),
     // Cloudflare Turnstile on LOGIN only. The token is sent as the
     // `x-captcha-response` header by LoginForm. We deliberately do NOT guard
     // `/sign-up/email` here: the captcha plugin's onRequest fires for internal

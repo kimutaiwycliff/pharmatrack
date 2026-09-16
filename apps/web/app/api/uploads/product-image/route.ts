@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
-import { putProductImage } from "@/lib/storage/minio"
+import { putProductImage } from "@/lib/storage"
 import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 
 const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]

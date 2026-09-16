@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getProductObject } from "@/lib/storage/minio"
+import { getProductObject } from "@/lib/storage"
 
 // Serves product images from MinIO through the app (MinIO isn't exposed to the
 // internet). Object keys are unguessable UUIDs; images are non-sensitive, so this
