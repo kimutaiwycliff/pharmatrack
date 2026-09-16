@@ -1,0 +1,194 @@
+#!/usr/bin/env node
+// ADR-014 — vendors the per-target, build-time third-party resources for the
+// Offline Edition desktop build: a real Postgres 16 distribution, the
+// Node.js runtime (as a Tauri sidecar), the dbmate migration runner (as a
+// Tauri sidecar), and a copy of infra/migrations/*.sql. NONE of this is
+// committed to the repo — everything this script writes lives under
+// src-tauri/resources/ and src-tauri/binaries/, both gitignored.
+//
+// A single `tauri build` only ever targets one platform+arch, so this is
+// run once per target right before building it — macOS ships as two
+// separate per-arch installers (Intel + Apple Silicon), not one universal
+// binary, because the vendored Postgres binaries can't be lipo-merged the
+// way Tauri merges its own Rust output.
+//
+// Usage (from apps/desktop/):
+//   node scripts/fetch-offline-resources.mjs --target aarch64-apple-darwin
+//   node scripts/fetch-offline-resources.mjs --target x86_64-apple-darwin
+//   node scripts/fetch-offline-resources.mjs --target x86_64-pc-windows-msvc
+//   node scripts/fetch-offline-resources.mjs --target x86_64-unknown-linux-gnu
+// Then:
+//   pnpm tauri build --target <same triple> --features offline-edition \
+//     --config src-tauri/tauri.offline.conf.json
+//
+// The Next.js standalone build (resources/web/) is NOT fetched by this
+// script, since it comes from this repo's own apps/web, not a third party.
+// Build it first with (from the repo root):
+//   NEXT_PUBLIC_APP_URL=http://127.0.0.1:47831 pnpm --filter web build
+// then copy it into place (mirrors exactly what Dockerfile's runner stage
+// does for the hosted SaaS build):
+//   mkdir -p apps/desktop/src-tauri/resources/web
+//   cp -R apps/web/.next/standalone/. apps/desktop/src-tauri/resources/web/
+//   mkdir -p apps/desktop/src-tauri/resources/web/apps/web/.next
+//   cp -R apps/web/.next/static apps/desktop/src-tauri/resources/web/apps/web/.next/static
+//   cp -R apps/web/public apps/desktop/src-tauri/resources/web/apps/web/public
+// The 47831 port must match offline::NEXT_PORT in
+// src-tauri/src/offline/mod.rs — NEXT_PUBLIC_* values are baked into the
+// client JS bundle at build time, not read at runtime (see self-hosting-vm
+// project notes: the same gotcha already applies to the hosted SaaS build).
+
+import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, chmodSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SRC_TAURI = join(__dirname, "..", "src-tauri");
+const REPO_ROOT = join(__dirname, "..", "..", "..");
+
+// Pinned versions — bump deliberately, not automatically. PG_VERSION is the
+// exact build this whole sequence was validated against (ADR-014): a real
+// Postgres 16.15.0 instance, TCP-loopback-only, roles + pg_trgm bootstrap,
+// all 22 infra/migrations/*.sql via dbmate, and the RLS isolation suite —
+// all green.
+const PG_VERSION = "16.15.0";
+const NODE_VERSION = "22.20.0"; // matches CLAUDE.md's Node 22 LTS pin
+const DBMATE_VERSION = "2.35.1"; // matches CI's `ghcr.io/amacneil/dbmate:2`
+
+const TARGETS = {
+  "aarch64-apple-darwin": { pg: "aarch64-apple-darwin", node: { os: "darwin", arch: "arm64" }, dbmate: "dbmate-macos-arm64", exe: "" },
+  "x86_64-apple-darwin": { pg: "x86_64-apple-darwin", node: { os: "darwin", arch: "x64" }, dbmate: "dbmate-macos-amd64", exe: "" },
+  "x86_64-pc-windows-msvc": { pg: "x86_64-pc-windows-msvc", node: { os: "win", arch: "x64" }, dbmate: "dbmate-windows-amd64.exe", exe: ".exe" },
+  "x86_64-unknown-linux-gnu": { pg: "x86_64-unknown-linux-gnu", node: { os: "linux", arch: "x64" }, dbmate: "dbmate-linux-amd64", exe: "" },
+};
+
+function fail(msg) {
+  console.error(`[fetch-offline-resources] ${msg}`);
+  process.exit(1);
+}
+
+function log(msg) {
+  console.log(`[fetch-offline-resources] ${msg}`);
+}
+
+const targetIdx = process.argv.indexOf("--target");
+const target = targetIdx !== -1 ? process.argv[targetIdx + 1] : null;
+if (!target || !TARGETS[target]) {
+  fail(`--target must be one of: ${Object.keys(TARGETS).join(", ")}`);
+}
+const cfg = TARGETS[target];
+
+function download(url, dest) {
+  log(`fetching ${url}`);
+  execFileSync("curl", ["-sSL", "--fail", "-o", dest, url], { stdio: "inherit" });
+}
+
+function sha256(file) {
+  try {
+    return execFileSync("shasum", ["-a", "256", file]).toString().trim().split(/\s+/)[0];
+  } catch {
+    return execFileSync("sha256sum", [file]).toString().trim().split(/\s+/)[0];
+  }
+}
+
+function verify(file, expectedFile) {
+  const expected = readFileSync(expectedFile, "utf-8").trim().split(/\s+/)[0];
+  const actual = sha256(file);
+  if (expected !== actual) {
+    fail(`checksum mismatch for ${file}: expected ${expected}, got ${actual}`);
+  }
+  log(`checksum OK: ${file}`);
+}
+
+function freshDir(path) {
+  rmSync(path, { recursive: true, force: true });
+  mkdirSync(path, { recursive: true });
+}
+
+const work = join(tmpdir(), `pharmatrack-offline-fetch-${target}`);
+freshDir(work);
+
+// ── Postgres ──────────────────────────────────────────────────────────────
+log(`vendoring Postgres ${PG_VERSION} (${cfg.pg})`);
+const pgAsset = `postgresql-${PG_VERSION}-${cfg.pg}.tar.gz`;
+const pgUrl = `https://github.com/theseus-rs/postgresql-binaries/releases/download/${PG_VERSION}/${pgAsset}`;
+const pgArchive = join(work, pgAsset);
+download(pgUrl, pgArchive);
+download(`${pgUrl}.sha256`, `${pgArchive}.sha256`);
+verify(pgArchive, `${pgArchive}.sha256`);
+execFileSync("tar", ["-xzf", pgArchive, "-C", work]);
+const pgExtractedDir = join(work, `postgresql-${PG_VERSION}-${cfg.pg}`);
+const pgDest = join(SRC_TAURI, "resources", "postgres");
+// freshDir(pgDest) itself, NOT its parent `resources/` — the parent also
+// holds resources/web/ (the separately-built Next.js standalone output) and
+// resources/migrations/, both of which must survive re-running this script.
+// Hit this for real: an earlier version called freshDir(dirname(pgDest))
+// and it silently deleted an already-built resources/web/ on a second run.
+freshDir(pgDest);
+// verbatimSymlinks: true is required — Postgres ships versioned .dylibs with
+// a relative symlink alongside (e.g. libecpg.dylib -> libecpg.6.dylib).
+// Node's default (false) "corrects" relative symlinks to absolute paths
+// pointing at the SOURCE location during the copy, which then dangle the
+// moment the source (this script's temp work dir) is cleaned up below —
+// hit this exact failure vendoring for real: `tauri build` refused to
+// bundle resources/postgres/lib/libecpg.dylib because the rewritten
+// absolute target no longer existed. verbatimSymlinks preserves the
+// original relative target text, which keeps resolving correctly since
+// both the link and its target move together.
+// Skip include/ (C headers for compiling extensions/ecpg — hundreds of
+// files, purely build-time, never needed to just run the server; also
+// floods tauri-build's resource file-watching with pointless entries).
+cpSync(pgExtractedDir, pgDest, {
+  recursive: true,
+  verbatimSymlinks: true,
+  filter: (src) => !src.includes(`${pgExtractedDir}/include`),
+});
+log(`Postgres vendored to ${pgDest}`);
+
+// ── dbmate sidecar ───────────────────────────────────────────────────────
+log(`vendoring dbmate ${DBMATE_VERSION}`);
+const dbmateUrl = `https://github.com/amacneil/dbmate/releases/download/v${DBMATE_VERSION}/${cfg.dbmate}`;
+const binariesDir = join(SRC_TAURI, "binaries");
+mkdirSync(binariesDir, { recursive: true });
+const dbmateDest = join(binariesDir, `dbmate-${target}${cfg.exe}`);
+download(dbmateUrl, dbmateDest);
+chmodSync(dbmateDest, 0o755);
+log(`dbmate vendored to ${dbmateDest}`);
+
+// ── node sidecar (just the single binary, not the full distribution) ────
+log(`vendoring node ${NODE_VERSION} (${cfg.node.os}-${cfg.node.arch})`);
+const isWindows = cfg.node.os === "win";
+const nodeArchiveExt = isWindows ? "zip" : "tar.gz";
+const nodeDistName = `node-v${NODE_VERSION}-${cfg.node.os}-${cfg.node.arch}`;
+const nodeAsset = `${nodeDistName}.${nodeArchiveExt}`;
+const nodeUrl = `https://nodejs.org/dist/v${NODE_VERSION}/${nodeAsset}`;
+const nodeArchive = join(work, nodeAsset);
+download(nodeUrl, nodeArchive);
+if (isWindows) {
+  try {
+    execFileSync("unzip", ["-q", nodeArchive, "-d", work]);
+  } catch {
+    execFileSync("powershell", ["-Command", `Expand-Archive -Path '${nodeArchive}' -DestinationPath '${work}'`]);
+  }
+} else {
+  execFileSync("tar", ["-xzf", nodeArchive, "-C", work]);
+}
+const nodeBinName = isWindows ? "node.exe" : "bin/node";
+const nodeBinSrc = join(work, nodeDistName, nodeBinName);
+const nodeDest = join(binariesDir, `node-${target}${cfg.exe}`);
+cpSync(nodeBinSrc, nodeDest);
+if (!isWindows) chmodSync(nodeDest, 0o755);
+log(`node vendored to ${nodeDest}`);
+
+// ── migrations (copy, not a symlink — resources must be real files) ─────
+const migrationsSrc = join(REPO_ROOT, "infra", "migrations");
+const migrationsDest = join(SRC_TAURI, "resources", "migrations");
+freshDir(migrationsDest);
+for (const f of readdirSync(migrationsSrc)) {
+  if (f.endsWith(".sql")) cpSync(join(migrationsSrc, f), join(migrationsDest, f));
+}
+log(`migrations copied to ${migrationsDest}`);
+
+rmSync(work, { recursive: true, force: true });
+log("done. Remember to also build+copy resources/web/ (see the comment at the top of this script) before `tauri build`.");

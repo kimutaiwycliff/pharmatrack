@@ -19,3 +19,18 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# ADR-014 — Offline Edition only (see the `offline-edition` feature below).
+# tauri-plugin-shell is used purely from Rust (ShellExt::shell().sidecar(...))
+# to resolve+spawn the bundled dbmate/node sidecar binaries for the correct
+# platform target triple — never exposed to the webview/frontend, so it needs
+# no capability/ACL grant.
+tauri-plugin-shell = { version = "2", optional = true }
+rand = { version = "0.8", optional = true }
+url = { version = "2", optional = true }
+
+[features]
+# Bundles + orchestrates a local Postgres + the Next.js standalone server
+# instead of loading the hosted SaaS URL. See src/offline/ and
+# docs/adr/ADR-014-offline-edition.md. Off by default — the ordinary
+# `tauri build`/`tauri dev` (SaaS webview shell) is unchanged.
+offline-edition = ["dep:tauri-plugin-shell", "dep:rand", "dep:url"]
