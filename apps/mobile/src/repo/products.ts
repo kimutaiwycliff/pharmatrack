@@ -1,5 +1,6 @@
 import { and, eq, like, or, sql } from "drizzle-orm"
 import * as Crypto from "expo-crypto"
+import { File } from "expo-file-system"
 import { fromCents } from "@pharmatrack/core"
 import { db } from "../db/database"
 import { products, productPackSizes, type ProductRow } from "../db/schema"
@@ -163,8 +164,25 @@ export async function updateLocalProduct(id: string, body: ProductWriteBody) {
 }
 
 export async function deleteLocalProduct(id: string): Promise<void> {
+  const [row] = await db.select({ imageUrl: products.imageUrl }).from(products).where(eq(products.productId, id)).limit(1)
+  if (row?.imageUrl) {
+    try {
+      new File(row.imageUrl).delete()
+    } catch {
+      // file already gone — nothing to clean up
+    }
+  }
   await db.delete(products).where(eq(products.productId, id))
   await db.delete(productPackSizes).where(eq(productPackSizes.productId, id))
+}
+
+/** Sets/clears a product's local photo. The value is always a file:// URI
+ *  under Paths.document (see app/products.tsx's handlePickImage) — there's
+ *  no MinIO/`/api/uploads/product-image` to upload to offline, so unlike the
+ *  online app's relative `/api/media/<key>` URLs this is a device-local path
+ *  an RN `<Image>` can render directly. */
+export async function setLocalProductImage(id: string, imageUrl: string | null): Promise<void> {
+  await db.update(products).set({ imageUrl }).where(eq(products.productId, id))
 }
 
 export interface PackSizeWriteBody {

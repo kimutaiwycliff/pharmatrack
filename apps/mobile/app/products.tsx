@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react"
-import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { Alert, FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { File, Directory, Paths } from "expo-file-system"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { toCents, formatKES } from "@pharmatrack/core"
 import { apiFetch } from "../src/lib/api-fetch"
 import { env } from "../src/lib/env"
 import {
   listLocalProducts, getLocalProductDetail, createLocalProduct, updateLocalProduct, deleteLocalProduct,
-  addLocalPackSize, updateLocalPackSize, deleteLocalPackSize,
+  addLocalPackSize, updateLocalPackSize, deleteLocalPackSize, setLocalProductImage,
 } from "../src/repo/products"
 import { listLocalCategories, listLocalSuppliers } from "../src/repo/catalog"
 import { useSessionStore } from "../src/store/session"
@@ -235,6 +236,11 @@ export default function Products() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [editingPackSizes, setEditingPackSizes] = useState<PackSize[]>([])
+  // Offline-only: no MinIO/`/api/uploads/product-image` to upload to, so this
+  // holds a device-local file:// URI instead of a server URL (see
+  // handlePickImage below and repo/products.ts's setLocalProductImage).
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [imageSaving, setImageSaving] = useState(false)
 
   // ---- pack size sub-forms (edit mode only) ----
   const [newPackLabel, setNewPackLabel] = useState("")
@@ -380,6 +386,7 @@ export default function Products() {
       requires_prescription: p.requires_prescription,
       is_active: p.is_active,
     })
+    setImageUrl(p.image_url)
   }
 
   function openCreate() {
@@ -389,6 +396,33 @@ export default function Products() {
     setEditingPackSizes([])
     setForm(DEFAULT_FORM)
     setFormError(null)
+    setImageUrl(null)
+  }
+
+  /** Offline-only (edit mode, matching the online app's own edit-only image
+   *  upload UI in EditProductSheet.tsx — not a reduced scope). Copies the
+   *  picked file into permanent local storage under Paths.document (cache
+   *  dir can be cleared by the OS under storage pressure) and saves the
+   *  resulting file:// URI directly on the product row. */
+  async function handlePickImage() {
+    if (!editingProductId) return
+    try {
+      const pick = await File.pickFileAsync({ mimeTypes: "image/*" })
+      if (pick.canceled) return
+      setImageSaving(true)
+      const dir = new Directory(Paths.document, "product-images")
+      if (!dir.exists) dir.create({ intermediates: true })
+      const ext = pick.result.extension || ".jpg"
+      const dest = new File(dir, `${editingProductId}${ext}`)
+      await pick.result.copy(dest, { overwrite: true })
+      await setLocalProductImage(editingProductId, dest.uri)
+      setImageUrl(dest.uri)
+      toast.success("Photo updated")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not set photo")
+    } finally {
+      setImageSaving(false)
+    }
   }
 
   async function openEdit(id: string) {
@@ -771,6 +805,24 @@ export default function Products() {
             <Text style={styles.label}>Loading…</Text>
           ) : (
             <>
+              {env.EXPO_PUBLIC_OFFLINE_MODE && formPhase === "edit" ? (
+                <View style={styles.imageSection}>
+                  {imageUrl ? (
+                    <Image source={{ uri: imageUrl }} style={styles.imagePreview} />
+                  ) : (
+                    <View style={[styles.imagePreview, styles.imagePlaceholder]}>
+                      <Ionicons name="image-outline" size={28} color={theme.textTertiary} />
+                    </View>
+                  )}
+                  <Button
+                    title={imageUrl ? "Change photo" : "Add photo"}
+                    variant="secondary"
+                    loading={imageSaving}
+                    onPress={handlePickImage}
+                    style={styles.imageButton}
+                  />
+                </View>
+              ) : null}
               <TextInput
                 style={styles.input}
                 placeholder="Product name *"
@@ -1304,6 +1356,11 @@ function createStyles(theme: Theme) {
     formScrollContent: { gap: 10, paddingBottom: 32 },
     submitButton: { marginTop: 8 },
     deleteButton: { marginTop: 12 },
+
+    imageSection: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 },
+    imagePreview: { width: 64, height: 64, borderRadius: 8, backgroundColor: theme.surface },
+    imagePlaceholder: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.border },
+    imageButton: { flex: 1 },
 
     sectionTitle: { fontSize: 15, fontWeight: "700", color: theme.text, marginBottom: 4 },
     packSizesCard: { gap: 10, marginTop: 12 },
