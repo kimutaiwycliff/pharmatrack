@@ -55,10 +55,18 @@ pub fn kill_all(app: &AppHandle) {
 /// out with a clear message if it's missing/invalid. Not implemented yet —
 /// Phase 1 is desktop bootstrap only, licensing is its own phase.
 pub fn bootstrap_and_launch(app: &AppHandle) -> Result<(), String> {
+    // Tauri's bundler preserves each `bundle.resources` entry's own relative
+    // path string under Contents/Resources (macOS) — since
+    // tauri.offline.conf.json declares them as "resources/postgres/" etc.,
+    // the real on-disk layout is Contents/Resources/resources/postgres/...,
+    // not Contents/Resources/postgres/... directly. Confirmed by inspecting
+    // an actual built .app bundle (hit exactly this as a real "No such file
+    // or directory" running initdb before adding this join).
     let resource_dir = app
         .path()
         .resource_dir()
-        .map_err(|e| format!("failed to resolve resource dir: {e}"))?;
+        .map_err(|e| format!("failed to resolve resource dir: {e}"))?
+        .join("resources");
     let data_dir = app
         .path()
         .app_data_dir()
