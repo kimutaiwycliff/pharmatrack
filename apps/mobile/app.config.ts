@@ -64,9 +64,21 @@ const config: ExpoConfig = {
     // Given by `npx expo install expo-sharing` (it can't auto-write to a
     // dynamic app.config.ts) — needed by the report CSV export share sheet.
     "expo-sharing",
-    // Same reasoning — needed by barcode label printing (product-batches.tsx,
-    // products.tsx): hands off to the Android system print sheet.
-    "expo-print",
+    // expo-print is USED (barcode label printing, product-batches.tsx/
+    // products.tsx) but deliberately NOT listed here as a config plugin.
+    // Unlike expo-sharing, it ships no app.plugin.js at all (confirmed:
+    // node_modules/expo-print has no app.plugin.{js,cjs,mjs,ts,cts,mts}), so
+    // listing it here is inert for native config — Expo's config-plugin
+    // resolver falls back to `require()`-ing the package's own main entry
+    // just to check whether it happens to export a plugin function, and
+    // that require chain pulls in expo-modules-core's raw-TypeScript
+    // `src/index.ts`, which crashes `expo config`/`eas build` under Node
+    // 22.18+'s default type-stripping (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_
+    // STRIPPING` — a currently-open upstream bug, see
+    // github.com/expo/expo#36683 and #37633; expo-print/expo-sharing are
+    // both named there). expo-print's actual native module still autolinks
+    // and works at runtime regardless of this array — only the (nonexistent)
+    // config-plugin registration is skipped.
     // Required by @better-auth/expo's client for its (unused by us) OAuth
     // browser-redirect path; harmless to include even though PharmaTrack
     // mobile only uses email/password + PIN login.
