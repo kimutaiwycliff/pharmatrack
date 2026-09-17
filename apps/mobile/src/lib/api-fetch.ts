@@ -6,6 +6,13 @@ import { env } from "./env"
 // session the expoClient keeps in SecureStore as a plain Cookie header, the
 // mechanism @better-auth/expo's own client exposes getCookie() for.
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  // ADR-014: the Offline Edition build has no EXPO_PUBLIC_API_URL at all —
+  // fail loudly here rather than silently fetching "undefined/api/...", so a
+  // screen not yet ported to the local repo layer is caught immediately
+  // instead of surfacing as a confusing network error.
+  if (!env.EXPO_PUBLIC_API_URL) {
+    throw new Error(`apiFetch(${path}) called in an offline build with no API URL configured`)
+  }
   const cookie = getCookie()
   return fetch(`${env.EXPO_PUBLIC_API_URL}${path}`, {
     ...init,
@@ -23,6 +30,9 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 // `multipart/form-data; boundary=...` header itself, so this variant attaches
 // the same session cookie but leaves Content-Type unset entirely.
 export async function apiFetchFormData(path: string, formData: FormData, init?: RequestInit): Promise<Response> {
+  if (!env.EXPO_PUBLIC_API_URL) {
+    throw new Error(`apiFetchFormData(${path}) called in an offline build with no API URL configured`)
+  }
   const cookie = getCookie()
   return fetch(`${env.EXPO_PUBLIC_API_URL}${path}`, {
     ...init,

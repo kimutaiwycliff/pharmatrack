@@ -4,6 +4,8 @@ import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { signInEmail, signInPin } from "../src/lib/auth-client"
 import { cacheDeviceUserAfterPinLogin, tryOfflinePinLogin } from "../src/lib/device-users"
+import { verifyLocalPin } from "../src/lib/local-auth"
+import { env } from "../src/lib/env"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
 import { Button, Screen } from "../src/components"
@@ -13,6 +15,8 @@ type Mode = "email" | "pin"
 export default function Login() {
   const theme = useTheme()
   const styles = createStyles(theme)
+  // ADR-014: the Offline Edition build only ever shows the PIN tab — there
+  // is no server for email/password sign-in to reach at all.
   const [mode, setMode] = useState<Mode>("pin")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -25,7 +29,13 @@ export default function Login() {
     setError(null)
     setPending(true)
     try {
-      if (mode === "email") {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const result = await verifyLocalPin(phone, pin)
+        if (!result.ok) {
+          setError(result.error)
+          return
+        }
+      } else if (mode === "email") {
         const { error: signInError } = await signInEmail(email, password)
         if (signInError) {
           setError(signInError.message ?? "Invalid email or password")
@@ -62,18 +72,20 @@ export default function Login() {
     <Screen style={styles.container}>
       <Text style={styles.title}>PharmaTrack</Text>
 
-      <View style={styles.tabs}>
-        <Pressable onPress={() => setMode("pin")} style={[styles.tab, mode === "pin" && styles.tabActive]}>
-          <Ionicons name="keypad-outline" size={16} color={mode === "pin" ? "#fff" : theme.textSecondary} />
-          <Text style={mode === "pin" ? styles.tabTextActive : styles.tabText}>Till PIN</Text>
-        </Pressable>
-        <Pressable onPress={() => setMode("email")} style={[styles.tab, mode === "email" && styles.tabActive]}>
-          <Ionicons name="mail-outline" size={16} color={mode === "email" ? "#fff" : theme.textSecondary} />
-          <Text style={mode === "email" ? styles.tabTextActive : styles.tabText}>Email</Text>
-        </Pressable>
-      </View>
+      {env.EXPO_PUBLIC_OFFLINE_MODE ? null : (
+        <View style={styles.tabs}>
+          <Pressable onPress={() => setMode("pin")} style={[styles.tab, mode === "pin" && styles.tabActive]}>
+            <Ionicons name="keypad-outline" size={16} color={mode === "pin" ? "#fff" : theme.textSecondary} />
+            <Text style={mode === "pin" ? styles.tabTextActive : styles.tabText}>Till PIN</Text>
+          </Pressable>
+          <Pressable onPress={() => setMode("email")} style={[styles.tab, mode === "email" && styles.tabActive]}>
+            <Ionicons name="mail-outline" size={16} color={mode === "email" ? "#fff" : theme.textSecondary} />
+            <Text style={mode === "email" ? styles.tabTextActive : styles.tabText}>Email</Text>
+          </Pressable>
+        </View>
+      )}
 
-      {mode === "pin" ? (
+      {env.EXPO_PUBLIC_OFFLINE_MODE || mode === "pin" ? (
         <>
           <TextInput
             style={styles.input}
