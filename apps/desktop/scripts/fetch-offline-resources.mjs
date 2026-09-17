@@ -228,7 +228,22 @@ if (!existsSync(webStandaloneSrc)) {
 log("vendoring the Next.js standalone build (resources/web/)");
 const webDest = join(SRC_TAURI, "resources", "web");
 freshDir(webDest);
-cpSync(webStandaloneSrc, webDest, { recursive: true, dereference: true });
+// @sentry/nextjs is dynamically imported behind `if (OFFLINE_MODE) return` in
+// instrumentation.ts, so it's genuinely never touched at runtime here — but
+// Next's standalone output tracer includes it anyway (static analysis sees
+// the import specifier regardless of the runtime guard). Its pnpm store path
+// (.pnpm/@sentry+nextjs@<version>_<hash>/node_modules/@sentry/nextjs/...) is
+// deep enough to exceed Windows's 260-char MAX_PATH, which fails NSIS
+// packaging ("failed opening file ...browserTracingIntegration.js") — hit
+// this for real on a live Windows CI build. Excluding it here (not from the
+// online build) is safe precisely because it's dead weight ONLY under
+// OFFLINE_MODE.
+const sentryPathSegment = join("node_modules", "@sentry")
+cpSync(webStandaloneSrc, webDest, {
+  recursive: true,
+  dereference: true,
+  filter: (src) => !src.includes(sentryPathSegment),
+});
 mkdirSync(join(webDest, "apps", "web", ".next"), { recursive: true });
 cpSync(join(REPO_ROOT, "apps", "web", ".next", "static"), join(webDest, "apps", "web", ".next", "static"), {
   recursive: true,
