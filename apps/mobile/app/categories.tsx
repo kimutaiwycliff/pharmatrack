@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import { listLocalCategories, createLocalCategory, updateLocalCategory, deleteLocalCategory } from "../src/repo/catalog"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
@@ -79,6 +81,16 @@ export default function Categories() {
   useEffect(() => {
     if (!hasAccess) return
     async function load() {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        try {
+          setCategories(await listLocalCategories())
+          setLoaded(true)
+          setError(null)
+        } finally {
+          setRefreshing(false)
+        }
+        return
+      }
       try {
         const res = await apiFetch("/api/categories")
         if (!res.ok) {
@@ -140,14 +152,18 @@ export default function Categories() {
     }
     setSubmitting(true)
     try {
-      const res = await apiFetch("/api/categories", {
-        method: "POST",
-        body: JSON.stringify({ name: trimmed, parent_id: parentId }),
-      })
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      if (!res.ok) {
-        setFormError(body?.error ?? `Could not create category (HTTP ${res.status})`)
-        return
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await createLocalCategory(trimmed, parentId)
+      } else {
+        const res = await apiFetch("/api/categories", {
+          method: "POST",
+          body: JSON.stringify({ name: trimmed, parent_id: parentId }),
+        })
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        if (!res.ok) {
+          setFormError(body?.error ?? `Could not create category (HTTP ${res.status})`)
+          return
+        }
       }
       setShowForm(false)
       resetForm()
@@ -174,14 +190,18 @@ export default function Categories() {
     if (!trimmed) return
     setEditSubmitting(true)
     try {
-      const res = await apiFetch(`/api/categories/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: trimmed }),
-      })
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      if (!res.ok) {
-        Alert.alert("Could not save", body?.error ?? `HTTP ${res.status}`)
-        return
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await updateLocalCategory(id, trimmed)
+      } else {
+        const res = await apiFetch(`/api/categories/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: trimmed }),
+        })
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        if (!res.ok) {
+          Alert.alert("Could not save", body?.error ?? `HTTP ${res.status}`)
+          return
+        }
       }
       setEditingId(null)
       setReloadToken((t) => t + 1)
@@ -201,11 +221,15 @@ export default function Categories() {
 
   async function deleteCategory(id: string) {
     try {
-      const res = await apiFetch(`/api/categories/${id}`, { method: "DELETE" })
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      if (!res.ok) {
-        Alert.alert("Could not delete", body?.error ?? `HTTP ${res.status}`)
-        return
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await deleteLocalCategory(id)
+      } else {
+        const res = await apiFetch(`/api/categories/${id}`, { method: "DELETE" })
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        if (!res.ok) {
+          Alert.alert("Could not delete", body?.error ?? `HTTP ${res.status}`)
+          return
+        }
       }
       setReloadToken((t) => t + 1)
     } catch {

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import { listLocalSuppliers, createLocalSupplier, updateLocalSupplier } from "../src/repo/catalog"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
@@ -64,6 +66,16 @@ export default function Suppliers() {
   useEffect(() => {
     if (!hasAccess) return
     async function load() {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        try {
+          setSuppliers(await listLocalSuppliers())
+          setLoaded(true)
+          setError(null)
+        } finally {
+          setRefreshing(false)
+        }
+        return
+      }
       try {
         const res = await apiFetch("/api/suppliers")
         if (!res.ok) {
@@ -126,18 +138,22 @@ export default function Suppliers() {
     }
     setSubmitting(true)
     try {
-      const res = await apiFetch("/api/suppliers", {
-        method: "POST",
-        body: JSON.stringify({
-          name: trimmedName,
-          phone: phone.trim() || undefined,
-          email: email.trim() || undefined,
-        }),
-      })
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      if (!res.ok) {
-        setFormError(body?.error ?? `Could not create supplier (HTTP ${res.status})`)
-        return
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await createLocalSupplier({ name: trimmedName, phone: phone.trim() || null, email: email.trim() || null })
+      } else {
+        const res = await apiFetch("/api/suppliers", {
+          method: "POST",
+          body: JSON.stringify({
+            name: trimmedName,
+            phone: phone.trim() || undefined,
+            email: email.trim() || undefined,
+          }),
+        })
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        if (!res.ok) {
+          setFormError(body?.error ?? `Could not create supplier (HTTP ${res.status})`)
+          return
+        }
       }
       setShowForm(false)
       resetForm()
@@ -171,18 +187,22 @@ export default function Suppliers() {
     }
     setEditSubmitting(true)
     try {
-      const res = await apiFetch(`/api/suppliers/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: trimmedName,
-          phone: editPhone.trim(),
-          email: editEmail.trim(),
-        }),
-      })
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      if (!res.ok) {
-        setEditError(body?.error ?? `Could not save (HTTP ${res.status})`)
-        return
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await updateLocalSupplier(id, { name: trimmedName, phone: editPhone.trim() || null, email: editEmail.trim() || null })
+      } else {
+        const res = await apiFetch(`/api/suppliers/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: trimmedName,
+            phone: editPhone.trim(),
+            email: editEmail.trim(),
+          }),
+        })
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        if (!res.ok) {
+          setEditError(body?.error ?? `Could not save (HTTP ${res.status})`)
+          return
+        }
       }
       setEditingId(null)
       setReloadToken((t) => t + 1)
