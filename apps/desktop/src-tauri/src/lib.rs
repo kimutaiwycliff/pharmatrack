@@ -37,6 +37,7 @@ pub fn run() {
     {
         builder = builder
             .plugin(tauri_plugin_shell::init())
+            .plugin(tauri_plugin_dialog::init())
             .manage(offline::OfflineProcesses::default());
     }
 

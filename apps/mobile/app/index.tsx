@@ -5,6 +5,7 @@ import { useSession } from "../src/lib/auth-client"
 import { useTheme } from "../src/theme/useTheme"
 import { env } from "../src/lib/env"
 import { isFirstRun, getCurrentStaffId } from "../src/lib/local-auth"
+import { getStoredLicense } from "../src/lib/license"
 
 function Loading() {
   const theme = useTheme()
@@ -19,11 +20,19 @@ function Loading() {
 // at all: "signed in" means a `staff` row's id is recorded locally (see
 // local-auth.ts), and "needs setup" means no `staff` row exists yet.
 function OfflineIndex() {
-  const [href, setHref] = useState<"/pos" | "/login" | "/setup" | null>(null)
+  const [href, setHref] = useState<"/pos" | "/login" | "/setup" | "/license" | null>(null)
 
   useEffect(() => {
     let cancelled = false
     async function resolve() {
+      // ADR-014, Phase 3 — gates everything else, re-verified on every
+      // launch (see src/lib/license.ts). Mirrors apps/desktop's native
+      // license-dialog gate running before Postgres/Next even start.
+      const license = await getStoredLicense()
+      if (!license || !license.valid) {
+        if (!cancelled) setHref("/license")
+        return
+      }
       const needsSetup = await isFirstRun()
       if (needsSetup) {
         if (!cancelled) setHref("/setup")

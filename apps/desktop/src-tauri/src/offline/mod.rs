@@ -1,3 +1,4 @@
+mod license;
 mod postgres;
 mod secrets;
 mod server;
@@ -49,12 +50,22 @@ pub fn kill_all(app: &AppHandle) {
 /// Tauri's setup() callback directly: this shells out repeatedly and polls
 /// with real sleeps, which would freeze the whole app if run on the main/
 /// setup thread.
-///
-/// TODO(Phase 3 — ADR-014 licensing): verify the signed offline license file
-/// as the very first step here, before touching Postgres at all, and bail
-/// out with a clear message if it's missing/invalid. Not implemented yet —
-/// Phase 1 is desktop bootstrap only, licensing is its own phase.
 pub fn bootstrap_and_launch(app: &AppHandle) -> Result<(), String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| format!("failed to create app data dir: {e}"))?;
+
+    // ADR-014, Phase 3 — gates everything below. Prompts via a native dialog
+    // (no webview/Next.js needed yet) and blocks until a valid license is
+    // present or the user quits.
+    let license = license::ensure_licensed(app, &data_dir)?;
+    println!(
+        "[offline] licensed to \"{}\" (license {})",
+        license.pharmacy_name, license.license_id
+    );
+
     // Tauri's bundler preserves each `bundle.resources` entry's own relative
     // path string under Contents/Resources (macOS) — since
     // tauri.offline.conf.json declares them as "resources/postgres/" etc.,
@@ -67,11 +78,6 @@ pub fn bootstrap_and_launch(app: &AppHandle) -> Result<(), String> {
         .resource_dir()
         .map_err(|e| format!("failed to resolve resource dir: {e}"))?
         .join("resources");
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
-    std::fs::create_dir_all(&data_dir).map_err(|e| format!("failed to create app data dir: {e}"))?;
 
     let pg_resource_dir = resource_dir.join("postgres");
     let pg_data_dir = data_dir.join("pgdata");
