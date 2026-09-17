@@ -230,17 +230,28 @@ const webDest = join(SRC_TAURI, "resources", "web");
 freshDir(webDest);
 // Packages apps/web imports statically but only actually exercises along
 // non-OFFLINE_MODE code paths: @sentry/nextjs (dynamic import()'d behind
-// `if (OFFLINE_MODE) return` in instrumentation.ts) and @aws-sdk/client-s3
-// (pulled in by lib/storage/minio.ts, which lib/storage/index.ts always
-// statically imports — `const backend = OFFLINE_MODE ? localFs : minio` —
-// even though only one side is ever called). Next's standalone tracer
-// includes both regardless, since OFFLINE_MODE is a runtime check, not
-// something tree-shaking can see through. Both packages' pnpm store paths
+// `if (OFFLINE_MODE) return` in instrumentation.ts) and the AWS SDK v3
+// family (pulled in by lib/storage/minio.ts, which lib/storage/index.ts
+// always statically imports — `const backend = OFFLINE_MODE ? localFs :
+// minio` — even though only one side is ever called). Next's standalone
+// tracer includes all of them regardless, since OFFLINE_MODE is a runtime
+// check, not something tree-shaking can see through. Their pnpm store paths
 // are deep enough to exceed Windows's 260-char MAX_PATH, which fails NSIS
-// packaging — confirmed via two separate live Windows CI failures, one per
-// package. Excluding them here (not from the online build) is safe
-// precisely because they're dead weight ONLY under OFFLINE_MODE.
-const deadWeightSegments = [join("node_modules", "@sentry"), join("node_modules", "@aws-sdk")];
+// packaging — confirmed via three separate live Windows CI failures: first
+// @sentry/nextjs, then @aws-sdk/client-s3 itself, then @smithy/core (AWS
+// SDK v3's shared low-level HTTP/serialization library, a transitive
+// dependency of every @aws-sdk/* client, not literally under the
+// "@aws-sdk" scope). @aws-crypto (checksum utilities S3 also pulls in) is
+// excluded pre-emptively for the same reason, on general AWS-SDK-v3
+// dependency-graph knowledge rather than a fourth live failure. Excluding
+// all of this here (not from the online build) is safe precisely because
+// it's dead weight ONLY under OFFLINE_MODE.
+const deadWeightSegments = [
+  join("node_modules", "@sentry"),
+  join("node_modules", "@aws-sdk"),
+  join("node_modules", "@smithy"),
+  join("node_modules", "@aws-crypto"),
+];
 
 function shouldCopy(src) {
   if (deadWeightSegments.some((seg) => src.includes(seg))) return false;
