@@ -5,6 +5,7 @@ import Ionicons from "@expo/vector-icons/Ionicons"
 import { hasFeature, type Feature } from "@pharmatrack/core"
 import { confirmSignOut } from "../../src/lib/auth-client"
 import { listDeviceUsers } from "../../src/lib/device-users"
+import { env } from "../../src/lib/env"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
@@ -27,19 +28,24 @@ interface MenuItem {
   href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers" | "/sales" | "/billing" | "/settings" | "/catalog-seed" | "/prescriptions" | "/inventory-import"
   roles: string[]
   feature?: Feature
+  // ADR-014: not applicable (Billing — perpetual license, no subscription
+  // to manage) or not yet ported (Drug catalog — the KEML quick-start seed
+  // is online-only for now, see the offline-edition plan) to the Offline
+  // Edition build.
+  hideOffline?: boolean
 }
 
 const MENU_ITEMS: MenuItem[] = [
   { label: "Sales", icon: "receipt-outline", href: "/sales", roles: ["owner", "manager", "pharmacist", "cashier"] },
   { label: "Staff", icon: "people-outline", href: "/staff", roles: ["owner", "manager"] },
-  { label: "Billing", icon: "card-outline", href: "/billing", roles: ["owner"] },
+  { label: "Billing", icon: "card-outline", href: "/billing", roles: ["owner"], hideOffline: true },
   { label: "Settings", icon: "settings-outline", href: "/settings", roles: ["owner", "manager", "pharmacist", "cashier"] },
   { label: "Reports", icon: "bar-chart-outline", href: "/reports", roles: ["owner", "manager"], feature: "reports" },
   { label: "Prescriptions", icon: "document-text-outline", href: "/prescriptions", roles: ["owner", "manager", "pharmacist"], feature: "prescriptions" },
   { label: "Products", icon: "medkit-outline", href: "/products", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
   { label: "Categories", icon: "folder-outline", href: "/categories", roles: ["owner", "manager", "pharmacist"] },
   { label: "Suppliers", icon: "business-outline", href: "/suppliers", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-  { label: "Drug catalog", icon: "medical-outline", href: "/catalog-seed", roles: ["owner", "manager"], feature: "inventory" },
+  { label: "Drug catalog", icon: "medical-outline", href: "/catalog-seed", roles: ["owner", "manager"], feature: "inventory", hideOffline: true },
   { label: "Bulk import", icon: "cloud-upload-outline", href: "/inventory-import", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
 ]
 
@@ -54,7 +60,11 @@ export default function More() {
   }, [])
 
   const visibleItems = MENU_ITEMS.filter(
-    (item) => role && item.roles.includes(role) && (!item.feature || hasFeature(planCode, item.feature)),
+    (item) =>
+      role &&
+      item.roles.includes(role) &&
+      (!item.feature || hasFeature(planCode, item.feature)) &&
+      !(env.EXPO_PUBLIC_OFFLINE_MODE && item.hideOffline),
   )
 
   return (

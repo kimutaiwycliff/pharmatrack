@@ -38,7 +38,7 @@ async function nextReceiptNumber(branchId: string): Promise<string> {
 /** Recomputes the denormalized stock display fields on `products` after a
  *  batch decrement — mirrors what the server's `product_stock` VIEW computes
  *  live; this table has no such view, so it must be kept in sync by hand. */
-async function refreshProductStockCache(productId: string, branchId: string): Promise<void> {
+export async function refreshProductStockCache(productId: string, branchId: string): Promise<void> {
   const rows = await db.select().from(productBatches)
     .where(and(eq(productBatches.productId, productId), eq(productBatches.branchId, branchId), gt(productBatches.quantityRemaining, 0)))
     .orderBy(asc(productBatches.expiryDate))

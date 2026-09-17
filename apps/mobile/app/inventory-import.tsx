@@ -6,6 +6,8 @@ import * as Sharing from "expo-sharing"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { parseCSV, csvRowsToRecords, toCSV, INVENTORY_IMPORT_HEADERS, INVENTORY_IMPORT_EXAMPLE_ROW } from "@pharmatrack/core"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import { importLocalInventoryRows } from "../src/repo/inventory"
 import { toast } from "../src/lib/toast"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
@@ -72,12 +74,18 @@ export default function InventoryImport() {
     if (!rows) return
     setImporting(true)
     try {
-      const res = await apiFetch("/api/inventory/import", {
-        method: "POST",
-        body: JSON.stringify({ branch_id: branchId ?? undefined, rows }),
-      })
-      const json = (await res.json()) as ImportResult & { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Import failed")
+      let json: ImportResult
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        json = await importLocalInventoryRows(branchId ?? "", rows)
+      } else {
+        const res = await apiFetch("/api/inventory/import", {
+          method: "POST",
+          body: JSON.stringify({ branch_id: branchId ?? undefined, rows }),
+        })
+        const respJson = (await res.json()) as ImportResult & { error?: string }
+        if (!res.ok) throw new Error(respJson.error ?? "Import failed")
+        json = respJson
+      }
       setResult(json)
       setRows(null)
       setFileName(null)
