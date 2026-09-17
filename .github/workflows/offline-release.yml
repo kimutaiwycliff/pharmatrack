@@ -3,17 +3,24 @@ name: Offline Edition Release
 # ADR-014, Phase 4 — manual-only, entirely separate from ci.yml's public
 # release jobs: a different R2 bucket (pharmatrack-offline-releases, not
 # pharmatrack-releases), different secrets, never referenced by the public
-# landing page's download components or its public latest.json. Run this
-# yourself, once per client, when closing an Offline Edition sale.
+# landing page's download components or its public latest.json.
 #
-# Deliberately does NOT sign the license file — the signing private key
-# stays ONLY on your own machine (scripts/generate-offline-license.mjs),
-# never as a CI secret, so a compromised runner or a leaked repo secret
-# could never be used to forge a license. Sign locally, then upload the
-# result yourself:
+# Builds ONCE PER APP VERSION, not per client — the installer/APK has
+# nothing client-specific baked in (licensing happens at first run against
+# a separately-issued .ptlicense file, see offline/license.rs and
+# src/lib/license.ts), so the same build serves every client. Re-running
+# this per sale would burn real money on Windows/macOS runners + EAS cloud
+# minutes for a binary that's byte-for-byte identical to the last one —
+# ci.yml's own history has a cautionary comment about exactly that mistake
+# once burning the whole GitHub Actions spending limit in one manual run.
+# Only dispatch this again when the app itself changes (a new version).
+#
+# Deliberately does NOT sign license files — the signing private key lives
+# only in a separate, CI-inaccessible R2 vault bucket (see ADR-014), never a
+# CI secret. Sign + upload each client's license file locally:
 #   node scripts/generate-offline-license.mjs sign --pharmacy "<name>" --out client.ptlicense
 #   aws s3 cp client.ptlicense \
-#     s3://pharmatrack-offline-releases/licenses/<client_slug>/client.ptlicense \
+#     s3://pharmatrack-offline-releases/licenses/<slug>/<slug>.ptlicense \
 #     --endpoint-url https://<R2_OFFLINE_ACCOUNT_ID>.r2.cloudflarestorage.com
 # (the account id is the same value stored in this repo's R2_OFFLINE_ACCOUNT_ID
 # secret — check GitHub repo Settings > Secrets if you don't have it handy)
@@ -21,9 +28,6 @@ name: Offline Edition Release
 on:
   workflow_dispatch:
     inputs:
-      client_slug:
-        description: "Client slug — used as the R2 path segment (e.g. acme-pharmacy)"
-        required: true
       build_desktop:
         description: "Build desktop installers (Windows + macOS)"
         type: boolean
@@ -34,7 +38,7 @@ on:
         default: true
 
 concurrency:
-  group: offline-release-${{ inputs.client_slug }}
+  group: offline-release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -94,14 +98,13 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_OFFLINE_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.R2_OFFLINE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          CLIENT: ${{ inputs.client_slug }}
           VERSION: ${{ steps.meta.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           EXE=$(ls apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe)
           NAME="PharmaTrack_Offline_${VERSION}_x64-setup.exe"
-          aws s3 cp "$EXE" "s3://${R2_BUCKET}/desktop-offline/${CLIENT}/v${VERSION}/${NAME}" --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$EXE" "s3://${R2_BUCKET}/desktop-offline/v${VERSION}/${NAME}" --endpoint-url "$R2_ENDPOINT"
 
   desktop-offline-macos:
     name: build offline desktop (macOS, ${{ matrix.target }})
@@ -156,14 +159,13 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_OFFLINE_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.R2_OFFLINE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          CLIENT: ${{ inputs.client_slug }}
           VERSION: ${{ steps.meta.outputs.version }}
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
           DMG=$(ls apps/desktop/src-tauri/target/${TARGET}/release/bundle/dmg/*.dmg)
           NAME="PharmaTrack_Offline_${VERSION}_${TARGET}.dmg"
-          aws s3 cp "$DMG" "s3://${R2_BUCKET}/desktop-offline/${CLIENT}/v${VERSION}/${NAME}" --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$DMG" "s3://${R2_BUCKET}/desktop-offline/v${VERSION}/${NAME}" --endpoint-url "$R2_ENDPOINT"
 
   android-offline:
     name: build offline Android APK
@@ -212,12 +214,11 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_OFFLINE_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.R2_OFFLINE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          CLIENT: ${{ inputs.client_slug }}
           VERSION: ${{ steps.eas.outputs.version }}
         run: |
           set -euo pipefail
           aws s3 cp apps/mobile/pharmatrack-offline.apk \
-            "s3://${R2_BUCKET}/android-offline/${CLIENT}/v${VERSION}/pharmatrack-offline.apk" \
+            "s3://${R2_BUCKET}/android-offline/v${VERSION}/pharmatrack-offline.apk" \
             --endpoint-url "$R2_ENDPOINT"
 
   summary:
@@ -227,23 +228,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Print license reminder
-        env:
-          CLIENT: ${{ inputs.client_slug }}
         run: |
-          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
-          ## Offline Edition build for \`${CLIENT}\` uploaded
+          cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          ## Offline Edition build uploaded
 
-          Builds are in \`pharmatrack-offline-releases\` under
-          \`desktop-offline/${CLIENT}/\` and \`android-offline/${CLIENT}/\`.
+          Builds are in `pharmatrack-offline-releases` under
+          `desktop-offline/v<version>/` and `android-offline/v<version>/`
+          (see each job above for its exact version string).
 
-          This workflow never signs a license — sign it on your own machine
-          and upload it yourself:
+          This workflow never signs a license — sign each client's license
+          on your own machine and upload it yourself:
 
-          \`\`\`
-          node scripts/generate-offline-license.mjs sign --pharmacy "<pharmacy name>" --out ${CLIENT}.ptlicense
-          aws s3 cp ${CLIENT}.ptlicense s3://pharmatrack-offline-releases/licenses/${CLIENT}/${CLIENT}.ptlicense \\
+          ```
+          node scripts/generate-offline-license.mjs sign --pharmacy "<pharmacy name>" --out <slug>.ptlicense
+          aws s3 cp <slug>.ptlicense s3://pharmatrack-offline-releases/licenses/<slug>/<slug>.ptlicense \
             --endpoint-url https://<R2_OFFLINE_ACCOUNT_ID>.r2.cloudflarestorage.com
-          \`\`\`
+          ```
 
-          Hand the client both the installer/APK and their \`.ptlicense\` file.
+          Hand the client both the (already-built, version-generic)
+          installer/APK and their own `.ptlicense` file.
           EOF
