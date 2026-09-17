@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from "react-native"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import { getLocalCatalogSeedStatus, seedLocalCatalog, unseedLocalCatalog } from "../src/repo/catalogSeed"
 import { toast } from "../src/lib/toast"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
@@ -27,6 +29,11 @@ export default function CatalogSeed() {
   async function load() {
     setLoading(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const json = await getLocalCatalogSeedStatus()
+        setDepartments(json.departments)
+        return
+      }
       const res = await apiFetch("/api/catalog/seed")
       if (!res.ok) throw new Error("Failed to load")
       const json = (await res.json()) as { departments: Department[] }
@@ -48,12 +55,14 @@ export default function CatalogSeed() {
     if (categories) setBusyCategory(categories[0]!)
     else setSeedingAll(true)
     try {
-      const res = await apiFetch("/api/catalog/seed", {
-        method: "POST",
-        body: JSON.stringify({ categories }),
-      })
-      const json = (await res.json()) as { seeded: number; updated: number; error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Could not seed")
+      const json = env.EXPO_PUBLIC_OFFLINE_MODE
+        ? await seedLocalCatalog(categories)
+        : await (async () => {
+            const res = await apiFetch("/api/catalog/seed", { method: "POST", body: JSON.stringify({ categories }) })
+            const body = (await res.json()) as { seeded: number; updated: number; error?: string }
+            if (!res.ok) throw new Error(body.error ?? "Could not seed")
+            return body
+          })()
       toast.success(`Added ${json.seeded} product${json.seeded === 1 ? "" : "s"}${json.updated ? `, updated ${json.updated}` : ""}`)
       await load()
     } catch (err) {
@@ -75,9 +84,13 @@ export default function CatalogSeed() {
           onPress: async () => {
             setUnseeding(true)
             try {
-              const res = await apiFetch("/api/catalog/seed", { method: "DELETE" })
-              const json = (await res.json()) as { removed: number; kept: number }
-              if (!res.ok) throw new Error("Could not remove")
+              const json = env.EXPO_PUBLIC_OFFLINE_MODE
+                ? await unseedLocalCatalog()
+                : await (async () => {
+                    const res = await apiFetch("/api/catalog/seed", { method: "DELETE" })
+                    if (!res.ok) throw new Error("Could not remove")
+                    return (await res.json()) as { removed: number; kept: number }
+                  })()
               toast.success(`Removed ${json.removed} product${json.removed === 1 ? "" : "s"}${json.kept ? ` (kept ${json.kept} already in use)` : ""}`)
               await load()
             } catch {

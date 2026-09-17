@@ -28,10 +28,8 @@ interface MenuItem {
   href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers" | "/sales" | "/billing" | "/settings" | "/catalog-seed" | "/prescriptions" | "/inventory-import"
   roles: string[]
   feature?: Feature
-  // ADR-014: not applicable (Billing — perpetual license, no subscription
-  // to manage) or not yet ported (Drug catalog — the KEML quick-start seed
-  // is online-only for now, see the offline-edition plan) to the Offline
-  // Edition build.
+  // ADR-014: not applicable to the Offline Edition build (Billing —
+  // perpetual license, no subscription to manage).
   hideOffline?: boolean
 }
 
@@ -45,7 +43,7 @@ const MENU_ITEMS: MenuItem[] = [
   { label: "Products", icon: "medkit-outline", href: "/products", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
   { label: "Categories", icon: "folder-outline", href: "/categories", roles: ["owner", "manager", "pharmacist"] },
   { label: "Suppliers", icon: "business-outline", href: "/suppliers", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-  { label: "Drug catalog", icon: "medical-outline", href: "/catalog-seed", roles: ["owner", "manager"], feature: "inventory", hideOffline: true },
+  { label: "Drug catalog", icon: "medical-outline", href: "/catalog-seed", roles: ["owner", "manager"], feature: "inventory" },
   { label: "Bulk import", icon: "cloud-upload-outline", href: "/inventory-import", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
 ]
 

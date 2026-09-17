@@ -305,6 +305,17 @@ sqliteDb.execSync(`
     note TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS drug_catalog (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    strength TEXT,
+    dosage_form TEXT,
+    base_unit TEXT NOT NULL,
+    is_controlled INTEGER NOT NULL DEFAULT 0,
+    requires_prescription INTEGER NOT NULL DEFAULT 0,
+    category TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY NOT NULL,
     actor_id TEXT,

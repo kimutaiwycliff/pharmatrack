@@ -292,14 +292,30 @@ export const prescriptionItems = sqliteTable("prescription_items", {
   instructions: text("instructions"),
 })
 
-// Seeded once from a bundled JSON asset at first run (see lib/local-auth.ts
-// setup flow) — read-only reference data for DUR checks, never edited by staff.
+// Seeded once, lazily, from data/dur-interactions.ts the first time DUR runs
+// (see repo/clinical.ts's ensureDurSeed()) — read-only reference data, never
+// edited by staff.
 export const drugInteractions = sqliteTable("drug_interactions", {
   id: text("id").primaryKey(),
   drugA: text("drug_a").notNull(),
   drugB: text("drug_b").notNull(),
   severity: text("severity").notNull(),
   note: text("note"),
+})
+
+// Seeded once, lazily, from data/keml-catalog.ts the first time the "Drug
+// catalog" quick-seed screen loads (see repo/catalogSeed.ts) — read-only
+// reference data mirroring a subset of the online `drug_catalog` table's
+// columns (identity fields only, no pricing — see keml-catalog.ts for why).
+export const drugCatalog = sqliteTable("drug_catalog", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  strength: text("strength"),
+  dosageForm: text("dosage_form"),
+  baseUnit: text("base_unit").notNull(),
+  isControlled: integer("is_controlled", { mode: "boolean" }).notNull().default(false),
+  requiresPrescription: integer("requires_prescription", { mode: "boolean" }).notNull().default(false),
+  category: text("category"),
 })
 
 export const auditLog = sqliteTable("audit_log", {

@@ -96,7 +96,7 @@ export async function adjustLocalStock(input: { batchId: string; delta: number; 
   await refreshProductStockCache(batch.productId, batch.branchId)
 }
 
-async function findOrCreateCategoryId(name: string | undefined, parentName: string | undefined): Promise<string | null> {
+export async function findOrCreateCategoryId(name: string | undefined, parentName: string | undefined): Promise<string | null> {
   if (!name?.trim()) return null
   let parentId: string | null = null
   if (parentName?.trim()) {
