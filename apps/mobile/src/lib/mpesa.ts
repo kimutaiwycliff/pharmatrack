@@ -1,4 +1,5 @@
 import { apiFetch } from "./api-fetch"
+import { env } from "./env"
 
 export interface MpesaAvailability {
   available: boolean
@@ -12,6 +13,10 @@ export interface MpesaAvailability {
 // here (auth, network, server error) is treated as "not available" rather than
 // surfaced as an error — the POS just doesn't offer M-Pesa/Split; Cash still works.
 export async function fetchMpesaAvailability(): Promise<MpesaAvailability> {
+  // ADR-014: no internet at all in the Offline Edition build, so STK push is
+  // never possible — same shape the online app already treats as "not
+  // available" (Cash-only POS), just skipping the doomed network call.
+  if (env.EXPO_PUBLIC_OFFLINE_MODE) return { available: false, planAllowed: false, configured: false }
   try {
     const res = await apiFetch("/api/mpesa/available")
     if (!res.ok) return { available: false, planAllowed: false, configured: false }
