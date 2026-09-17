@@ -21,23 +21,17 @@
 //   pnpm tauri build --target <same triple> --features offline-edition \
 //     --config src-tauri/tauri.offline.conf.json
 //
-// The Next.js standalone build (resources/web/) is NOT fetched by this
-// script, since it comes from this repo's own apps/web, not a third party.
-// Build it first with (from the repo root):
+// The Next.js standalone build (resources/web/) is assembled by this script
+// too (see the bottom), but the build itself is NOT run by this script,
+// since apps/web is this repo's own code, not a third party. Build it first
+// (from the repo root):
 //   NEXT_PUBLIC_APP_URL=http://127.0.0.1:47831 pnpm --filter web build
-// then copy it into place (mirrors exactly what Dockerfile's runner stage
-// does for the hosted SaaS build):
-//   mkdir -p apps/desktop/src-tauri/resources/web
-//   cp -R apps/web/.next/standalone/. apps/desktop/src-tauri/resources/web/
-//   mkdir -p apps/desktop/src-tauri/resources/web/apps/web/.next
-//   cp -R apps/web/.next/static apps/desktop/src-tauri/resources/web/apps/web/.next/static
-//   cp -R apps/web/public apps/desktop/src-tauri/resources/web/apps/web/public
 // The 47831 port must match offline::NEXT_PORT in
 // src-tauri/src/offline/mod.rs — NEXT_PUBLIC_* values are baked into the
 // client JS bundle at build time, not read at runtime (see self-hosting-vm
 // project notes: the same gotcha already applies to the hosted SaaS build).
 
-import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, chmodSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, lstatSync, chmodSync, readFileSync, unlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,4 +185,64 @@ for (const f of readdirSync(migrationsSrc)) {
 log(`migrations copied to ${migrationsDest}`);
 
 rmSync(work, { recursive: true, force: true });
-log("done. Remember to also build+copy resources/web/ (see the comment at the top of this script) before `tauri build`.");
+
+// ── web (this repo's own Next.js standalone build, not a third party) ──────
+// Mirrors exactly what Dockerfile's runner stage does for the hosted SaaS
+// build (.next/standalone at the root + .next/static + public/ copied in
+// alongside), but with `dereference: true` — REQUIRED, not optional.
+// pnpm's node_modules is one big web of symlinks into a central
+// `.pnpm/<pkg>@<version>/node_modules/<pkg>` store; Tauri's bundler validates
+// that every symlink it bundles resolves, so the whole tree must be
+// materialized into real files first. Plain `cp -R`/cpSync without
+// dereference (or even shell `cp -RL`, which mishandled some of pnpm's
+// multi-level symlink chains when this was tried for real) leaves things
+// like `@swc/helpers`'s actual implementation unreachable, which is silent
+// until Next actually needs it at request time — hit this for real as a
+// `MODULE_NOT_FOUND` for `@swc/helpers/cjs/_interop_require_default.cjs`
+// inside the bundled .app, even though the plain `next start` boots fine.
+const webStandaloneSrc = join(REPO_ROOT, "apps", "web", ".next", "standalone");
+if (!existsSync(webStandaloneSrc)) {
+  fail(
+    `apps/web/.next/standalone not found — build it first: ` +
+      `NEXT_PUBLIC_APP_URL=http://127.0.0.1:47831 pnpm --filter web build`,
+  );
+}
+log("vendoring the Next.js standalone build (resources/web/)");
+const webDest = join(SRC_TAURI, "resources", "web");
+freshDir(webDest);
+cpSync(webStandaloneSrc, webDest, { recursive: true, dereference: true });
+mkdirSync(join(webDest, "apps", "web", ".next"), { recursive: true });
+cpSync(join(REPO_ROOT, "apps", "web", ".next", "static"), join(webDest, "apps", "web", ".next", "static"), {
+  recursive: true,
+  dereference: true,
+});
+cpSync(join(REPO_ROOT, "apps", "web", "public"), join(webDest, "apps", "web", "public"), {
+  recursive: true,
+  dereference: true,
+});
+
+// Even with dereference: true, pnpm's tracer leaves a small number of
+// symlinks that point nowhere resolvable at all (confirmed harmless —
+// `.pnpm/node_modules/{scheduler,semver}` specifically, which Next inlines
+// into its webpack output rather than requiring at runtime) — Tauri's
+// bundler still refuses to ship ANY dangling symlink, so sweep for and
+// remove them rather than special-case package names.
+let removedBrokenSymlinks = 0;
+function removeBrokenSymlinks(dir) {
+  for (const entry of readdirSync(dir)) {
+    const p = join(dir, entry);
+    const st = lstatSync(p);
+    if (st.isSymbolicLink()) {
+      if (!existsSync(p)) {
+        unlinkSync(p);
+        removedBrokenSymlinks++;
+      }
+    } else if (st.isDirectory()) {
+      removeBrokenSymlinks(p);
+    }
+  }
+}
+removeBrokenSymlinks(webDest);
+log(`web vendored to ${webDest} (removed ${removedBrokenSymlinks} dangling symlink(s))`);
+
+log("done.");
