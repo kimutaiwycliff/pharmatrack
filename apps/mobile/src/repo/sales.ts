@@ -1,7 +1,7 @@
-import { and, asc, eq, gt, desc } from "drizzle-orm"
+import { and, asc, eq, gt, desc, gte, lte, like, or, sql } from "drizzle-orm"
 import * as Crypto from "expo-crypto"
 import { db } from "../db/database"
-import { sales, saleItems, payments, productBatches, products, shifts, controlledSubstanceLog, receiptCounters } from "../db/schema"
+import { sales, saleItems, payments, productBatches, products, shifts, controlledSubstanceLog, receiptCounters, staff, branches } from "../db/schema"
 import type { CartItem } from "../store/cart"
 
 // ADR-014 — Offline Edition real sale ledger. Unlike lib/sync/sales.ts
@@ -200,4 +200,58 @@ export async function clockOutLocal(shiftId: string, closingCashCents: number, n
 
 export async function listLocalShifts(branchId: string) {
   return db.select().from(shifts).where(eq(shifts.branchId, branchId)).orderBy(desc(shifts.openedAt))
+}
+
+// ── Sales lookup ─────────────────────────────────────────────────────────
+
+export async function listLocalSales(opts: { branchId: string; from?: string; to?: string; q?: string; page: number; limit: number }) {
+  const { branchId, from, to, q, page, limit } = opts
+  const clauses = [eq(sales.branchId, branchId)]
+  if (from) clauses.push(gte(sales.createdAt, new Date(from).getTime()))
+  if (to) clauses.push(lte(sales.createdAt, new Date(to).getTime()))
+  if (q && q.trim()) {
+    const term = `%${q.trim()}%`
+    clauses.push(or(like(sales.receiptNumber, term), like(sales.customerName, term), like(sales.customerPhone, term))!)
+  }
+  const where = and(...clauses)
+
+  const countRow = await db.select({ n: sql<number>`count(*)` }).from(sales).where(where)
+  const total = countRow[0]?.n ?? 0
+  const rows = await db.select().from(sales).where(where).orderBy(desc(sales.createdAt)).limit(limit).offset((page - 1) * limit)
+
+  const result = []
+  for (const s of rows) {
+    const [cashier] = s.cashierId ? await db.select({ fullName: staff.fullName }).from(staff).where(eq(staff.id, s.cashierId)).limit(1) : [null]
+    const itemCountRow = await db.select({ n: sql<number>`count(*)` }).from(saleItems).where(eq(saleItems.saleId, s.id))
+    result.push({
+      id: s.id, receipt_number: s.receiptNumber ?? "", created_at: new Date(s.createdAt).toISOString(),
+      payment_method: s.paymentMethod, total_amount: s.totalAmountCents / 100,
+      cashier_name: cashier?.fullName ?? "—", item_count: itemCountRow[0]?.n ?? 0,
+    })
+  }
+  return { sales: result, total, page, limit }
+}
+
+export async function getLocalSaleDetail(id: string) {
+  const [s] = await db.select().from(sales).where(eq(sales.id, id)).limit(1)
+  if (!s) return null
+  const [cashier] = s.cashierId ? await db.select({ fullName: staff.fullName }).from(staff).where(eq(staff.id, s.cashierId)).limit(1) : [null]
+  const [branch] = s.branchId ? await db.select().from(branches).where(eq(branches.id, s.branchId)).limit(1) : [null]
+  const itemRows = await db.select().from(saleItems).where(eq(saleItems.saleId, id))
+  const paymentRows = await db.select().from(payments).where(eq(payments.saleId, id))
+  const mpesaReference = paymentRows.find((p) => p.mpesaReceipt)?.mpesaReceipt ?? null
+
+  return {
+    sale: {
+      receipt_number: s.receiptNumber, created_at: new Date(s.createdAt).toISOString(), payment_method: s.paymentMethod,
+      subtotal: s.subtotalCents / 100, discount_amount: s.discountAmountCents / 100, tax_amount: s.taxAmountCents / 100,
+      total_amount: s.totalAmountCents / 100, mpesa_reference: mpesaReference,
+      cashier_name: cashier?.fullName ?? "—", branch_name: branch?.name ?? null, branch_address: branch?.address ?? null,
+    },
+    items: itemRows.map((it) => ({
+      id: it.id, product_name: it.productName, product_strength: it.productStrength,
+      quantity: it.quantity, unit_price: it.unitPriceCents / 100, discount_percent: it.discountPercent,
+      line_total: it.lineTotalCents / 100, base_unit: it.baseUnit,
+    })),
+  }
 }

@@ -13,6 +13,8 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import { listLocalSales, getLocalSaleDetail } from "../src/repo/sales"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
@@ -183,6 +185,17 @@ export default function Sales() {
     if (!branchId) return
     const currentBranchId = branchId
     async function load() {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        try {
+          const json = await listLocalSales({ branchId: currentBranchId, from, to: to ? `${to}T23:59:59` : undefined, q, page, limit: PAGE_SIZE })
+          setData(json)
+          setLoaded(true)
+          setError(null)
+        } finally {
+          setRefreshing(false)
+        }
+        return
+      }
       try {
         const params = new URLSearchParams({
           branch_id: currentBranchId,
@@ -224,6 +237,16 @@ export default function Sales() {
     let cancelled = false
     async function loadDetail() {
       try {
+        if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+          const json = await getLocalSaleDetail(saleId)
+          if (cancelled) return
+          if (!json) {
+            setDetailState({ saleId, data: null, error: "Sale not found" })
+            return
+          }
+          setDetailState({ saleId, data: json, error: null })
+          return
+        }
         const res = await apiFetch(`/api/sales/${saleId}`)
         if (cancelled) return
         if (!res.ok) {
