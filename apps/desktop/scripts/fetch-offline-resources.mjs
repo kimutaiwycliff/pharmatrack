@@ -78,16 +78,34 @@ function download(url, dest) {
   execFileSync("curl", ["-sSL", "--fail", "-o", dest, url], { stdio: "inherit" });
 }
 
+// Extracts the first 64-hex-char run from arbitrary checksum-tool output —
+// deliberately format-agnostic. Real-world formats seen across platforms:
+// GNU coreutils sha256sum: "<hash>  <filename>" (note: prefixes the whole
+// line with a literal "\" when the filename contains a backslash — always
+// true of a Windows temp path — so a naive first-whitespace-token split
+// would return "\<hash>", not "<hash>"); macOS/BSD shasum: same GNU-style
+// format; theseus-rs's own Windows-target .sha256 release asset: raw
+// `certutil -hashfile` output ("SHA256 hash of <file>:\r\n<hash>\r\nCertUtil:
+// ..."), entirely different shape. Scanning for the hex run sidesteps all of
+// that instead of special-casing each producer.
+function extractHex64(text) {
+  const match = text.match(/[0-9a-fA-F]{64}/);
+  if (!match) fail(`could not find a SHA-256 hash in: ${text.slice(0, 200)}`);
+  return match[0].toLowerCase();
+}
+
 function sha256(file) {
+  let output;
   try {
-    return execFileSync("shasum", ["-a", "256", file]).toString().trim().split(/\s+/)[0];
+    output = execFileSync("shasum", ["-a", "256", file]).toString();
   } catch {
-    return execFileSync("sha256sum", [file]).toString().trim().split(/\s+/)[0];
+    output = execFileSync("sha256sum", [file]).toString();
   }
+  return extractHex64(output);
 }
 
 function verify(file, expectedFile) {
-  const expected = readFileSync(expectedFile, "utf-8").trim().split(/\s+/)[0];
+  const expected = extractHex64(readFileSync(expectedFile, "utf-8"));
   const actual = sha256(file);
   if (expected !== actual) {
     fail(`checksum mismatch for ${file}: expected ${expected}, got ${actual}`);
