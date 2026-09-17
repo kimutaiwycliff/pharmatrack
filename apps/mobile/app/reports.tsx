@@ -5,7 +5,9 @@ import * as Sharing from "expo-sharing"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES, toCSV } from "@pharmatrack/core"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
 import { toast } from "../src/lib/toast"
+import { getLocalReport } from "../src/repo/reports"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
@@ -556,6 +558,23 @@ export default function Reports() {
           params.set("to", to)
         }
         if (selectedBranchId) params.set("branch_id", selectedBranchId)
+
+        if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+          const from = reportType !== "inventory" ? dateRangeFor(datePreset).from : undefined
+          const to = reportType !== "inventory" ? dateRangeFor(datePreset).to : undefined
+          const json = await getLocalReport({ type: reportType, from, to, branchId: selectedBranchId })
+          setFeatureLocked(false)
+          setError(null)
+          if (reportType === "sales") {
+            setData({ type: "sales", payload: json as SalesReport })
+          } else if (reportType === "inventory") {
+            setData({ type: "inventory", payload: json as InventoryReport })
+          } else {
+            setData({ type: "financial", payload: json as FinancialReport })
+          }
+          setLoaded(true)
+          return
+        }
 
         const res = await apiFetch(`/api/reports?${params.toString()}`)
 

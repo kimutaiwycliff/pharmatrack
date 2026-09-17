@@ -4,6 +4,7 @@ import { effectivePlanCode, type PlanCode } from "@pharmatrack/core"
 import type { Profile, Branch, UserRole } from "@pharmatrack/types"
 import { getSession } from "./helpers"
 import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
+import { OFFLINE_MODE } from "@/lib/offline-mode"
 
 export interface AppShell {
   userId: string
@@ -41,6 +42,29 @@ export async function loadAppShell(): Promise<AppShell | null> {
     created_at: sp.created_at.toISOString(),
   }
 
+  const branchRows = await db.select().from(branchTable)
+    .where(and(eq(branchTable.organization_id, sp.organization_id), eq(branchTable.is_active, true)))
+    .orderBy(asc(branchTable.name))
+  const branches: Branch[] = branchRows.map((b) => ({
+    id: b.id, organization_id: b.organization_id, name: b.name,
+    address: b.address, phone: b.phone, is_active: b.is_active, created_at: b.created_at.toISOString(),
+  }))
+
+  // ADR-014: Offline Edition installs are perpetually licensed with no billing
+  // path — skip the subscription/plan lookup entirely rather than trust a
+  // seeded row to stay correct forever.
+  if (OFFLINE_MODE) {
+    return {
+      userId: session.user.id,
+      email: session.user.email ?? "",
+      profile,
+      branches,
+      subStatus: "active",
+      trialExpired: false,
+      planCode: "enterprise",
+    }
+  }
+
   const [sub] = await db.select({
     status: subscription.status,
     trial_ends_at: subscription.trial_ends_at,
@@ -49,14 +73,6 @@ export async function loadAppShell(): Promise<AppShell | null> {
   }).from(subscription)
     .leftJoin(plan, eq(plan.id, subscription.plan_id))
     .where(eq(subscription.organization_id, sp.organization_id)).limit(1)
-
-  const branchRows = await db.select().from(branchTable)
-    .where(and(eq(branchTable.organization_id, sp.organization_id), eq(branchTable.is_active, true)))
-    .orderBy(asc(branchTable.name))
-  const branches: Branch[] = branchRows.map((b) => ({
-    id: b.id, organization_id: b.organization_id, name: b.name,
-    address: b.address, phone: b.phone, is_active: b.is_active, created_at: b.created_at.toISOString(),
-  }))
 
   const effective = sub ? effectiveSubscriptionStatus(sub) : null
   return {

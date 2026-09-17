@@ -4,6 +4,8 @@ import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { apiFetch } from "../../src/lib/api-fetch"
+import { env } from "../../src/lib/env"
+import { listLocalInventory } from "../../src/repo/inventory"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
@@ -105,6 +107,21 @@ export default function Inventory() {
     if (!branchId) return
     const currentBranchId = branchId
     async function load() {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        try {
+          const trimmed = query.trim()
+          const json = await listLocalInventory({ status: statusFilter, page, limit: PAGE_SIZE, q: trimmed.length >= 2 ? trimmed : undefined })
+          setProducts((prev) => (page === 1 ? json.products : [...prev, ...json.products]))
+          setSummary(json.summary)
+          setTotal(json.total)
+          setLoaded(true)
+          setError(null)
+        } finally {
+          setRefreshing(false)
+          setLoadingMore(false)
+        }
+        return
+      }
       try {
         const params = new URLSearchParams({
           branch_id: currentBranchId,

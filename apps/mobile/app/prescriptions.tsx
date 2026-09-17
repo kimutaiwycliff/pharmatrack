@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import { listLocalPrescriptions, createLocalPrescription } from "../src/repo/clinical"
 import { toast } from "../src/lib/toast"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
@@ -45,6 +47,10 @@ export default function Prescriptions() {
   async function load() {
     setLoading(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        setList((await listLocalPrescriptions()).prescriptions)
+        return
+      }
       const res = await apiFetch("/api/prescriptions")
       const json = (await res.json()) as { prescriptions: PrescriptionRow[]; error?: string }
       if (!res.ok) throw new Error(json.error ?? "Failed to load")
@@ -77,6 +83,30 @@ export default function Prescriptions() {
 
     setSubmitting(true)
     try {
+      const itemsPayload = validItems.map((it) => ({
+        drug_name: it.drug_name.trim(),
+        dose: it.dose.trim() || undefined,
+        frequency: it.frequency.trim() || undefined,
+        duration: it.duration.trim() || undefined,
+        quantity: it.quantity.trim() ? parseInt(it.quantity, 10) : undefined,
+        instructions: it.instructions.trim() || undefined,
+      }))
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const result = await createLocalPrescription({
+          customerName: customerName.trim(), customerPhone: customerPhone.trim() || null,
+          prescriberName: prescriberName.trim() || null, diagnosis: diagnosis.trim() || null,
+          items: itemsPayload, confirm,
+        })
+        if (result.requiresConfirmation) {
+          setWarnings(result.warnings)
+          return
+        }
+        toast.success("Prescription saved")
+        setShowForm(false)
+        resetForm()
+        await load()
+        return
+      }
       const res = await apiFetch("/api/prescriptions", {
         method: "POST",
         body: JSON.stringify({
@@ -84,14 +114,7 @@ export default function Prescriptions() {
           customer_phone: customerPhone.trim() || undefined,
           prescriber_name: prescriberName.trim() || undefined,
           diagnosis: diagnosis.trim() || undefined,
-          items: validItems.map((it) => ({
-            drug_name: it.drug_name.trim(),
-            dose: it.dose.trim() || undefined,
-            frequency: it.frequency.trim() || undefined,
-            duration: it.duration.trim() || undefined,
-            quantity: it.quantity.trim() ? parseInt(it.quantity, 10) : undefined,
-            instructions: it.instructions.trim() || undefined,
-          })),
+          items: itemsPayload,
           confirm,
         }),
       })

@@ -1,6 +1,17 @@
 import { create } from "zustand"
+import { eq } from "drizzle-orm"
 import { apiFetch } from "../lib/api-fetch"
 import { kvGet, kvSet } from "../lib/kv"
+import { env } from "../lib/env"
+import { getCurrentStaff } from "../lib/local-auth"
+import { db } from "../db/database"
+import { branches } from "../db/schema"
+
+// ADR-014 — fixed placeholder: an Offline Edition install is single-tenant,
+// so there's no real "organization" to distinguish. Kept as a value (not
+// null) because OnlineIndex/other screens already treat organizationId as
+// the "am I signed in" signal alongside role/branchId.
+const OFFLINE_ORG_ID = "offline"
 
 interface Branch {
   id: string
@@ -66,6 +77,25 @@ export const useSessionStore = create<SessionState>((set) => ({
   stale: false,
   async loadMe() {
     set({ error: null })
+    if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+      const staffRow = await getCurrentStaff()
+      if (!staffRow) {
+        set({ error: "Not signed in", loaded: true })
+        return
+      }
+      const allBranches = await db.select().from(branches).where(eq(branches.isActive, true))
+      const cached: CachedSession = {
+        organizationId: OFFLINE_ORG_ID,
+        role: staffRow.role,
+        branchId: staffRow.branchId ?? allBranches[0]?.id ?? null,
+        branches: allBranches.map((b) => ({ id: b.id, name: b.name })),
+        subStatus: "active",
+        planCode: "enterprise",
+        contact: null,
+      }
+      set({ ...cached, loaded: true, stale: false })
+      return
+    }
     try {
       const res = await apiFetch("/api/mobile/me")
       if (!res.ok) throw new Error(`HTTP ${res.status}`)

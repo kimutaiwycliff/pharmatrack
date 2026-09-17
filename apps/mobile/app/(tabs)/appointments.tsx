@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiFetch } from "../../src/lib/api-fetch"
+import { env } from "../../src/lib/env"
+import { listLocalAppointments, listLocalAppointmentServices, createLocalAppointment } from "../../src/repo/clinical"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
@@ -145,18 +147,33 @@ export default function Appointments() {
     if (!branchId) return
     const currentBranchId = branchId
     async function load() {
+      const from = new Date()
+      from.setHours(0, 0, 0, 0)
+      const to = new Date(from)
+      to.setDate(to.getDate() + 14)
+      const trimmed = query.trim()
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        try {
+          const json = await listLocalAppointments({
+            branchId: currentBranchId, from: from.toISOString(), to: to.toISOString(),
+            status: statusFilter, q: trimmed.length >= 2 ? trimmed : undefined,
+          })
+          setAppointments(json.appointments)
+          setFeatureLocked(false)
+          setLoaded(true)
+          setError(null)
+        } finally {
+          setRefreshing(false)
+        }
+        return
+      }
       try {
-        const from = new Date()
-        from.setHours(0, 0, 0, 0)
-        const to = new Date(from)
-        to.setDate(to.getDate() + 14)
         const params = new URLSearchParams({
           branch_id: currentBranchId,
           from: from.toISOString(),
           to: to.toISOString(),
           status: statusFilter,
         })
-        const trimmed = query.trim()
         if (trimmed.length >= 2) params.set("q", trimmed)
         const res = await apiFetch(`/api/appointments?${params.toString()}`)
         if (res.status === 403) {
@@ -195,6 +212,10 @@ export default function Appointments() {
     if (!canWrite) return
     async function loadServices() {
       try {
+        if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+          setServices((await listLocalAppointmentServices()).services)
+          return
+        }
         const res = await apiFetch("/api/appointment-services")
         if (!res.ok) return
         const json = (await res.json()) as AppointmentServicesResponse
@@ -256,22 +277,30 @@ export default function Appointments() {
     setSubmitting(true)
     try {
       const service = services.find((s) => s.slug === selectedService)
-      const res = await apiFetch("/api/appointments", {
-        method: "POST",
-        body: JSON.stringify({
-          customer_name: trimmedName,
-          customer_phone: customerPhone.trim() || undefined,
-          branch_id: branchId,
-          service: selectedService,
-          service_label: service?.label,
-          scheduled_at: scheduled.toISOString(),
-          notes: notes.trim() || undefined,
-        }),
-      })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        setFormError(body?.error ?? `Could not book appointment (HTTP ${res.status})`)
-        return
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await createLocalAppointment({
+          customerName: trimmedName, customerPhone: customerPhone.trim() || null, branchId,
+          service: selectedService, serviceLabel: service?.label, scheduledAt: scheduled.toISOString(),
+          notes: notes.trim() || null,
+        })
+      } else {
+        const res = await apiFetch("/api/appointments", {
+          method: "POST",
+          body: JSON.stringify({
+            customer_name: trimmedName,
+            customer_phone: customerPhone.trim() || undefined,
+            branch_id: branchId,
+            service: selectedService,
+            service_label: service?.label,
+            scheduled_at: scheduled.toISOString(),
+            notes: notes.trim() || undefined,
+          }),
+        })
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null
+          setFormError(body?.error ?? `Could not book appointment (HTTP ${res.status})`)
+          return
+        }
       }
       setShowBookingForm(false)
       resetForm()

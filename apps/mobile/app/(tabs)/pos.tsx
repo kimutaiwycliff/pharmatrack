@@ -7,6 +7,9 @@ import type { ProductRow } from "../../src/db/schema"
 import { findByBarcode, searchLocalProducts } from "../../src/lib/sync/catalogue"
 import { buildSalePayload, queueSale } from "../../src/lib/sync/sales"
 import { useSyncEngine } from "../../src/lib/sync/useSyncEngine"
+import { env } from "../../src/lib/env"
+import { commitLocalSale } from "../../src/repo/sales"
+import { getCurrentStaffId } from "../../src/lib/local-auth"
 import { fetchMpesaAvailability, type MpesaAvailability } from "../../src/lib/mpesa"
 import { useSessionStore } from "../../src/store/session"
 import { useShiftStore } from "../../src/store/shift"
@@ -122,6 +125,19 @@ export default function Pos() {
     const tenderedAmount = Number(tendered)
     if (!branchId || items.length === 0 || !tenderedAmount || tenderedAmount * 100 < total()) {
       setCheckoutError("Enter a tendered amount covering the total")
+      return
+    }
+    if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+      const cashierId = (await getCurrentStaffId()) ?? "unknown"
+      const amountTenderedCents = Math.round(tenderedAmount * 100)
+      const { receiptNumber } = await commitLocalSale({
+        branchId, shiftId: activeShift.id, cashierId, items,
+        paymentMethod: "cash", amountTenderedCents, changeGivenCents: amountTenderedCents - total(),
+      })
+      setReceipt(receiptNumber)
+      clear()
+      setTendered("")
+      setDiscountInput("")
       return
     }
     const offlineReference = randomUUID()

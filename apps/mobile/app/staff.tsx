@@ -13,6 +13,9 @@ import {
 } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import { setLocalStaffPin } from "../src/lib/local-auth"
+import { listLocalStaffMembers, createLocalStaffMember, patchLocalStaff, removeLocalStaff } from "../src/repo/staff"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
@@ -123,6 +126,7 @@ export default function Staff() {
   const [inviteName, setInviteName] = useState("")
   const [inviteEmail, setInviteEmail] = useState("")
   const [invitePhone, setInvitePhone] = useState("")
+  const [invitePin, setInvitePin] = useState("")
   const [inviteRole, setInviteRole] = useState<AssignableRole>("cashier")
   const [inviteBranchId, setInviteBranchId] = useState<string | null>(null)
   const [inviteError, setInviteError] = useState<string | null>(null)
@@ -142,6 +146,16 @@ export default function Staff() {
 
   useEffect(() => {
     async function load() {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        try {
+          setStaff(await listLocalStaffMembers())
+          setLoaded(true)
+          setError(null)
+        } finally {
+          setRefreshing(false)
+        }
+        return
+      }
       try {
         const res = await apiFetch("/api/staff")
         if (!res.ok) {
@@ -180,6 +194,7 @@ export default function Staff() {
     setInviteName("")
     setInviteEmail("")
     setInvitePhone("")
+    setInvitePin("")
     setInviteRole("cashier")
     setInviteBranchId(null)
     setInviteError(null)
@@ -188,6 +203,37 @@ export default function Staff() {
   async function handleSubmitInvite() {
     setInviteError(null)
     const trimmedName = inviteName.trim()
+
+    if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+      if (trimmedName.length < 2) {
+        setInviteError("Enter the staff member's full name")
+        return
+      }
+      if (!invitePhone.trim()) {
+        setInviteError("Enter a phone number (used to sign in)")
+        return
+      }
+      if (!/^\d{4,8}$/.test(invitePin)) {
+        setInviteError("PIN must be 4-8 digits")
+        return
+      }
+      setInviteSubmitting(true)
+      try {
+        await createLocalStaffMember({
+          fullName: trimmedName, phone: invitePhone.trim(), role: inviteRole, pin: invitePin,
+          branchId: inviteBranchId,
+        })
+        closeInvite()
+        setBanner(`${trimmedName} can now sign in with their PIN`)
+        setReloadToken((t) => t + 1)
+      } catch (err) {
+        setInviteError(err instanceof Error ? err.message : "Could not create staff member")
+      } finally {
+        setInviteSubmitting(false)
+      }
+      return
+    }
+
     const trimmedEmail = inviteEmail.trim()
     if (trimmedName.length < 2) {
       setInviteError("Enter the staff member's full name")
@@ -248,6 +294,11 @@ export default function Staff() {
     setActionPending(true)
     setSheetError(null)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await patchLocalStaff(id, body as { role?: string; branch_id?: string | null; is_active?: boolean })
+        setReloadToken((t) => t + 1)
+        return
+      }
       const res = await apiFetch(`/api/staff/${id}`, { method: "PATCH", body: JSON.stringify(body) })
       if (!res.ok) {
         const errBody = (await res.json().catch(() => null)) as { error?: string } | null
@@ -291,6 +342,12 @@ export default function Staff() {
   async function submitPin(id: string, pin: string) {
     setActionPending(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await setLocalStaffPin(id, pin)
+        setPinInput("")
+        setBanner("PIN updated")
+        return
+      }
       const res = await apiFetch(`/api/staff/${id}`, { method: "PATCH", body: JSON.stringify({ pin }) })
       if (!res.ok) {
         const errBody = (await res.json().catch(() => null)) as { error?: string } | null
@@ -342,6 +399,13 @@ export default function Staff() {
     setActionPending(true)
     setSheetError(null)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await removeLocalStaff(id)
+        closeManage()
+        setBanner("Staff member removed")
+        setReloadToken((t) => t + 1)
+        return
+      }
       const res = await apiFetch(`/api/staff/${id}`, { method: "DELETE" })
       if (!res.ok) {
         const errBody = (await res.json().catch(() => null)) as { error?: string } | null
@@ -436,23 +500,37 @@ export default function Staff() {
                   value={inviteName}
                   onChangeText={setInviteName}
                 />
+                {env.EXPO_PUBLIC_OFFLINE_MODE ? null : (
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Email address"
+                    placeholderTextColor={theme.textTertiary}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    value={inviteEmail}
+                    onChangeText={setInviteEmail}
+                  />
+                )}
                 <TextInput
                   style={styles.input}
-                  placeholder="Email address"
-                  placeholderTextColor={theme.textTertiary}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  value={inviteEmail}
-                  onChangeText={setInviteEmail}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Phone number (optional)"
+                  placeholder={env.EXPO_PUBLIC_OFFLINE_MODE ? "Phone number (used to sign in)" : "Phone number (optional)"}
                   placeholderTextColor={theme.textTertiary}
                   keyboardType="phone-pad"
                   value={invitePhone}
                   onChangeText={setInvitePhone}
                 />
+                {env.EXPO_PUBLIC_OFFLINE_MODE ? (
+                  <TextInput
+                    style={styles.input}
+                    placeholder="4-digit PIN"
+                    placeholderTextColor={theme.textTertiary}
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={8}
+                    value={invitePin}
+                    onChangeText={setInvitePin}
+                  />
+                ) : null}
 
                 <Text style={styles.fieldLabel}>Role</Text>
                 <RoleChipRow value={inviteRole} onChange={setInviteRole} styles={styles} disabled={inviteSubmitting} />
@@ -471,7 +549,7 @@ export default function Staff() {
                 <View style={styles.formActionsRow}>
                   <Button title="Cancel" variant="secondary" onPress={closeInvite} style={styles.formActionButton} />
                   <Button
-                    title="Send invite"
+                    title={env.EXPO_PUBLIC_OFFLINE_MODE ? "Create staff" : "Send invite"}
                     onPress={handleSubmitInvite}
                     loading={inviteSubmitting}
                     style={styles.formActionButton}
@@ -576,13 +654,15 @@ export default function Staff() {
                 {pinError ? <Text style={styles.error}>{pinError}</Text> : null}
 
                 <View style={styles.modalActionsRow}>
-                  <Button
-                    title="Resend invite"
-                    variant="secondary"
-                    onPress={handleResend}
-                    loading={actionPending}
-                    style={styles.formActionButton}
-                  />
+                  {env.EXPO_PUBLIC_OFFLINE_MODE ? null : (
+                    <Button
+                      title="Resend invite"
+                      variant="secondary"
+                      onPress={handleResend}
+                      loading={actionPending}
+                      style={styles.formActionButton}
+                    />
+                  )}
                   <Button
                     title="Remove"
                     variant="danger"

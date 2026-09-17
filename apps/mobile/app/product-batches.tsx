@@ -4,6 +4,8 @@ import { useLocalSearchParams } from "expo-router"
 import { eq } from "drizzle-orm"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import { listLocalBatches, receiveLocalStock, adjustLocalStock } from "../src/repo/inventory"
 import { toast } from "../src/lib/toast"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
@@ -63,6 +65,11 @@ export default function ProductBatches() {
     if (!productId || !branchId) return
     setLoading(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const json = await listLocalBatches(productId, branchId)
+        setBatches(json.batches ?? [])
+        return
+      }
       const res = await apiFetch(`/api/batches?product_id=${productId}&branch_id=${branchId}`)
       const json = (await res.json()) as { batches: Batch[] }
       setBatches(json.batches ?? [])
@@ -95,16 +102,24 @@ export default function ProductBatches() {
     if (!qty || qty <= 0) { toast.error("Enter a quantity received"); return }
     setReceiving(true)
     try {
-      const res = await apiFetch("/api/batches", {
-        method: "POST",
-        body: JSON.stringify({
-          product_id: productId, branch_id: branchId, batch_number: batchNumber.trim(),
-          expiry_date: expiryDate, quantity_received: qty,
-          cost_price: costPrice.trim() ? Number(costPrice) : undefined,
-        }),
-      })
-      const json = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Could not receive stock")
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await receiveLocalStock({
+          productId: productId!, branchId: branchId!, batchNumber: batchNumber.trim(),
+          expiryDate, quantityReceived: qty,
+          costPrice: costPrice.trim() ? Number(costPrice) : null,
+        })
+      } else {
+        const res = await apiFetch("/api/batches", {
+          method: "POST",
+          body: JSON.stringify({
+            product_id: productId, branch_id: branchId, batch_number: batchNumber.trim(),
+            expiry_date: expiryDate, quantity_received: qty,
+            cost_price: costPrice.trim() ? Number(costPrice) : undefined,
+          }),
+        })
+        const json = (await res.json()) as { error?: string }
+        if (!res.ok) throw new Error(json.error ?? "Could not receive stock")
+      }
       toast.success("Stock received")
       setShowReceive(false)
       setLastReceivedQty(qty)
@@ -137,12 +152,16 @@ export default function ProductBatches() {
     if (!adjustDelta || Number.isNaN(delta) || delta === 0) { toast.error("Enter a non-zero adjustment (e.g. -5 or 10)"); return }
     setAdjusting(true)
     try {
-      const res = await apiFetch("/api/inventory/adjust", {
-        method: "POST",
-        body: JSON.stringify({ batch_id: adjustingBatch.id, mode: "delta", value: delta, reason: adjustReason, note: adjustNote.trim() || undefined }),
-      })
-      const json = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Could not adjust stock")
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await adjustLocalStock({ batchId: adjustingBatch.id, delta, reason: adjustReason, note: adjustNote.trim() || null })
+      } else {
+        const res = await apiFetch("/api/inventory/adjust", {
+          method: "POST",
+          body: JSON.stringify({ batch_id: adjustingBatch.id, mode: "delta", value: delta, reason: adjustReason, note: adjustNote.trim() || undefined }),
+        })
+        const json = (await res.json()) as { error?: string }
+        if (!res.ok) throw new Error(json.error ?? "Could not adjust stock")
+      }
       toast.success("Stock adjusted")
       setAdjustingBatch(null)
       setAdjustDelta(""); setAdjustNote("")

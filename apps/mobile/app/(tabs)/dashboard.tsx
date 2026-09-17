@@ -3,6 +3,8 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { apiFetch } from "../../src/lib/api-fetch"
+import { env } from "../../src/lib/env"
+import { getLocalDashboard } from "../../src/repo/reports"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
@@ -84,12 +86,17 @@ export default function Dashboard() {
     if (!branchId) return
     async function load() {
       try {
-        const res = await apiFetch(`/api/dashboard?branch_id=${branchId}`)
-        if (!res.ok) {
-          setError(`Could not load dashboard (HTTP ${res.status})`)
-          return
+        let json: DashboardResponse
+        if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+          json = await getLocalDashboard(branchId!)
+        } else {
+          const res = await apiFetch(`/api/dashboard?branch_id=${branchId}`)
+          if (!res.ok) {
+            setError(`Could not load dashboard (HTTP ${res.status})`)
+            return
+          }
+          json = (await res.json()) as DashboardResponse
         }
-        const json = (await res.json()) as DashboardResponse
         setData(json)
         setLoaded(true)
       } catch {

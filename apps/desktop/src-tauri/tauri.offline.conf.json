@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": []
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "externalBin": ["binaries/dbmate", "binaries/node"],
+    "resources": ["resources/postgres/", "resources/web/", "resources/migrations/"]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
+  }
+}

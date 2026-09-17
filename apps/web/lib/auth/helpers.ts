@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, platform_admin, subscription } from "@pharmatrack/db"
 import { auth } from "./server"
 import { effectiveSubscriptionStatus, ACTIVE_STATUSES } from "@/lib/billing/subscription-status"
+import { OFFLINE_MODE } from "@/lib/offline-mode"
 
 export type Role = "owner" | "manager" | "pharmacist" | "cashier"
 const RANK: Record<Role, number> = { owner: 4, manager: 3, pharmacist: 2, cashier: 1 }
@@ -70,8 +71,13 @@ export async function requireRole(min: Role): Promise<TenantContext> {
  * its own gate), /api/onboarding (provisioning a brand-new tenant that has no
  * subscription yet), and the PIN-login endpoint (must keep working so a
  * blocked owner can sign in and reach the gate/claim form at all).
+ *
+ * ADR-014: Offline Edition installs are perpetually licensed with no billing
+ * path at all — never gated, regardless of what's in the local subscription
+ * table.
  */
 export async function requireActiveSubscription(organizationId: string): Promise<NextResponse | null> {
+  if (OFFLINE_MODE) return null
   const [sub] = await dbAdmin().select({
     status: subscription.status,
     trial_ends_at: subscription.trial_ends_at,

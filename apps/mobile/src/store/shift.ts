@@ -1,6 +1,9 @@
 import { create } from "zustand"
 import { apiFetch } from "../lib/api-fetch"
 import { kvGet, kvSet, kvDelete } from "../lib/kv"
+import { env } from "../lib/env"
+import { getCurrentStaffId } from "../lib/local-auth"
+import { getActiveLocalShift, clockInLocal, clockOutLocal } from "../repo/sales"
 
 const CACHE_KEY = "active_shift"
 
@@ -62,6 +65,22 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
   stale: false,
   async loadActiveShift() {
     set({ error: null })
+    if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+      // Re-derive from the local table (source of truth) rather than trusting
+      // the kv cache alone — a prior clock-out elsewhere must be reflected.
+      const staffId = await getCurrentStaffId()
+      const branch = await kvGet<{ branchId: string | null }>("session")
+      if (staffId && branch?.branchId) {
+        const row = await getActiveLocalShift(branch.branchId, staffId)
+        const active = row ? { id: row.id, openingFloat: row.openingFloatCents / 100, clockedInAt: new Date(row.openedAt).toISOString() } : null
+        set({ activeShift: active, loaded: true, stale: false })
+        if (active) await kvSet(CACHE_KEY, active)
+        else await kvDelete(CACHE_KEY)
+      } else {
+        set({ activeShift: null, loaded: true, stale: false })
+      }
+      return
+    }
     try {
       const res = await apiFetch("/api/shifts/active")
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -84,6 +103,14 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
   },
   async clockIn(openingFloat, branchId) {
     set({ error: null })
+    if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+      const staffId = (await getCurrentStaffId()) ?? "unknown"
+      const { id } = await clockInLocal(branchId, staffId, Math.round(openingFloat * 100))
+      const active = { id, openingFloat, clockedInAt: new Date().toISOString() }
+      set({ activeShift: active, stale: false })
+      await kvSet(CACHE_KEY, active)
+      return
+    }
     try {
       const res = await apiFetch("/api/shifts", {
         method: "POST",
@@ -108,6 +135,19 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
     if (!active) {
       set({ error: "No active shift to clock out of" })
       return null
+    }
+    if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+      const { varianceCents } = await clockOutLocal(active.id, Math.round(closingCash * 100), notes ?? null)
+      set({ activeShift: null })
+      await kvDelete(CACHE_KEY)
+      return {
+        shift: {
+          id: active.id, branch_id: "", staff_id: "", opening_float: active.openingFloat,
+          closing_cash: closingCash, variance: varianceCents / 100, clocked_in_at: active.clockedInAt,
+          clocked_out_at: new Date().toISOString(), notes: notes ?? null, created_at: active.clockedInAt,
+        },
+        variance: varianceCents / 100,
+      }
     }
     try {
       const res = await apiFetch("/api/shifts", {

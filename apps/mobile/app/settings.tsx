@@ -2,6 +2,9 @@ import { useEffect, useState } from "react"
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { apiFetch } from "../src/lib/api-fetch"
 import { authClient } from "../src/lib/auth-client"
+import { env } from "../src/lib/env"
+import { getCurrentStaffId } from "../src/lib/local-auth"
+import { getLocalSettings, updateLocalOrg, updateLocalPin, updateLocalProfile } from "../src/repo/settings"
 import { toast } from "../src/lib/toast"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
@@ -19,6 +22,7 @@ interface OrgSettingsData {
   profile: { full_name: string; phone: string | null; role: string }
   has_pin: boolean
   org: { name: string; registration_number?: string; phone?: string; email?: string; address?: string } | null
+  org_branch_id?: string | null
 }
 
 export default function Settings() {
@@ -49,10 +53,21 @@ export default function Settings() {
   const [orgEmail, setOrgEmail] = useState("")
   const [orgAddress, setOrgAddress] = useState("")
   const [orgSaving, setOrgSaving] = useState(false)
+  const [staffId, setStaffId] = useState<string | null>(null)
 
   useEffect(() => {
-    apiFetch("/api/settings")
-      .then((r) => (r.ok ? (r.json() as Promise<OrgSettingsData>) : Promise.reject(new Error("Failed to load"))))
+    async function load(): Promise<OrgSettingsData> {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const id = await getCurrentStaffId()
+        if (!id) throw new Error("Not signed in")
+        setStaffId(id)
+        return getLocalSettings(id)
+      }
+      const r = await apiFetch("/api/settings")
+      if (!r.ok) throw new Error("Failed to load")
+      return r.json() as Promise<OrgSettingsData>
+    }
+    load()
       .then((d) => {
         setData(d)
         setFullName(d.profile.full_name)
@@ -72,12 +87,17 @@ export default function Settings() {
   async function saveProfile() {
     setProfileSaving(true)
     try {
-      const res = await apiFetch("/api/settings?target=profile", {
-        method: "PATCH",
-        body: JSON.stringify({ full_name: fullName, phone }),
-      })
-      const json = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Could not save")
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        if (!staffId) throw new Error("Not signed in")
+        await updateLocalProfile(staffId, { full_name: fullName, phone })
+      } else {
+        const res = await apiFetch("/api/settings?target=profile", {
+          method: "PATCH",
+          body: JSON.stringify({ full_name: fullName, phone }),
+        })
+        const json = (await res.json()) as { error?: string }
+        if (!res.ok) throw new Error(json.error ?? "Could not save")
+      }
       toast.success("Profile updated")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
@@ -104,15 +124,21 @@ export default function Settings() {
   }
 
   async function savePin() {
-    if (!pinPassword) { toast.error("Enter your account password to confirm"); return }
+    if (!env.EXPO_PUBLIC_OFFLINE_MODE && !pinPassword) { toast.error("Enter your account password to confirm"); return }
     setPinSaving(true)
     try {
-      const res = await apiFetch("/api/settings?target=pin", {
-        method: "PATCH",
-        body: JSON.stringify({ password: pinPassword, pin }),
-      })
-      const json = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Could not save PIN")
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        if (!staffId) throw new Error("Not signed in")
+        if (!/^\d{4,8}$/.test(pin)) throw new Error("PIN must be 4-8 digits")
+        await updateLocalPin(staffId, pin)
+      } else {
+        const res = await apiFetch("/api/settings?target=pin", {
+          method: "PATCH",
+          body: JSON.stringify({ password: pinPassword, pin }),
+        })
+        const json = (await res.json()) as { error?: string }
+        if (!res.ok) throw new Error(json.error ?? "Could not save PIN")
+      }
       toast.success("PIN updated")
       setPin(""); setPinPassword("")
       setData((d) => (d ? { ...d, has_pin: true } : d))
@@ -126,12 +152,18 @@ export default function Settings() {
   async function saveOrg() {
     setOrgSaving(true)
     try {
-      const res = await apiFetch("/api/settings?target=org", {
-        method: "PATCH",
-        body: JSON.stringify({ name: orgName, registration_number: orgReg, phone: orgPhone, email: orgEmail, address: orgAddress }),
-      })
-      const json = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Could not save")
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const branchId = data?.org_branch_id
+        if (!branchId) throw new Error("No branch found")
+        await updateLocalOrg(branchId, { name: orgName, registration_number: orgReg, phone: orgPhone, email: orgEmail, address: orgAddress })
+      } else {
+        const res = await apiFetch("/api/settings?target=org", {
+          method: "PATCH",
+          body: JSON.stringify({ name: orgName, registration_number: orgReg, phone: orgPhone, email: orgEmail, address: orgAddress }),
+        })
+        const json = (await res.json()) as { error?: string }
+        if (!res.ok) throw new Error(json.error ?? "Could not save")
+      }
       toast.success("Organization updated")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
@@ -160,19 +192,23 @@ export default function Settings() {
           <Button title="Save profile" onPress={saveProfile} loading={profileSaving} variant="secondary" />
         </Card>
 
-        <Card style={styles.card}>
-          <Text style={styles.sectionTitle}>Change password</Text>
-          <TextInput style={styles.input} placeholder="Current password" placeholderTextColor={theme.textTertiary} secureTextEntry value={currentPw} onChangeText={setCurrentPw} />
-          <TextInput style={styles.input} placeholder="New password (min 8 characters)" placeholderTextColor={theme.textTertiary} secureTextEntry value={newPw} onChangeText={setNewPw} />
-          <TextInput style={styles.input} placeholder="Confirm new password" placeholderTextColor={theme.textTertiary} secureTextEntry value={confirmPw} onChangeText={setConfirmPw} />
-          <Button title="Change password" onPress={changePassword} loading={pwSaving} variant="secondary" />
-        </Card>
+        {!env.EXPO_PUBLIC_OFFLINE_MODE && (
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle}>Change password</Text>
+            <TextInput style={styles.input} placeholder="Current password" placeholderTextColor={theme.textTertiary} secureTextEntry value={currentPw} onChangeText={setCurrentPw} />
+            <TextInput style={styles.input} placeholder="New password (min 8 characters)" placeholderTextColor={theme.textTertiary} secureTextEntry value={newPw} onChangeText={setNewPw} />
+            <TextInput style={styles.input} placeholder="Confirm new password" placeholderTextColor={theme.textTertiary} secureTextEntry value={confirmPw} onChangeText={setConfirmPw} />
+            <Button title="Change password" onPress={changePassword} loading={pwSaving} variant="secondary" />
+          </Card>
+        )}
 
         <Card style={styles.card}>
           <Text style={styles.sectionTitle}>{data.has_pin ? "Update till PIN" : "Set a till PIN"}</Text>
           <Text style={styles.hint}>Used for quick sign-in at the till on this device.</Text>
           <TextInput style={styles.input} placeholder="New 4-digit PIN" placeholderTextColor={theme.textTertiary} keyboardType="number-pad" maxLength={4} secureTextEntry value={pin} onChangeText={setPin} />
-          <TextInput style={styles.input} placeholder="Account password (to confirm)" placeholderTextColor={theme.textTertiary} secureTextEntry value={pinPassword} onChangeText={setPinPassword} />
+          {!env.EXPO_PUBLIC_OFFLINE_MODE && (
+            <TextInput style={styles.input} placeholder="Account password (to confirm)" placeholderTextColor={theme.textTertiary} secureTextEntry value={pinPassword} onChangeText={setPinPassword} />
+          )}
           <Button title={data.has_pin ? "Update PIN" : "Set PIN"} onPress={savePin} loading={pinSaving} variant="secondary" />
         </Card>
 
