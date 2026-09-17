@@ -3,6 +3,7 @@ import * as Crypto from "expo-crypto"
 import { checkDur, type DurWarning } from "@pharmatrack/core"
 import { db } from "../db/database"
 import { customers, appointments, appointmentServices, prescriptions, prescriptionItems, drugInteractions } from "../db/schema"
+import { DUR_INTERACTIONS } from "../data/dur-interactions"
 
 // ADR-014 — local repo for Appointments/Prescriptions. Return shapes match
 // the online API field-for-field.
@@ -17,21 +18,15 @@ async function findOrCreateCustomer(fullName: string, phone?: string | null): Pr
   return id
 }
 
-// A handful of well-known interactions/allergy-class members as a starting
-// reference set — seeded once, lazily, the first time DUR actually runs.
-// NOT a substitute for the full drug_interaction table the online app seeds
-// server-side; a known, tracked gap (see the offline-edition plan memory).
-const STARTER_INTERACTIONS: { a: string; b: string; severity: string; note: string }[] = [
-  { a: "warfarin", b: "aspirin", severity: "severe", note: "Increased bleeding risk" },
-  { a: "warfarin", b: "ibuprofen", severity: "severe", note: "Increased bleeding risk" },
-  { a: "metformin", b: "alcohol", severity: "moderate", note: "Risk of lactic acidosis" },
-  { a: "ace inhibitor", b: "potassium", severity: "moderate", note: "Risk of hyperkalaemia" },
-  { a: "methotrexate", b: "trimethoprim", severity: "severe", note: "Increased methotrexate toxicity" },
-]
+// Seeded once, lazily, the first time DUR actually runs — see
+// data/dur-interactions.ts for the dataset and why it's authored locally
+// rather than ported from an online table (the online table has no seed
+// data of its own to port). Still a starter safety net, not a licensed
+// interaction-checker database — a known, tracked scope limit.
 async function ensureDurSeed(): Promise<void> {
   const [row] = await db.select({ n: sql<number>`count(*)` }).from(drugInteractions)
   if ((row?.n ?? 0) > 0) return
-  for (const r of STARTER_INTERACTIONS) {
+  for (const r of DUR_INTERACTIONS) {
     await db.insert(drugInteractions).values({ id: Crypto.randomUUID(), drugA: r.a, drugB: r.b, severity: r.severity, note: r.note })
   }
 }
