@@ -78,6 +78,8 @@ export const branches = sqliteTable("branches", {
   phone: text("phone"),
   address: text("address"),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  registrationNumber: text("registration_number"),
+  email: text("email"),
 })
 
 // Local-only staff/auth — no server `user`/`staff_profile` row exists at all.

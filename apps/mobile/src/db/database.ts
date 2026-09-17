@@ -19,6 +19,16 @@ try {
 } catch {
   // already added on a previous run
 }
+try {
+  sqliteDb.execSync(`ALTER TABLE branches ADD COLUMN registration_number TEXT;`)
+} catch {
+  // already added on a previous run
+}
+try {
+  sqliteDb.execSync(`ALTER TABLE branches ADD COLUMN email TEXT;`)
+} catch {
+  // already added on a previous run
+}
 
 // Create tables on first run. No migration framework needed for a schema this
 // small — if a column is added later, bump this to a real migration rather
@@ -79,7 +89,9 @@ sqliteDb.execSync(`
     name TEXT NOT NULL,
     phone TEXT,
     address TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1
+    is_active INTEGER NOT NULL DEFAULT 1,
+    registration_number TEXT,
+    email TEXT
   );
 
   CREATE TABLE IF NOT EXISTS staff (
