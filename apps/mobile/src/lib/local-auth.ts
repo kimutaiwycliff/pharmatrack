@@ -129,6 +129,14 @@ export async function verifyLocalPin(rawPhone: string, pin: string): Promise<Loc
   return { ok: true, staff: row }
 }
 
+/** Used by the Staff screen's "set PIN" action (owner/manager only, gated
+ *  in the UI same as the online app's equivalent). */
+export async function setLocalStaffPin(staffId: string, pin: string): Promise<void> {
+  const salt = Crypto.randomUUID()
+  const pinHash = await hashPin(pin, salt)
+  await db.update(staff).set({ pinHash, pinSalt: salt }).where(eq(staff.id, staffId))
+}
+
 export async function getCurrentStaffId(): Promise<string | null> {
   return kvGet<string>(CURRENT_STAFF_KEY)
 }
