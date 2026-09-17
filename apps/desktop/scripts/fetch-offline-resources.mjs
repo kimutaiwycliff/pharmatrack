@@ -228,21 +228,42 @@ if (!existsSync(webStandaloneSrc)) {
 log("vendoring the Next.js standalone build (resources/web/)");
 const webDest = join(SRC_TAURI, "resources", "web");
 freshDir(webDest);
-// @sentry/nextjs is dynamically imported behind `if (OFFLINE_MODE) return` in
-// instrumentation.ts, so it's genuinely never touched at runtime here — but
-// Next's standalone output tracer includes it anyway (static analysis sees
-// the import specifier regardless of the runtime guard). Its pnpm store path
-// (.pnpm/@sentry+nextjs@<version>_<hash>/node_modules/@sentry/nextjs/...) is
-// deep enough to exceed Windows's 260-char MAX_PATH, which fails NSIS
-// packaging ("failed opening file ...browserTracingIntegration.js") — hit
-// this for real on a live Windows CI build. Excluding it here (not from the
-// online build) is safe precisely because it's dead weight ONLY under
-// OFFLINE_MODE.
-const sentryPathSegment = join("node_modules", "@sentry")
+// Packages apps/web imports statically but only actually exercises along
+// non-OFFLINE_MODE code paths: @sentry/nextjs (dynamic import()'d behind
+// `if (OFFLINE_MODE) return` in instrumentation.ts) and @aws-sdk/client-s3
+// (pulled in by lib/storage/minio.ts, which lib/storage/index.ts always
+// statically imports — `const backend = OFFLINE_MODE ? localFs : minio` —
+// even though only one side is ever called). Next's standalone tracer
+// includes both regardless, since OFFLINE_MODE is a runtime check, not
+// something tree-shaking can see through. Both packages' pnpm store paths
+// are deep enough to exceed Windows's 260-char MAX_PATH, which fails NSIS
+// packaging — confirmed via two separate live Windows CI failures, one per
+// package. Excluding them here (not from the online build) is safe
+// precisely because they're dead weight ONLY under OFFLINE_MODE.
+const deadWeightSegments = [join("node_modules", "@sentry"), join("node_modules", "@aws-sdk")];
+
+function shouldCopy(src) {
+  if (deadWeightSegments.some((seg) => src.includes(seg))) return false;
+  try {
+    const st = lstatSync(src);
+    // Same dangling-symlink tolerance as the post-copy sweep below (pnpm's
+    // tracer leaves a few, e.g. .pnpm/node_modules/{scheduler,semver}) — but
+    // cpSync's recursion eagerly stats symlink targets and throws ENOENT on
+    // unresolvable ones as soon as ANY `filter` callback is supplied,
+    // instead of the silent tolerance it has with no filter at all
+    // (confirmed: this only started crashing for real once the exclusion
+    // filter above was added).
+    if (st.isSymbolicLink() && !existsSync(src)) return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 cpSync(webStandaloneSrc, webDest, {
   recursive: true,
   dereference: true,
-  filter: (src) => !src.includes(sentryPathSegment),
+  filter: shouldCopy,
 });
 mkdirSync(join(webDest, "apps", "web", ".next"), { recursive: true });
 cpSync(join(REPO_ROOT, "apps", "web", ".next", "static"), join(webDest, "apps", "web", ".next", "static"), {
