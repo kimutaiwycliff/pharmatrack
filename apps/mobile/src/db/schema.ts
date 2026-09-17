@@ -13,6 +13,7 @@ export const products = sqliteTable("products", {
   name: text("name").notNull(),
   brandName: text("brand_name"),
   genericName: text("generic_name"),
+  manufacturer: text("manufacturer"),
   strength: text("strength"),
   dosageForm: text("dosage_form"),
   baseUnit: text("base_unit").notNull(),

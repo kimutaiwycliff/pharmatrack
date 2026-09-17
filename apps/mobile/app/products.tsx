@@ -3,6 +3,12 @@ import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Tex
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { toCents, formatKES } from "@pharmatrack/core"
 import { apiFetch } from "../src/lib/api-fetch"
+import { env } from "../src/lib/env"
+import {
+  listLocalProducts, getLocalProductDetail, createLocalProduct, updateLocalProduct, deleteLocalProduct,
+  addLocalPackSize, updateLocalPackSize, deleteLocalPackSize,
+} from "../src/repo/products"
+import { listLocalCategories, listLocalSuppliers } from "../src/repo/catalog"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
 import { toast } from "../src/lib/toast"
@@ -247,6 +253,21 @@ export default function Products() {
   useEffect(() => {
     if (!hasAccess) return
     async function load() {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        try {
+          const trimmed = query.trim()
+          const json = await listLocalProducts({ page, limit: PAGE_SIZE, q: trimmed.length >= 2 ? trimmed : undefined })
+          setProducts((prev) => (page === 1 ? json.products : [...prev, ...json.products]))
+          setTotal(json.total)
+          setLoaded(true)
+          setError(null)
+          setCostVisible(true)
+        } finally {
+          setRefreshing(false)
+          setLoadingMore(false)
+        }
+        return
+      }
       try {
         const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) })
         const trimmed = query.trim()
@@ -277,6 +298,11 @@ export default function Products() {
   useEffect(() => {
     if (!hasAccess) return
     async function loadPickers() {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        setCategories(await listLocalCategories())
+        setSuppliers(await listLocalSuppliers())
+        return
+      }
       try {
         const [catRes, supRes] = await Promise.all([apiFetch("/api/categories"), apiFetch("/api/suppliers")])
         if (catRes.ok) setCategories(((await catRes.json()) as CategoriesResponse).categories)
@@ -372,6 +398,17 @@ export default function Products() {
     setFormError(null)
     setDetailLoading(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const json = await getLocalProductDetail(id)
+        if (!json) {
+          setFormError("Product not found")
+          return
+        }
+        applyDetailToForm(json.product)
+        setEditingPackSizes(json.packSizes)
+        setCostVisible(true)
+        return
+      }
       const res = await apiFetch(`/api/products/${id}`)
       if (!res.ok) {
         setFormError(`Could not load product (HTTP ${res.status})`)
@@ -444,6 +481,12 @@ export default function Products() {
 
     setSubmitting(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const created = await createLocalProduct(body as never)
+        setReloadToken((t) => t + 1)
+        await openEdit(created.product.id)
+        return
+      }
       const res = await apiFetch("/api/products", { method: "POST", body: JSON.stringify(body) })
       const respBody = (await res.json().catch(() => null)) as ProductWriteResponse | null
       if (!res.ok) {
@@ -510,6 +553,15 @@ export default function Products() {
 
     setSubmitting(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const result = await updateLocalProduct(editingProductId, body as never)
+        if (result.product) {
+          applyDetailToForm(result.product as ProductDetail)
+          setCostVisible(true)
+        }
+        setReloadToken((t) => t + 1)
+        return
+      }
       const res = await apiFetch(`/api/products/${editingProductId}`, { method: "PATCH", body: JSON.stringify(body) })
       const respBody = (await res.json().catch(() => null)) as { product?: ProductDetail; error?: string } | null
       if (!res.ok) {
@@ -539,6 +591,12 @@ export default function Products() {
   async function doDeleteProduct() {
     if (!editingProductId) return
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await deleteLocalProduct(editingProductId)
+        setReloadToken((t) => t + 1)
+        backToList()
+        return
+      }
       const res = await apiFetch(`/api/products/${editingProductId}`, { method: "DELETE" })
       const body = (await res.json().catch(() => null)) as { error?: string } | null
       if (!res.ok) {
@@ -573,6 +631,17 @@ export default function Products() {
 
     setPackSubmitting(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const result = await addLocalPackSize(editingProductId!, {
+          pack_label: trimmedLabel, units_per_pack: units, selling_price: price, barcode: newPackBarcode.trim() || null,
+        })
+        setEditingPackSizes((prev) => [...prev, result.packSize])
+        setNewPackLabel("")
+        setNewPackUnits("")
+        setNewPackPrice("")
+        setNewPackBarcode("")
+        return
+      }
       const res = await apiFetch(`/api/products/${editingProductId}/pack-sizes`, {
         method: "POST",
         body: JSON.stringify({
@@ -631,6 +700,14 @@ export default function Products() {
     }
     setPackSubmitting(true)
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        const result = await updateLocalPackSize(editingProductId!, editingPackId, {
+          pack_label: trimmedLabel, units_per_pack: units, selling_price: price, barcode: editPackBarcode.trim() || null,
+        })
+        setEditingPackSizes((prev) => prev.map((p) => (p.id === result.packSize.id ? result.packSize : p)))
+        setEditingPackId(null)
+        return
+      }
       const res = await apiFetch(`/api/products/${editingProductId}/pack-sizes/${editingPackId}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -667,6 +744,11 @@ export default function Products() {
   async function deletePack(id: string) {
     if (!editingProductId) return
     try {
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        await deleteLocalPackSize(editingProductId, id)
+        setEditingPackSizes((prev) => prev.filter((p) => p.id !== id))
+        return
+      }
       const res = await apiFetch(`/api/products/${editingProductId}/pack-sizes/${id}`, { method: "DELETE" })
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null

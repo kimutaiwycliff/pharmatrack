@@ -14,6 +14,11 @@ try {
 } catch {
   // already added on a previous run — expected, not an error worth surfacing
 }
+try {
+  sqliteDb.execSync(`ALTER TABLE products ADD COLUMN manufacturer TEXT;`)
+} catch {
+  // already added on a previous run
+}
 
 // Create tables on first run. No migration framework needed for a schema this
 // small — if a column is added later, bump this to a real migration rather
