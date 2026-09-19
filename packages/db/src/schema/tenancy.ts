@@ -57,6 +57,11 @@ export const subscription = pgTable("subscription", {
   current_period_end: timestamp("current_period_end", { withTimezone: true }),
   provider: text("provider"),
   provider_ref: text("provider_ref"),
+  // Which trial_ends_at/current_period_end instance a reminder email was
+  // already sent for — not just a boolean/timestamp of when it was sent.
+  // See infra/migrations/023_subscription_reminders.sql.
+  reminder_7d_sent_for: timestamp("reminder_7d_sent_for", { withTimezone: true }),
+  reminder_1d_sent_for: timestamp("reminder_1d_sent_for", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })

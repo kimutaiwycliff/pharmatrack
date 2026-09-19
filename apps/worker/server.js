@@ -1,10 +1,12 @@
 // PharmaTrack worker — minimal background scheduler.
 //
-// Drives two CRON_SECRET-guarded, idempotent cron endpoints on the web app by
-// calling them on a fixed interval: appointment-reminders (day-before
-// reminders) and subscription-expiry (flips trialing/active → past_due →
+// Drives three CRON_SECRET-guarded, idempotent cron endpoints on the web app
+// by calling them on a fixed interval: appointment-reminders (day-before
+// reminders), subscription-expiry (flips trialing/active → past_due →
 // suspended once trial_ends_at / current_period_end has passed, so tenant
-// access is actually cut off instead of a stale status lingering forever).
+// access is actually cut off instead of a stale status lingering forever),
+// and subscription-reminders (polite "your trial/subscription ends soon"
+// emails to the tenant owner, 7 days and 1 day out).
 //
 // Deliberately dependency-free (Node 22 globals only: fetch, setInterval), so it
 // ships as a plain file inside the web image — no build step, no lockfile entry.
@@ -21,6 +23,11 @@ const REMINDER_URL = `${TARGET.replace(/\/$/, "")}/api/cron/appointment-reminder
 // Default: every 6 hours — expiry is date-only granularity, no need for hourly.
 const SUBSCRIPTION_INTERVAL_MS = Number(process.env.SUBSCRIPTION_SWEEP_INTERVAL_MS || 6 * 60 * 60 * 1000)
 const SUBSCRIPTION_URL = `${TARGET.replace(/\/$/, "")}/api/cron/subscription-expiry`
+
+// Default: once daily — the 7-day/1-day reminder windows only need to be
+// checked once a day to never miss a milestone.
+const REMINDER_SWEEP_INTERVAL_MS = Number(process.env.SUBSCRIPTION_REMINDER_INTERVAL_MS || 24 * 60 * 60 * 1000)
+const SUBSCRIPTION_REMINDER_URL = `${TARGET.replace(/\/$/, "")}/api/cron/subscription-reminders`
 
 function log(level, msg, extra) {
   process.stdout.write(
@@ -63,22 +70,27 @@ async function runTick(label, url) {
 
 const runReminders = () => runTick("reminder", REMINDER_URL)
 const runSubscriptionSweep = () => runTick("subscription-expiry", SUBSCRIPTION_URL)
+const runSubscriptionReminders = () => runTick("subscription-reminder", SUBSCRIPTION_REMINDER_URL)
 
 log("info", "worker started", {
   reminderTarget: REMINDER_URL, reminderIntervalMs: INTERVAL_MS,
   subscriptionTarget: SUBSCRIPTION_URL, subscriptionIntervalMs: SUBSCRIPTION_INTERVAL_MS,
+  subscriptionReminderTarget: SUBSCRIPTION_REMINDER_URL, subscriptionReminderIntervalMs: REMINDER_SWEEP_INTERVAL_MS,
 })
 
 // Run once each on boot (web is gated by depends_on: service_healthy), then on interval.
 runReminders()
 runSubscriptionSweep()
+runSubscriptionReminders()
 const timer = setInterval(runReminders, INTERVAL_MS)
 const subscriptionTimer = setInterval(runSubscriptionSweep, SUBSCRIPTION_INTERVAL_MS)
+const subscriptionReminderTimer = setInterval(runSubscriptionReminders, REMINDER_SWEEP_INTERVAL_MS)
 
 function shutdown(signal) {
   log("info", "shutting down", { signal })
   clearInterval(timer)
   clearInterval(subscriptionTimer)
+  clearInterval(subscriptionReminderTimer)
   process.exit(0)
 }
 process.on("SIGTERM", () => shutdown("SIGTERM"))
