@@ -33,10 +33,16 @@ url = { version = "2", optional = true }
 # needed since the webview never calls into either.
 tauri-plugin-dialog = { version = "2", optional = true }
 ed25519-dalek = { version = "2", optional = true }
+# ADR-014 — extracts the vendored resources/web.tar.gz at first run
+# (src/offline/web_bundle.rs). Bundled as a single archive instead of loose
+# files specifically to avoid Windows's 260-char MAX_PATH during NSIS
+# packaging — see fetch-offline-resources.mjs's comment for the full story.
+flate2 = { version = "1", optional = true }
+tar = { version = "0.4", optional = true }
 
 [features]
 # Bundles + orchestrates a local Postgres + the Next.js standalone server
 # instead of loading the hosted SaaS URL. See src/offline/ and
 # docs/adr/ADR-014-offline-edition.md. Off by default — the ordinary
 # `tauri build`/`tauri dev` (SaaS webview shell) is unchanged.
-offline-edition = ["dep:tauri-plugin-shell", "dep:rand", "dep:url", "dep:tauri-plugin-dialog", "dep:ed25519-dalek"]
+offline-edition = ["dep:tauri-plugin-shell", "dep:rand", "dep:url", "dep:tauri-plugin-dialog", "dep:ed25519-dalek", "dep:flate2", "dep:tar"]
