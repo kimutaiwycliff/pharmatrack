@@ -6,7 +6,7 @@
   "bundle": {
     "createUpdaterArtifacts": false,
     "externalBin": ["binaries/dbmate", "binaries/node"],
-    "resources": ["resources/postgres/", "resources/web/", "resources/migrations/"]
+    "resources": ["resources/postgres/", "resources/web.tar.gz", "resources/migrations/"]
   },
   "plugins": {
     "updater": {

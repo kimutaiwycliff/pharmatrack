@@ -310,4 +310,24 @@ function removeBrokenSymlinks(dir) {
 removeBrokenSymlinks(webDest);
 log(`web vendored to ${webDest} (removed ${removedBrokenSymlinks} dangling symlink(s))`);
 
+// Package as a single archive rather than bundling resources/web/ as loose
+// files. This is the real fix for Windows: NSIS's makensis has its own
+// internal MAX_PATH limit independent of Windows' own long-path support, and
+// it must individually `File:`-open every source file at BUILD time — a
+// live Windows CI run found violations first in @sentry/nextjs, then
+// @aws-sdk, then @smithy, then inside Next.js's OWN compiled output (568 of
+// 693 offending paths were under `next` itself, which obviously can't be
+// excluded), proving per-package exclusion was never going to converge; the
+// pnpm store's own folder-naming scheme (peer deps hashed into the name,
+// e.g. `next@16.2.9_@babel+core@..._@opentelemetry+api@..._<hash>`) can run
+// 100+ characters before any subpath. A tar archive has no such limit
+// internally (PAX headers handle arbitrarily long entry names) — makensis
+// only ever has to open the one short-named archive file, and Rust extracts
+// it at first run instead (see offline/web_bundle.rs).
+const webArchive = join(SRC_TAURI, "resources", "web.tar.gz");
+log(`archiving ${webDest} -> ${webArchive}`);
+execFileSync("tar", ["-czf", webArchive, "-C", webDest, "."]);
+rmSync(webDest, { recursive: true, force: true });
+log(`web archived to ${webArchive}`);
+
 log("done.");

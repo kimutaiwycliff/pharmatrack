@@ -20,20 +20,20 @@ use super::secrets::OfflineSecrets;
 /// never set here rather than re-gated per-integration.
 pub fn spawn_next(
     app: &AppHandle,
-    resource_dir: &Path,
+    web_root: &Path,
     data_dir: &Path,
     next_port: u16,
     pg_port: u16,
     secrets: &OfflineSecrets,
 ) -> Result<CommandChild, String> {
-    // The bundled `resources/web/` tree mirrors exactly what the Dockerfile
-    // copies for the hosted SaaS: `.next/standalone` at the root (which,
-    // because of the monorepo layout, nests the real entrypoint at
-    // apps/web/server.js) plus `.next/static` and `public/` copied in
-    // alongside it (see Dockerfile's runner stage / scripts/
-    // fetch-offline-resources.mjs). CWD = the standalone root, matching the
-    // Dockerfile's `WORKDIR /app` + `CMD ["node", "apps/web/server.js"]`.
-    let web_root = resource_dir.join("web");
+    // `web_root` is the already-extracted `resources/web.tar.gz` (see
+    // web_bundle::ensure_web_extracted, called by bootstrap_and_launch before
+    // this) — its layout mirrors exactly what the Dockerfile copies for the
+    // hosted SaaS: `.next/standalone` at the root (which, because of the
+    // monorepo layout, nests the real entrypoint at apps/web/server.js) plus
+    // `.next/static` and `public/` copied in alongside it. CWD = the
+    // standalone root, matching the Dockerfile's `WORKDIR /app` +
+    // `CMD ["node", "apps/web/server.js"]`.
     let server_js = web_root.join("apps").join("web").join("server.js");
     let local_storage_dir = data_dir.join("product-images");
     std::fs::create_dir_all(&local_storage_dir)
@@ -54,7 +54,7 @@ pub fn spawn_next(
         .sidecar("node")
         .map_err(|e| format!("node sidecar unavailable: {e}"))?
         .args([server_js.to_string_lossy().to_string()])
-        .current_dir(&web_root)
+        .current_dir(web_root)
         .env("PORT", next_port.to_string())
         .env("HOSTNAME", "127.0.0.1")
         .env("OFFLINE_MODE", "true")

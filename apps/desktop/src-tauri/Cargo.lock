@@ -2608,9 +2608,11 @@ name = "pharmatrack-desktop"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "flate2",
  "rand",
  "serde",
  "serde_json",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

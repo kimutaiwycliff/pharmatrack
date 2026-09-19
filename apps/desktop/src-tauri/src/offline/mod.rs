@@ -2,6 +2,7 @@ mod license;
 mod postgres;
 mod secrets;
 mod server;
+mod web_bundle;
 
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
@@ -98,7 +99,8 @@ pub fn bootstrap_and_launch(app: &AppHandle) -> Result<(), String> {
         run_dbmate(app, &migrations_dir, postgres::PG_PORT, &secrets)?;
     }
 
-    let next_child = server::spawn_next(app, &resource_dir, &data_dir, NEXT_PORT, postgres::PG_PORT, &secrets)?;
+    let web_root = web_bundle::ensure_web_extracted(&resource_dir, &data_dir)?;
+    let next_child = server::spawn_next(app, &web_root, &data_dir, NEXT_PORT, postgres::PG_PORT, &secrets)?;
     if let Some(state) = app.try_state::<OfflineProcesses>() {
         *state.next.lock().map_err(|_| "poisoned next lock")? = Some(next_child);
     }
