@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, desc, eq, gte, lte } from "drizzle-orm"
 import { withTenant, sale, sale_item, product_stock } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
+import { mergeAcrossBranches, resolveBranchScope } from "@/lib/inventory/aggregate"
 
 // Nairobi is UTC+3
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
@@ -13,11 +14,14 @@ function dayBounds(dateStr: string): [Date, Date] {
 }
 
 export async function GET(request: NextRequest) {
-  const branchId = new URL(request.url).searchParams.get("branch_id")
-  if (!branchId) return NextResponse.json({ error: "branch_id required" }, { status: 400 })
+  const requestedBranch = new URL(request.url).searchParams.get("branch_id")
 
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!ctx.permissions.includes("dashboard.view")) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // null → "All branches" (org-wide totals).
+  const branchId = resolveBranchScope(ctx, requestedBranch)
+  const inBranch = branchId ? eq(sale.branch_id, branchId) : undefined
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
 
@@ -35,7 +39,7 @@ export async function GET(request: NextRequest) {
       id: sale.id, total_amount: sale.total_amount, payment_method: sale.payment_method,
       created_at: sale.created_at, receipt_number: sale.receipt_number,
     }).from(sale)
-      .where(and(eq(sale.branch_id, branchId), eq(sale.status, "completed"), gte(sale.created_at, chartStart), lte(sale.created_at, chartEnd)))
+      .where(and(inBranch, eq(sale.status, "completed"), gte(sale.created_at, chartStart), lte(sale.created_at, chartEnd)))
       .orderBy(desc(sale.created_at))
 
     // KPIs — today only
@@ -70,7 +74,7 @@ export async function GET(request: NextRequest) {
       line_total: sale_item.line_total, quantity: sale_item.quantity,
     }).from(sale_item)
       .innerJoin(sale, eq(sale.id, sale_item.sale_id))
-      .where(and(eq(sale.branch_id, branchId), eq(sale.status, "completed"), gte(sale.created_at, thirtyDaysAgo)))
+      .where(and(inBranch, eq(sale.status, "completed"), gte(sale.created_at, thirtyDaysAgo)))
 
     const productTotals: Record<string, { name: string; revenue: number; qty: number }> = {}
     for (const item of topItems) {
@@ -85,9 +89,11 @@ export async function GET(request: NextRequest) {
       .map(([product_id, v]) => ({ product_id, ...v }))
 
     // Inventory alerts
-    const stockData = await db.select({
+    const stockRows = await db.select({
+      product_id: product_stock.product_id, branch_id: product_stock.branch_id, batch_count: product_stock.batch_count,
       stock_on_hand: product_stock.stock_on_hand, reorder_level: product_stock.reorder_level, earliest_expiry: product_stock.earliest_expiry,
-    }).from(product_stock).where(and(eq(product_stock.branch_id, branchId), eq(product_stock.is_active, true)))
+    }).from(product_stock).where(and(branchId ? eq(product_stock.branch_id, branchId) : undefined, eq(product_stock.is_active, true)))
+    const stockData = branchId ? stockRows : mergeAcrossBranches(stockRows)
 
     let outOfStock = 0, lowStock = 0, expiring = 0
     const warnMs = 90 * 86_400_000

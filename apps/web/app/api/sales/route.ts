@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq, gt, gte, lte, asc, desc, ilike, inArray, sql } from "drizzle-orm"
 import {
-  withTenant, product, product_batch, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings,
+  withTenant, product, product_batch, product_pack_size, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings,
 } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
+import { resolveBranchScope } from "@/lib/inventory/aggregate"
 
 interface Shortfall { product_id: string; product_name: string; requested: number; available: number }
 // Thrown to roll back the sale transaction when stock is insufficient.
@@ -31,6 +32,13 @@ const cartItemSchema = z.object({
   line_total: z.number().nonnegative(),
   base_unit: z.string(),
   is_controlled: z.boolean(),
+  // Selling in a pack size (e.g. a strip of 10) instead of the base unit.
+  // `quantity` is still in BASE units (what FEFO deducts); the pack size only
+  // changes the price, which the server re-reads from product_pack_size.
+  sell_unit: z.object({
+    pack_size_id: zUuid(),
+    unit_count: z.number().int().positive(),
+  }).nullable().optional(),
 })
 
 const saleSchema = z.object({
@@ -68,18 +76,19 @@ export async function GET(request: NextRequest) {
   const q = searchParams.get("q")
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
-  if (!branchId) return apiError("branch_id required", 400)
 
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
+  // null → "All branches"; branch-locked staff are always pinned to their own.
+  const scopedBranch = resolveBranchScope(ctx, branchId)
 
   return withTenant(ctx, async (db) => {
     const where = and(
-      eq(sale.branch_id, branchId),
+      scopedBranch ? eq(sale.branch_id, scopedBranch) : undefined,
       eq(sale.status, "completed"),
-      ctx.role === "cashier" ? eq(sale.cashier_id, ctx.userId) : undefined,
+      !ctx.permissions.includes("sales.view_all") ? eq(sale.cashier_id, ctx.userId) : undefined,
       from ? gte(sale.created_at, new Date(from)) : undefined,
       to ? lte(sale.created_at, new Date(to)) : undefined,
       q ? ilike(sale.receipt_number, `%${q}%`) : undefined,
@@ -121,9 +130,14 @@ export async function POST(request: NextRequest) {
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
 
+  if (!ctx.permissions.includes("pos.sell")) return apiError("You don't have permission to sell", 403)
+
   const parsed = saleSchema.safeParse(await request.json())
   if (!parsed.success) return zodErrorResponse(parsed.error)
   const data = parsed.data
+  // No discount permission → any submitted discount is clamped to zero, the
+  // same "clamp, never trust upward" rule the per-product cap uses below.
+  const mayDiscount = ctx.permissions.includes("pos.discount")
 
   let out
   try {
@@ -145,17 +159,40 @@ export async function POST(request: NextRequest) {
     // trusted upward) before anything is persisted.
     const priceRows = await db.select({
       id: product.id, selling_price: product.selling_price, max_discount_percent: product.max_discount_percent,
+      cost_price: product.cost_price,
     }).from(product).where(inArray(product.id, productIds))
     const priceMap = new Map(priceRows.map((p) => [p.id, {
       sellingPrice: Number(p.selling_price),
       maxDiscount: p.max_discount_percent != null ? Number(p.max_discount_percent) : 100,
+      costPrice: p.cost_price,
     }]))
+
+    const packIds = data.items.map((i) => i.sell_unit?.pack_size_id).filter((id): id is string => !!id)
+    const packRows = packIds.length > 0
+      ? await db.select({
+          id: product_pack_size.id, product_id: product_pack_size.product_id, unit_count: product_pack_size.unit_count,
+          selling_price: product_pack_size.selling_price, is_active: product_pack_size.is_active,
+        }).from(product_pack_size).where(inArray(product_pack_size.id, packIds))
+      : []
+    const packMap = new Map(packRows.map((p) => [p.id, p]))
 
     const itemPricing = data.items.map((item) => {
       const priced = priceMap.get(item.product_id)
       if (!priced) throw new InvalidProductError(item.product_id, item.product_name)
-      const unitPrice = priced.sellingPrice
-      const discountPercent = Math.min(item.discount_percent, priced.maxDiscount)
+      let unitPrice = priced.sellingPrice
+      if (item.sell_unit) {
+        const pack = packMap.get(item.sell_unit.pack_size_id)
+        // The pack must belong to this product, be on sale, still contain the
+        // same number of units, and the quantity must be whole packs.
+        if (!pack || pack.product_id !== item.product_id || !pack.is_active ||
+            pack.unit_count !== item.sell_unit.unit_count || item.quantity % pack.unit_count !== 0) {
+          throw new InvalidProductError(item.product_id, item.product_name)
+        }
+        // Effective price per base unit, so FEFO-split lines still sum to
+        // packs × pack price.
+        unitPrice = Number(pack.selling_price) / pack.unit_count
+      }
+      const discountPercent = mayDiscount ? Math.min(item.discount_percent, priced.maxDiscount) : 0
       const lineTotal = Number((item.quantity * unitPrice * (1 - discountPercent / 100)).toFixed(2))
       return { unitPrice, discountPercent, lineTotal }
     })
@@ -170,7 +207,7 @@ export async function POST(request: NextRequest) {
     // priceMap, not client-claimed), same rule the UI computes for display.
     const discountCapPercent = Math.min(...data.items.map((item) => priceMap.get(item.product_id)!.maxDiscount))
     const maxDiscountAmount = (subtotal * discountCapPercent) / 100
-    const discountAmount = Math.min(data.discount_amount, maxDiscountAmount)
+    const discountAmount = mayDiscount ? Math.min(data.discount_amount, maxDiscountAmount) : 0
     const totalAmount = Math.max(0, Number((subtotal - discountAmount).toFixed(2)))
 
     // ── Stock guard: never sell more than is on hand for this branch ──────────
@@ -226,6 +263,7 @@ export async function POST(request: NextRequest) {
       const priced = itemPricing[idx]!
       const batches = await db.select({
         id: product_batch.id, quantity_remaining: product_batch.quantity_remaining, batch_number: product_batch.batch_number,
+        cost_price: product_batch.cost_price,
       }).from(product_batch)
         .where(and(eq(product_batch.product_id, item.product_id), eq(product_batch.branch_id, data.branch_id), gt(product_batch.quantity_remaining, 0)))
         .orderBy(asc(product_batch.expiry_date))
@@ -234,16 +272,23 @@ export async function POST(request: NextRequest) {
       for (const batch of batches) {
         if (remaining <= 0) break
         const take = Math.min(remaining, batch.quantity_remaining)
-        // Optimistic decrement — guard on current qty against concurrent sales.
-        await db.update(product_batch)
-          .set({ quantity_remaining: batch.quantity_remaining - take })
-          .where(and(eq(product_batch.id, batch.id), eq(product_batch.quantity_remaining, batch.quantity_remaining)))
+        // Atomic decrement that only succeeds if the stock is still there. The
+        // old version guarded on the exact previous quantity but never checked
+        // whether the UPDATE matched — a concurrent sale made it a silent no-op
+        // and the line was recorded anyway (oversold). Now a lost race simply
+        // skips this batch; the shortfall check below rejects if nothing's left.
+        const [dec] = await db.update(product_batch)
+          .set({ quantity_remaining: sql`${product_batch.quantity_remaining} - ${take}` })
+          .where(and(eq(product_batch.id, batch.id), gte(product_batch.quantity_remaining, take)))
+          .returning({ id: product_batch.id })
+        if (!dec) continue
         rows.push({
           sale_id: saleRow!.id, product_id: item.product_id, batch_id: batch.id,
-          product_name: item.product_name, quantity: take, unit_price: String(priced.unitPrice),
+          product_name: item.product_name, quantity: take, unit_price: priced.unitPrice.toFixed(2),
           discount_percent: String(priced.discountPercent),
           line_total: String(Number((take * priced.unitPrice * (1 - priced.discountPercent / 100)).toFixed(2))),
           base_unit: item.base_unit, product_strength: item.product_strength,
+          unit_cost: batch.cost_price ?? priceMap.get(item.product_id)?.costPrice ?? null,
         })
         meta.push({ controlled: item.is_controlled, batch_number: batch.batch_number })
         remaining -= take

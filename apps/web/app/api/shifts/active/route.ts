@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { and, desc, eq, isNull, inArray } from "drizzle-orm"
-import { withTenant, shift, sale, payment } from "@pharmatrack/db"
+import { withTenant, shift, sale, payment, branch } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serializeShift } from "@/lib/shifts/serialize"
 
@@ -16,11 +16,13 @@ export async function GET() {
   if (subErr) return subErr
 
   return withTenant(ctx, async (db) => {
-    const [row] = await db.select().from(shift)
+    const [found] = await db.select({ row: shift, branch_name: branch.name }).from(shift)
+      .leftJoin(branch, eq(branch.id, shift.branch_id))
       .where(and(eq(shift.cashier_id, ctx.userId), isNull(shift.closed_at)))
       .orderBy(desc(shift.opened_at)).limit(1)
 
-    if (!row) return NextResponse.json({ shift: null, cashSales: 0 })
+    if (!found) return NextResponse.json({ shift: null, cashSales: 0 })
+    const row = found.row
 
     const sales = await db.select({ id: sale.id })
       .from(sale).where(and(eq(sale.shift_id, row.id), eq(sale.status, "completed")))
@@ -31,6 +33,6 @@ export async function GET() {
       cashSales = payRows.reduce((sum, p) => sum + Number(p.amount), 0)
     }
 
-    return NextResponse.json({ shift: serializeShift(row), cashSales })
+    return NextResponse.json({ shift: { ...serializeShift(row), branch_name: found.branch_name ?? null }, cashSales })
   })
 }

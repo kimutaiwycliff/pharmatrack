@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { Search, PackagePlus, ChevronLeft, ChevronRight, Upload, Tag, Loader2 } from "lucide-react"
+import { Search, PackagePlus, ChevronLeft, ChevronRight, Upload, Tag, Loader2, ClipboardCheck } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,11 +11,11 @@ import { InventoryTable } from "@/components/inventory/InventoryTable"
 import { BulkImportDialog } from "@/components/inventory/BulkImportDialog"
 import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
 import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
-import { useUIStore } from "@/lib/store/uiStore"
-import { useSessionStore } from "@/lib/store/sessionStore"
+import { useSessionStore, useCan } from "@/lib/store/sessionStore"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
 import type { Organization } from "@pharmatrack/types"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
 
 type StatusFilter = "all" | "out_of_stock" | "low_stock" | "expiring" | "controlled"
 
@@ -59,12 +59,12 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
 
 const PAGE_SIZE = 20
 
-function useInventory(branchId: string | null, q: string, status: StatusFilter, page: number) {
+function useInventory(branchId: string | null, ready: boolean, q: string, status: StatusFilter, page: number) {
   return useQuery<InventoryResponse>({
     queryKey: ["inventory", branchId, q, status, page],
     queryFn: async () => {
       const params = new URLSearchParams({
-        branch_id: branchId!,
+        ...(branchId ? { branch_id: branchId } : {}),
         q,
         status,
         page: String(page),
@@ -74,7 +74,7 @@ function useInventory(branchId: string | null, q: string, status: StatusFilter, 
       if (!res.ok) throw new Error("Failed to load inventory")
       return res.json() as Promise<InventoryResponse>
     },
-    enabled: !!branchId,
+    enabled: ready,
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   })
@@ -82,11 +82,12 @@ function useInventory(branchId: string | null, q: string, status: StatusFilter, 
 
 export default function InventoryPage() {
   const router = useRouter()
-  const branchId = useUIStore((s) => s.activeBranchId)
+  const { branchId, ready, isAll } = useBranchScope()
   const branches = useSessionStore((s) => s.branches)
   const branchName = branches.find((b) => b.id === branchId)?.name
-  const role = useSessionStore((s) => s.profile?.role)
-  const canManageCatalog = ["owner", "manager"].includes(role ?? "")
+  const canManageCatalog = useCan("catalog.seed")
+  const canPlanRestock = useCan("purchasing.manage")
+  const canReceive = useCan("stock.receive")
 
   const [rawSearch, setRawSearch] = useState("")
   const [status, setStatus] = useState<StatusFilter>("all")
@@ -97,7 +98,7 @@ export default function InventoryPage() {
 
   const q = useDebounce(rawSearch, 300)
 
-  const { data, isLoading, isFetching } = useInventory(branchId, q, status, page)
+  const { data, isLoading, isFetching } = useInventory(branchId, ready, q, status, page)
 
   const { data: settingsData } = useQuery<{ org: Organization }>({
     queryKey: ["settings"],
@@ -148,7 +149,7 @@ export default function InventoryPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
           <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
-            {branchId ? `${data?.total ?? "—"} products` : "Select a branch"}
+            {ready ? `${data?.total ?? "—"} products${isAll ? " · all branches" : ""}` : "Loading…"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -169,13 +170,21 @@ export default function InventoryPage() {
             {backfilling ? <Loader2 size={16} className="animate-spin" /> : <Tag size={16} />}
             Print Labels
           </Button>
-          <Button
-            onClick={() => router.push("/inventory/receive")}
-            className="gap-2"
-          >
-            <PackagePlus size={16} />
-            Receive Stock
-          </Button>
+          {canPlanRestock && (
+            <Button variant="outline" onClick={() => router.push("/purchase-orders/new")} className="gap-2">
+              <ClipboardCheck size={16} />
+              Restock
+            </Button>
+          )}
+          {canReceive && (
+            <Button
+              onClick={() => router.push("/inventory/receive")}
+              className="gap-2"
+            >
+              <PackagePlus size={16} />
+              Receive Stock
+            </Button>
+          )}
         </div>
       </div>
 

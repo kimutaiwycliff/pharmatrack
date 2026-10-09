@@ -6,7 +6,13 @@ export type SendResult = { status: "sent" | "skipped" | "failed"; error?: string
  *
  * Env: RESEND_API_KEY, RESEND_FROM (e.g. "PharmaTrack <noreply@yourdomain.com>").
  */
-export async function sendEmail(to: string, subject: string, html: string): Promise<SendResult> {
+export interface EmailOptions {
+  /** Base64-encoded file content, e.g. a rendered PDF. */
+  attachments?: Array<{ filename: string; content: string }>
+  replyTo?: string
+}
+
+export async function sendEmail(to: string, subject: string, html: string, opts: EmailOptions = {}): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY
   const from = process.env.RESEND_FROM
 
@@ -22,7 +28,11 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to, subject, html }),
+      body: JSON.stringify({
+        from, to, subject, html,
+        ...(opts.attachments?.length ? { attachments: opts.attachments } : {}),
+        ...(opts.replyTo ? { reply_to: opts.replyTo } : {}),
+      }),
     })
     if (!res.ok) {
       const text = await res.text()

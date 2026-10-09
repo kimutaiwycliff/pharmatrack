@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { ArrowLeft } from "lucide-react"
 import { StockReceiveForm } from "@/components/inventory/StockReceiveForm"
 import { useUIStore } from "@/lib/store/uiStore"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
 
 interface Supplier {
   id: string
@@ -26,14 +27,29 @@ function useSuppliers() {
 
 export default function ReceiveStockPage() {
   const router = useRouter()
-  const branchId = useUIStore((s) => s.activeBranchId)
+  const { branchId, branches, ready } = useBranchScope()
+  const setActiveBranch = useUIStore((s) => s.setActiveBranch)
 
   const { data: suppliers = [] } = useSuppliers()
 
+  if (!ready) return null
   if (!branchId) {
+    // "All branches" is selected — stock always lands in one branch.
     return (
-      <div className="flex flex-col items-center justify-center h-60 text-[var(--pt-text-tertiary)]">
-        <p className="text-sm">No active branch selected.</p>
+      <div className="max-w-md mx-auto mt-10 bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-6">
+        <h1 className="text-lg font-bold">Which branch is receiving this stock?</h1>
+        <p className="text-sm text-[var(--pt-text-secondary)] mt-1 mb-4">New batches are added to one branch&apos;s shelves.</p>
+        <div className="space-y-2">
+          {branches.map((b) => (
+            <button
+              key={b.id}
+              onClick={() => setActiveBranch(b.id)}
+              className="w-full text-left px-4 py-3 rounded-lg border border-[var(--pt-border)] hover:border-[var(--pt-green)] hover:bg-[var(--pt-green-50)] text-sm font-semibold transition-colors"
+            >
+              {b.name}
+            </button>
+          ))}
+        </div>
       </div>
     )
   }

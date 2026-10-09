@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import { z } from "zod"
 import { dbAdmin, organization, org_settings, branch, staff_profile, user } from "@pharmatrack/db"
 import { auth } from "@/lib/auth/server"
-import { getSession } from "@/lib/auth/helpers"
+import { getSession, loadPermissions } from "@/lib/auth/helpers"
 import { hashPin, validatePin } from "@/lib/auth/pin"
 import { normalizeKePhone } from "@/lib/auth/phone"
+import { zUuid } from "@/lib/api/validation"
 
 const orgSchema = z.object({
   name: z.string().min(2).optional(),
@@ -19,6 +20,10 @@ const orgSchema = z.object({
 const profileSchema = z.object({
   full_name: z.string().min(2).optional(),
   phone: z.string().optional(),
+  // Home branch (the default the app opens on). null = no fixed branch.
+  // Only for users who can work across branches — for branch-locked staff the
+  // home branch IS their access boundary, so only staff managers may move it.
+  branch_id: zUuid().nullable().optional(),
 })
 
 // Org profile fields beyond name live in org_settings.settings (jsonb).
@@ -82,7 +87,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (target === "org") {
-    if (sp.role !== "owner") return NextResponse.json({ error: "Only owners can update organization settings" }, { status: 403 })
+    const perms = await loadPermissions(sp.organization_id, sp.role)
+    if (!perms.includes("settings.organization")) return NextResponse.json({ error: "You don't have permission to update organisation settings" }, { status: 403 })
     const parsed = orgSchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
 
@@ -103,6 +109,18 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
     if (parsed.data.full_name !== undefined) await db.update(user).set({ name: parsed.data.full_name }).where(eq(user.id, session.user.id))
     if (parsed.data.phone !== undefined) await db.update(staff_profile).set({ phone: normalizeKePhone(parsed.data.phone) }).where(eq(staff_profile.user_id, session.user.id))
+    if (parsed.data.branch_id !== undefined) {
+      const perms = await loadPermissions(sp.organization_id, sp.role)
+      if (!perms.includes("branches.all")) {
+        return NextResponse.json({ error: "Your branch is assigned by the pharmacy owner or manager" }, { status: 403 })
+      }
+      if (parsed.data.branch_id) {
+        const [b] = await db.select({ id: branch.id }).from(branch)
+          .where(and(eq(branch.id, parsed.data.branch_id), eq(branch.organization_id, sp.organization_id))).limit(1)
+        if (!b) return NextResponse.json({ error: "Branch not found" }, { status: 400 })
+      }
+      await db.update(staff_profile).set({ branch_id: parsed.data.branch_id }).where(eq(staff_profile.user_id, session.user.id))
+    }
 
     const [sp2] = await db.select().from(staff_profile).where(eq(staff_profile.user_id, session.user.id)).limit(1)
     return NextResponse.json({ profile: {

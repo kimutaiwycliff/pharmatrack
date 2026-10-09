@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, numeric, integer, timestamp, date, jsonb } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, boolean, numeric, integer, timestamp, date, jsonb, primaryKey } from "drizzle-orm/pg-core"
 import { organization, user } from "./auth"
 
 // Mirrors infra/migrations/003_org_structure.sql. organization_id is TEXT
@@ -111,3 +111,14 @@ export const mpesa_config = pgTable("mpesa_config", {
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
+
+// Per-org overrides of the role → capability defaults in
+// packages/core/src/permissions.ts (migration 024). Owner is never stored.
+export const role_permission = pgTable("role_permission", {
+  organization_id: text("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  capability: text("capability").notNull(),
+  allowed: boolean("allowed").notNull(),
+  updated_by: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.organization_id, t.role, t.capability] })])

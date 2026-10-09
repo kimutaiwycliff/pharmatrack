@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Branch } from "@pharmatrack/types"
+import { useCan } from "@/lib/store/sessionStore"
 
 interface Props {
   branches: Branch[]
@@ -27,6 +28,7 @@ function BranchRow({
   isOwner: boolean
 }) {
   const queryClient = useQueryClient()
+  const canEditBranch = useCan("branches.manage") || isOwner
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<BranchFormState>({
     name: branch.name,
@@ -132,7 +134,7 @@ function BranchRow({
           {[branch.address, branch.phone].filter(Boolean).join(" · ") || "No contact info"}
         </p>
       </div>
-      {isOwner && (
+      {canEditBranch && (
         <div className="flex items-center gap-2">
           <button
             onClick={() => setEditing(true)}

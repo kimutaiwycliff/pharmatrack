@@ -1,9 +1,9 @@
 "use client"
 
-import { Minus, Plus, Trash2, ShoppingCart, AlertTriangle, ChevronDown } from "lucide-react"
+import { ShoppingCart, AlertTriangle, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCartStore, cartSubtotal, cartTotal, formatKES } from "@/lib/store/cartStore"
-import type { CartItem } from "@pharmatrack/types"
+import { CartLine } from "./CartLine"
 
 type PayModal = "cash" | "mpesa" | "split"
 
@@ -14,35 +14,6 @@ interface Props {
   submitting: boolean
   /** When provided (mobile sheet), shows a collapse handle to dismiss the cart. */
   onClose?: () => void
-}
-
-function QtyControl({ item }: { item: CartItem }) {
-  const updateQty = useCartStore((s) => s.updateQty)
-  const removeItem = useCartStore((s) => s.removeItem)
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        onClick={() => updateQty(item.product_id, -1)}
-        className="w-7 h-7 rounded-md border border-[var(--pt-border)] flex items-center justify-center hover:bg-[var(--pt-muted)] text-[var(--pt-text-secondary)] transition-colors"
-      >
-        <Minus size={13} />
-      </button>
-      <span className="w-8 text-center font-semibold text-sm tabular-nums">{item.quantity}</span>
-      <button
-        onClick={() => updateQty(item.product_id, 1)}
-        className="w-7 h-7 rounded-md border border-[var(--pt-border)] flex items-center justify-center hover:bg-[var(--pt-muted)] text-[var(--pt-text-secondary)] transition-colors"
-      >
-        <Plus size={13} />
-      </button>
-      <button
-        onClick={() => removeItem(item.product_id)}
-        className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-[var(--pt-red-50)] hover:text-[var(--pt-red)] text-[var(--pt-text-tertiary)] transition-colors ml-1"
-        title="Remove"
-      >
-        <Trash2 size={13} />
-      </button>
-    </div>
-  )
 }
 
 export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClose }: Props) {
@@ -98,9 +69,8 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClo
       {/* Cart table */}
       <div className="flex-1 min-h-0 overflow-hidden bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] mx-4 sm:mx-6 flex flex-col">
         {/* Column headers */}
-        <div className="grid grid-cols-[1fr_auto_auto] gap-2 sm:gap-3 px-3 sm:px-5 py-3 text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider border-b border-[var(--pt-border)] bg-[var(--pt-muted)] shrink-0">
-          <span>Item</span>
-          <span className="text-center">Qty</span>
+        <div className="flex justify-between gap-3 px-3 sm:px-5 py-3 text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider border-b border-[var(--pt-border)] bg-[var(--pt-muted)] shrink-0">
+          <span>Item · qty · unit</span>
           <span className="text-right">Subtotal</span>
         </div>
 
@@ -112,29 +82,7 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClo
               <p className="text-sm">Cart is empty — scan a product to add</p>
             </div>
           )}
-          {items.map((item) => (
-            <div
-              key={item.product_id}
-              className="grid grid-cols-[1fr_auto_auto] gap-2 sm:gap-3 items-center px-3 sm:px-5 py-3.5 border-b border-[var(--pt-border)] last:border-b-0"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-semibold leading-tight truncate">{item.product_name}</p>
-                <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5 truncate">
-                  {formatKES(item.unit_price)}/{item.base_unit}
-                  {item.product_strength ? ` · ${item.product_strength}` : ""}
-                  {item.is_controlled && (
-                    <span className="ml-1.5 text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/15 px-1.5 py-0.5 rounded">
-                      CONTROLLED
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="flex justify-center">
-                <QtyControl item={item} />
-              </div>
-              <p className="text-right text-sm font-semibold tabular-nums w-16 sm:w-20">{formatKES(item.line_total)}</p>
-            </div>
-          ))}
+          {items.map((item) => <CartLine key={item.product_id} item={item} />)}
         </div>
 
         {/* Totals footer */}

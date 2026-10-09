@@ -6,7 +6,7 @@ import { UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { StaffTable } from "@/components/staff/StaffTable"
 import { InviteStaffDialog } from "@/components/staff/InviteStaffDialog"
-import { useSessionStore } from "@/lib/store/sessionStore"
+import { useSessionStore, useCan } from "@/lib/store/sessionStore"
 
 interface StaffMember {
   id: string
@@ -34,6 +34,7 @@ function useStaff() {
 
 export default function StaffPage() {
   const profile = useSessionStore((s) => s.profile)
+  const canManageStaff = useCan("staff.manage")
   const branches = useSessionStore((s) => s.branches)
   const [showInvite, setShowInvite] = useState(false)
 
@@ -50,7 +51,7 @@ export default function StaffPage() {
             {activeCount} active member{activeCount !== 1 ? "s" : ""}
           </p>
         </div>
-        {["owner", "manager"].includes(profile?.role ?? "") && (
+        {canManageStaff && (
           <Button onClick={() => setShowInvite(true)} className="gap-2">
             <UserPlus size={16} />
             Invite Staff

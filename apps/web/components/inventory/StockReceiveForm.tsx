@@ -30,6 +30,13 @@ interface ReceiveItem {
 // Cap per-item copies for the post-receipt "print labels" prompt — a huge
 // delivery shouldn't silently generate a thousand-page PDF; the pharmacist
 // can always re-run it in batches from the product/pack-size screens instead.
+// Products store cost per base unit; the receive form works per pack (what's
+// on the supplier invoice), so prefill with base-unit cost × units per pack.
+function packCost(p: { cost_price?: number | null; units_per_pack?: number | null }): string {
+  if (p.cost_price == null) return ""
+  return String(Math.round(p.cost_price * (p.units_per_pack ?? 1) * 100) / 100)
+}
+
 const MAX_LABEL_COPIES_PER_ITEM = 100
 
 interface Props {
@@ -129,7 +136,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
     setPendingBatch(p.gtin ? `BN-${Date.now().toString().slice(-6)}` : "")
     setPendingExpiry("")
     setPendingQty(1)
-    setPendingCost(p.cost_price != null ? String(p.cost_price) : "")
+    setPendingCost(packCost(p))
     setSearchText("")
   }, [])
 
@@ -207,7 +214,11 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
             batch_number: item.batchNumber,
             expiry_date: item.expiryDate,
             quantity_received: item.qty * item.unitsPerPack,
-            cost_price: item.costPrice,
+            // The form takes cost per PACK (that's what's on the supplier's
+            // invoice), but batch cost is stored per BASE UNIT — the unit
+            // reports multiply by sold quantity. Sending the pack cost as-is
+            // used to overstate COGS by units_per_pack.
+            cost_price: item.costPrice == null ? null : Math.round((item.costPrice / Math.max(1, item.unitsPerPack)) * 100) / 100,
             supplier_id: item.supplierId || undefined,
           }),
         })

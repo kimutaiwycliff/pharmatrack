@@ -53,6 +53,8 @@ export const sale_item = pgTable("sale_item", {
   line_total: numeric("line_total", { precision: 12, scale: 2 }).notNull(),
   base_unit: text("base_unit"),
   product_strength: text("product_strength"),
+  // Cost per base unit at sale time (migration 026) — survives product deletion.
+  unit_cost: numeric("unit_cost", { precision: 12, scale: 2 }),
 })
 
 export const payment = pgTable("payment", {

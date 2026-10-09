@@ -16,7 +16,7 @@ const schema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-  const ctx = await getApiContext({ roles: ["owner"], allowInactiveSubscription: true })
+  const ctx = await getApiContext({ permission: "billing.manage", allowInactiveSubscription: true })
   if ("error" in ctx) return ctx.error
 
   const parsed = schema.safeParse(await request.json().catch(() => undefined))

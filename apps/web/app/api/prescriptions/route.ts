@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const ctx = await getApiContext({ roles: ["owner", "manager", "pharmacist"] })
+  const ctx = await getApiContext({ permission: "prescriptions.manage" })
   if ("error" in ctx) return ctx.error
   const locked = await requireFeatureApi(ctx.organizationId, "prescriptions")
   if (locked) return locked

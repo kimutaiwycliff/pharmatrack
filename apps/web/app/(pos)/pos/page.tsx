@@ -45,13 +45,6 @@ export default function PosPage() {
   const profile = useSessionStore((s) => s.profile)
   const branches = useSessionStore((s) => s.branches)
   const activeBranchId = useUIStore((s) => s.activeBranchId)
-  // Resolve to a branch with a valid UUID id: the selected one, else the first
-  // valid branch. Guards against a stale/empty persisted activeBranchId so the
-  // sale never POSTs an empty branch_id.
-  const activeBranch =
-    branches.find((b) => b.id === activeBranchId && isUuid(b.id)) ??
-    branches.find((b) => isUuid(b.id)) ??
-    null
 
   const online = useOnline()
   // Whether STK push is offered (plan includes it + tenant configured M-Pesa).
@@ -65,6 +58,14 @@ export default function PosPage() {
   })
   const stkAvailable = mpesaAvail?.available ?? false
   const { data: shift } = useActiveShift(profile?.id ?? "")
+  // Sell from the branch the open shift belongs to — that's where the cash
+  // drawer is. Before a shift loads, fall back to the selected branch, else the
+  // first valid branch, so a sale never POSTs an empty branch_id.
+  const activeBranch =
+    branches.find((b) => b.id === shift?.branch_id && isUuid(b.id)) ??
+    branches.find((b) => b.id === activeBranchId && isUuid(b.id)) ??
+    branches.find((b) => isUuid(b.id)) ??
+    null
   const items = useCartStore((s) => s.items)
   const discount = useCartStore((s) => s.discount)
   const clearCart = useCartStore((s) => s.clearCart)

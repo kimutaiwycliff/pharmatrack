@@ -9,13 +9,13 @@ import { NotificationsMenu } from "./NotificationsMenu"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { Button } from "@/components/ui/button"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
 
 export function AppTopBar() {
   const setMobileNavOpen = useUIStore((s) => s.setMobileNavOpen)
   const profile = useSessionStore((s) => s.profile)
   const branches = useSessionStore((s) => s.branches)
-  const activeBranchId = useUIStore((s) => s.activeBranchId)
-  const activeBranch = branches.find((b) => b.id === activeBranchId) ?? branches[0]
+  const { branchId, ready } = useBranchScope()
 
   return (
     <header className="h-14 border-b border-[var(--pt-border)] bg-[var(--pt-surface)] flex items-center px-3 sm:px-4 gap-2 sm:gap-4 shrink-0">
@@ -34,7 +34,7 @@ export function AppTopBar() {
         <span className="truncate hidden sm:block">
           {branches[0] ? branches.find(b => b.id === branches[0]?.id)?.name?.split(" ")[0] ?? "Nairobi Pharmacy" : "PharmaTrack"}
         </span>
-        {activeBranch && (
+        {branches.length > 0 && (
           <>
             <ChevronRight size={12} />
             <BranchSelector />
@@ -50,7 +50,7 @@ export function AppTopBar() {
       <ThemeToggle />
 
       {/* Notifications */}
-      <NotificationsMenu branchId={activeBranch?.id} />
+      <NotificationsMenu branchId={branchId} ready={ready} />
 
       {/* Avatar + dropdown (Settings, Sign out) */}
       <UserMenu fullName={profile?.full_name} role={profile?.role} />

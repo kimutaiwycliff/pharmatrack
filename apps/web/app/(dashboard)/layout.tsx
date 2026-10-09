@@ -6,22 +6,23 @@ import { Providers } from "@/components/providers"
 import { SubscriptionGate } from "@/components/SubscriptionGate"
 import { LockedNotice } from "@/components/LockedNotice"
 import { loadAppShell } from "@/lib/auth/app-shell"
+import { hasBackOfficeAccess } from "@pharmatrack/core"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const shell = await loadAppShell()
   if (!shell) redirect("/login")
-  const { profile, branches, subStatus, trialExpired, planCode } = shell
+  const { profile, branches, subStatus, trialExpired, planCode, permissions } = shell
 
-  // Cashiers belong in POS, not dashboard
-  if (profile.role === "cashier") redirect("/pos")
+  // Staff with no back-office permissions (cashiers, by default) belong in POS.
+  if (!hasBackOfficeAccess(permissions)) redirect("/pos")
 
   // SaaS gate: block access if the tenant's subscription isn't active/trialing.
   if (!subStatus || !["trialing", "active"].includes(subStatus)) {
-    return <SubscriptionGate status={subStatus ?? "none"} trialExpired={trialExpired} isOwner={profile.role === "owner"} />
+    return <SubscriptionGate status={subStatus ?? "none"} trialExpired={trialExpired} isOwner={permissions.includes("billing.manage")} />
   }
 
   return (
-    <Providers profile={profile} branches={branches} planCode={planCode}>
+    <Providers profile={profile} branches={branches} planCode={planCode} permissions={permissions}>
       <Suspense fallback={null}><LockedNotice /></Suspense>
       <div className="flex h-screen overflow-hidden bg-[var(--pt-bg)]">
         <Sidebar />

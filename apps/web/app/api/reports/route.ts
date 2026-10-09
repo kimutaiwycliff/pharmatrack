@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { and, desc, eq, gte, inArray, lt, asc } from "drizzle-orm"
+import { and, desc, eq, gte, inArray, lt, asc, sql } from "drizzle-orm"
 import { withTenant, sale, sale_item, product, product_batch, product_stock, user, branch } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { requireFeatureApi } from "@/lib/entitlements"
+import { forbidden } from "@/lib/api-auth"
 
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
 function toNairobiDate(d: Date): string {
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!(["owner", "manager"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("reports.view")) return forbidden("reports.view")
   const locked = await requireFeatureApi(ctx.organizationId, "reports")
   if (locked) return locked
 
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
       const items = saleIds.length
         ? await db.select({
             sale_id: sale_item.sale_id, product_name: sale_item.product_name, quantity: sale_item.quantity,
-            line_total: sale_item.line_total, product_cost: product.cost_price, batch_cost: product_batch.cost_price,
+            line_total: sale_item.line_total, product_cost: product.cost_price, batch_cost: sql<string | null>`coalesce(${sale_item.unit_cost}, ${product_batch.cost_price})`,
           }).from(sale_item)
             .leftJoin(product, eq(product.id, sale_item.product_id))
             .leftJoin(product_batch, eq(product_batch.id, sale_item.batch_id))
@@ -85,8 +86,8 @@ export async function GET(request: NextRequest) {
         else if (s.payment_method === "split") { totalCash += amt / 2; totalMpesa += amt / 2 }
       }
 
-      // Top products with cost & profit. Cost basis: actual batch sold, falling back
-      // to the product's current cost. Profit = revenue (post-discount) − cost.
+      // Top products with cost & profit. Cost basis: the cost snapshotted on the
+      // sale line (migration 026), else the batch sold, else the product's current cost. Profit = revenue (post-discount) − cost.
       const unitCost = (it: { batch_cost: string | null; product_cost: string | null }): number | null => {
         if (it.batch_cost != null) return Number(it.batch_cost)
         return it.product_cost != null ? Number(it.product_cost) : null
@@ -164,7 +165,7 @@ export async function GET(request: NextRequest) {
       const items = saleIds.length
         ? await db.select({
             sale_id: sale_item.sale_id, quantity: sale_item.quantity, line_total: sale_item.line_total,
-            product_cost: product.cost_price, batch_cost: product_batch.cost_price,
+            product_cost: product.cost_price, batch_cost: sql<string | null>`coalesce(${sale_item.unit_cost}, ${product_batch.cost_price})`,
           }).from(sale_item)
             .leftJoin(product, eq(product.id, sale_item.product_id))
             .leftJoin(product_batch, eq(product_batch.id, sale_item.batch_id))

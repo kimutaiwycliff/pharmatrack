@@ -50,6 +50,8 @@ export async function GET() {
   return NextResponse.json({
     organizationId: ctx.organizationId,
     role: ctx.role,
+    permissions: ctx.permissions,
+    branchLocked: ctx.branchLocked,
     branchId: ctx.branchId,
     branches,
     subStatus: sub ? effectiveSubscriptionStatus(sub) : null,

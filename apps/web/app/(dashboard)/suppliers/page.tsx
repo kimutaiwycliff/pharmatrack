@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { SupplierList, SUPPLIERS_KEY } from "@/components/suppliers/SupplierList"
-import { useSessionStore } from "@/lib/store/sessionStore"
+import { useCan } from "@/lib/store/sessionStore"
 import type { Supplier } from "@pharmatrack/types"
 
 function useSuppliers() {
@@ -19,10 +19,10 @@ function useSuppliers() {
 }
 
 export default function SuppliersPage() {
-  const profile = useSessionStore((s) => s.profile)
-  const role = profile?.role ?? "cashier"
-  const canManage = ["owner", "manager"].includes(role)
-  const canCreate = ["owner", "manager", "pharmacist"].includes(role)
+  const canManage = useCan("suppliers.manage")
+  const canReceive = useCan("stock.receive")
+  const canAddProducts = useCan("products.create")
+  const canCreate = canManage || canReceive || canAddProducts
 
   const { data: suppliers = [], isLoading } = useSuppliers()
 

@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Layers, X, SlidersHorizontal, History, Loader2, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { formatKES } from "@/lib/store/cartStore"
-import { useSessionStore } from "@/lib/store/sessionStore"
+import { useCan } from "@/lib/store/sessionStore"
 import type { ProductStock, ProductBatch, StockAdjustmentReason } from "@pharmatrack/types"
 
 interface Props {
@@ -57,13 +57,13 @@ function useBatches(productId: string | null, branchId: string) {
     queryKey: ["batches", productId, branchId],
     queryFn: async () => {
       const res = await fetch(
-        `/api/batches?product_id=${productId}&branch_id=${branchId}`,
+        `/api/batches?product_id=${productId}${branchId ? `&branch_id=${branchId}` : ""}`,
       )
       if (!res.ok) throw new Error("Failed to fetch batches")
       const json = (await res.json()) as { batches: ProductBatch[] }
       return json.batches
     },
-    enabled: !!productId && !!branchId,
+    enabled: !!productId,
     staleTime: 30_000,
   })
 }
@@ -327,10 +327,9 @@ function AdjustmentHistory({ productId }: { productId: string }) {
 
 export function BatchesSheet({ open, product, branchId, onClose }: Props) {
   const { data: batches, isLoading } = useBatches(product?.product_id ?? null, branchId)
-  const role = useSessionStore((s) => s.profile?.role)
-  const canAdjust = role === "owner" || role === "manager"
-  const canEdit = role === "owner" || role === "manager" || role === "pharmacist"
-  const canSeeCost = role === "owner" || role === "manager"
+  const canAdjust = useCan("stock.adjust")
+  const canEdit = useCan("stock.receive")
+  const canSeeCost = useCan("cost.view")
 
   const [adjustingId, setAdjustingId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -417,6 +416,11 @@ export function BatchesSheet({ open, product, branchId, onClose }: Props) {
                         <div>
                           <p className="text-sm font-bold font-mono tracking-wide">
                             {b.batch_number}
+                            {!branchId && (b as ProductBatch & { branch_name?: string | null }).branch_name && (
+                              <span className="ml-2 font-sans font-medium text-[11px] text-[var(--pt-text-tertiary)] tracking-normal">
+                                {(b as ProductBatch & { branch_name?: string | null }).branch_name}
+                              </span>
+                            )}
                           </p>
                           <p className={`text-xs mt-0.5 font-medium ${expired ? "text-[var(--pt-red)]" : expiring ? "text-[var(--pt-amber)]" : "text-[var(--pt-text-secondary)]"}`}>
                             Exp {fmtDate(b.expiry_date)}

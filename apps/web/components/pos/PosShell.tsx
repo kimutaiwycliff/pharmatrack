@@ -8,11 +8,13 @@ import { ClockInDialog } from "./ClockInDialog"
 import { ClockOutDialog } from "./ClockOutDialog"
 import { OfflineSync } from "./OfflineSync"
 import { OfflineQueueBadge } from "./OfflineQueueBadge"
+import { DeadLetterBadge } from "./DeadLetterBadge"
 import { ThemeToggle } from "@/components/theme/ThemeToggle"
 import { useOnline } from "@/lib/offline/useOnline"
 import { WifiOff } from "lucide-react"
 import { useActiveShift } from "@/lib/hooks/useActiveShift"
 import { useSessionStore } from "@/lib/store/sessionStore"
+import { hasBackOfficeAccess } from "@pharmatrack/core"
 import { useUIStore } from "@/lib/store/uiStore"
 import { LogoutButton } from "@/components/LogoutButton"
 
@@ -31,9 +33,11 @@ export function PosShell({ userId, children }: { userId: string; children: React
   const [clockOutOpen, setClockOutOpen] = useState(false)
   const { data: shift, refetch } = useActiveShift(userId)
   const profile = useSessionStore((s) => s.profile)
+  const permissions = useSessionStore((s) => s.permissions)
   const branches = useSessionStore((s) => s.branches)
   const activeBranchId = useUIStore((s) => s.activeBranchId)
-  const activeBranch = branches.find((b) => b.id === activeBranchId) ?? branches[0]
+  const activeBranch =
+    branches.find((b) => b.id === shift?.branch_id) ?? branches.find((b) => b.id === activeBranchId) ?? branches[0]
   const online = useOnline()
 
   const isLoading = shift === undefined
@@ -74,6 +78,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
           </div>
         )}
         <OfflineQueueBadge />
+        <DeadLetterBadge />
 
         {/* Shift indicator */}
         {shift && (
@@ -84,7 +89,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
         )}
 
         {/* Back to dashboard (non-cashier only) */}
-        {profile?.role !== "cashier" && (
+        {hasBackOfficeAccess(permissions) && (
           <Link href="/dashboard">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8">
               <ArrowLeft size={13} />

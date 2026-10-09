@@ -10,12 +10,12 @@ import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { CategoryManager } from "@/components/inventory/CategoryManager"
 import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
 import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
-import { useConfirm } from "@/components/ui/confirm-dialog"
 import { formatKES } from "@/lib/store/cartStore"
-import { useSessionStore } from "@/lib/store/sessionStore"
+import { useCan } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
 import type { Product, Organization } from "@pharmatrack/types"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
+import { DeleteProductDialog } from "@/components/inventory/DeleteProductDialog"
 
 type ProductRow = Product & { category_name?: string }
 
@@ -51,20 +51,14 @@ async function toggleActive(id: string, active: boolean): Promise<void> {
   if (!res.ok) throw new Error("Failed to update product")
 }
 
-async function deleteProduct(id: string): Promise<void> {
-  const res = await fetch(`/api/products/${id}`, { method: "DELETE" })
-  if (!res.ok) {
-    const json = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(json.error ?? "Failed to delete product")
-  }
-}
 
 export default function ProductsPage() {
   const qc = useQueryClient()
-  const confirm = useConfirm()
-  const role = useSessionStore((s) => s.profile?.role)
-  const canSeeCost = ["owner", "manager"].includes(role ?? "")
-  const canManageCatalog = ["owner", "manager"].includes(role ?? "")
+  const canSeeCost = useCan("cost.view")
+  const canSeedCatalog = useCan("catalog.seed")
+  const canDelete = useCan("products.delete")
+  const canEdit = useCan("products.edit")
+  const [deleting, setDeleting] = useState<ProductRow | null>(null)
   const branchId = useUIStore((s) => s.activeBranchId)
   const [rawSearch, setRawSearch] = useState("")
   const [categoryId, setCategoryId] = useState("")
@@ -120,16 +114,8 @@ export default function ProductsPage() {
     }
   }
 
-  async function handleDelete(p: ProductRow) {
-    const ok = await confirm(`Delete "${p.name}"? This can't be undone.`, { title: "Delete product?", confirmLabel: "Delete" })
-    if (!ok) return
-    try {
-      await deleteProduct(p.id)
-      await qc.invalidateQueries({ queryKey: ["products"] })
-      toast.success(`${p.name} deleted`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete product")
-    }
+  function handleDelete(p: ProductRow) {
+    setDeleting(p)
   }
 
   return (
@@ -195,7 +181,7 @@ export default function ProductsPage() {
       {/* Table */}
       <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
         {/* Quick Start: load the Kenyan retail catalogue by department, then price & stock */}
-        <CatalogSeedControls canManage={canManageCatalog} branchId={branchId} />
+        <CatalogSeedControls canManage={canSeedCatalog} branchId={branchId} />
 
         {isLoading ? (
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
@@ -313,14 +299,14 @@ export default function ProductsPage() {
                             <Tag size={14} />
                           </button>
                         )}
-                        <button
+                        {canEdit && <button
                           onClick={() => handleToggle(p)}
                           className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
                           title={p.is_active ? "Deactivate" : "Activate"}
                         >
                           {p.is_active ? <ToggleRight size={16} className="text-[var(--pt-green)]" /> : <ToggleLeft size={16} />}
-                        </button>
-                        {canManageCatalog && (
+                        </button>}
+                        {canDelete && (
                           <button
                             onClick={() => handleDelete(p)}
                             className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-[var(--pt-red)] transition-colors"
@@ -391,6 +377,7 @@ export default function ProductsPage() {
         items={labelItems ?? []}
         labelSize={labelSize}
       />
+      <DeleteProductDialog key={deleting?.id ?? "none"} product={deleting} onClose={() => setDeleting(null)} />
     </div>
   )
 }

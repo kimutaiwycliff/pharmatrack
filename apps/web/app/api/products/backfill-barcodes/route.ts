@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { isNull, and, eq } from "drizzle-orm"
 import { withTenant, product, product_pack_size } from "@pharmatrack/db"
 import { generateInternalBarcode } from "@pharmatrack/core"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
 
 const MAX_BARCODE_GENERATION_ATTEMPTS = 5
@@ -23,7 +23,7 @@ export async function POST() {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) {
+  if (!ctx.permissions.includes("products.edit")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const organizationId = ctx.organizationId

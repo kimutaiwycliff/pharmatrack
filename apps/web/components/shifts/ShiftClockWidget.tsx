@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useActiveShift } from "@/lib/hooks/useActiveShift"
 import { useSessionStore } from "@/lib/store/sessionStore"
-import { useUIStore } from "@/lib/store/uiStore"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
 import { varianceSeverity } from "@/lib/shifts/variance"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,14 +19,17 @@ function elapsed(from: string) {
 }
 
 interface OpenModalProps {
-  branchId: string
+  /** Pre-selected branch; null when viewing "All branches" (user must pick). */
+  branchId: string | null
+  branches: { id: string; name: string }[]
   onClose: () => void
   onOpened: () => void
 }
 
-function OpenShiftModal({ branchId, onClose, onOpened }: OpenModalProps) {
+function OpenShiftModal({ branchId, branches, onClose, onOpened }: OpenModalProps) {
   const [float, setFloat] = useState("")
   const [loading, setLoading] = useState(false)
+  const [shiftBranch, setShiftBranch] = useState(branchId ?? branches[0]?.id ?? "")
 
   async function submit() {
     const opening_float = parseFloat(float || "0")
@@ -39,11 +42,12 @@ function OpenShiftModal({ branchId, onClose, onOpened }: OpenModalProps) {
       const res = await fetch("/api/shifts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ branch_id: branchId, opening_float }),
+        body: JSON.stringify({ branch_id: shiftBranch, opening_float }),
       })
-      const json = (await res.json()) as { error?: string }
+      const json = (await res.json()) as { error?: string; existing?: boolean }
       if (!res.ok) throw new Error(json.error ?? "Failed to open shift")
-      toast.success("Shift opened")
+      if (json.existing) toast.info("You already have a shift open — carrying on with it.")
+      else toast.success("Shift opened")
       onOpened()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
@@ -59,6 +63,20 @@ function OpenShiftModal({ branchId, onClose, onOpened }: OpenModalProps) {
         <p className="text-sm text-[var(--pt-text-secondary)] mb-5">
           Enter the opening cash float for this shift.
         </p>
+        {branches.length > 1 && (
+          <>
+            <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+              Branch
+            </label>
+            <select
+              value={shiftBranch}
+              onChange={(e) => setShiftBranch(e.target.value)}
+              className="h-11 w-full rounded-lg border border-[var(--pt-border)] px-3 mb-4 bg-[var(--pt-surface)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+            >
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </>
+        )}
         <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
           Opening Float (KES)
         </label>
@@ -76,7 +94,7 @@ function OpenShiftModal({ branchId, onClose, onOpened }: OpenModalProps) {
           <Button variant="outline" className="flex-1" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button className="flex-1" onClick={submit} disabled={loading}>
+          <Button className="flex-1" onClick={submit} disabled={loading || !shiftBranch}>
             {loading ? <Loader2 size={15} className="animate-spin" /> : "Open Shift"}
           </Button>
         </div>
@@ -245,7 +263,7 @@ function CloseShiftModal({ shiftId, openingFloat, onClose, onClosed }: CloseModa
 
 export function ShiftClockWidget() {
   const profile = useSessionStore((s) => s.profile)
-  const branchId = useUIStore((s) => s.activeBranchId)
+  const { branchId, branches, ready } = useBranchScope()
   const queryClient = useQueryClient()
   const { data: shift, isLoading } = useActiveShift(profile?.id)
 
@@ -258,7 +276,7 @@ export function ShiftClockWidget() {
   }
 
   if (isLoading) return null
-  if (!branchId) return null
+  if (!ready) return null
 
   return (
     <>
@@ -266,11 +284,14 @@ export function ShiftClockWidget() {
         <button
           onClick={() => setModal("close")}
           className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--pt-border)] text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
-          title="End shift"
+          title={`End shift${shift.branch_name ? ` at ${shift.branch_name}` : ""}`}
         >
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--pt-green)] animate-pulse" />
           <Clock size={12} />
           {elapsed(shift.clocked_in_at)}
+          {branches.length > 1 && shift.branch_name && (
+            <span className="font-medium text-[var(--pt-text-tertiary)] max-w-28 truncate">· {shift.branch_name}</span>
+          )}
           <LogOut size={12} />
         </button>
       ) : (
@@ -287,6 +308,7 @@ export function ShiftClockWidget() {
       {modal === "open" && (
         <OpenShiftModal
           branchId={branchId}
+          branches={branches}
           onClose={() => setModal(null)}
           onOpened={invalidate}
         />

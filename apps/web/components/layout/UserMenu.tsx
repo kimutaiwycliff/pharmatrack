@@ -47,11 +47,9 @@ export function UserMenu({ fullName, role }: Props) {
           </div>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-44">
-          {role === "owner" && (
-            <DropdownMenuItem className="gap-2" onClick={() => router.push("/settings")}>
-              <Settings size={15} /> Settings
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem className="gap-2" onClick={() => router.push("/settings")}>
+            <Settings size={15} /> Settings
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" className="gap-2" onClick={() => setConfirmOpen(true)}>
             <LogOut size={15} /> Sign out

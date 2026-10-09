@@ -23,7 +23,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (!found) return apiError("Sale not found", 404)
     // Cashiers may only reprint their own sales — treat someone else's as not found
     // rather than 403, so their existence isn't leaked.
-    if (ctx.role === "cashier" && found.row.cashier_id !== ctx.userId) return apiError("Sale not found", 404)
+    if (!ctx.permissions.includes("sales.view_all") && found.row.cashier_id !== ctx.userId) return apiError("Sale not found", 404)
 
     const items = await db.select().from(sale_item).where(eq(sale_item.sale_id, id))
     const [paymentRow] = await db.select().from(payment).where(eq(payment.sale_id, id)).limit(1)

@@ -1,12 +1,14 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import type { ProductWithStock } from "@pharmatrack/types"
+import type { CartSellUnit, ProductWithStock } from "@pharmatrack/types"
 import { getCachedProduct } from "@/lib/offline/db"
 
 interface LookupResult {
   found: boolean
   product?: ProductWithStock
+  /** The scanned code was a pack-size barcode — add it as that pack. */
+  pack?: CartSellUnit
   suggestion?: {
     name: string
     manufacturer: string

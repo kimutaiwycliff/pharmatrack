@@ -225,6 +225,8 @@ export interface Shift {
   clocked_in_at: string
   clocked_out_at: string | null
   notes: string | null
+  /** Present on /api/shifts/active responses. */
+  branch_name?: string | null
   created_at: string
 }
 
@@ -265,6 +267,16 @@ export interface CartItem {
   max_discount_percent: number | null
   /** On-hand stock captured at add time; the cart caps quantity at this. */
   stock_on_hand: number
+  /** Selling in a pack size (e.g. "Strip of 10") instead of the base unit.
+   *  `quantity` stays in base units; `price` is per pack. Null/absent = base unit. */
+  sell_unit?: CartSellUnit | null
+}
+
+export interface CartSellUnit {
+  pack_size_id: string
+  label: string
+  unit_count: number
+  price: number
 }
 
 // ─── Appointments / booking ──────────────────────────────────

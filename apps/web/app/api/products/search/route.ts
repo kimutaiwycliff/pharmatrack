@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
   const withPrices = rows.map((p) => ({
     ...p, selling_price: num(p.selling_price), cost_price: num(p.cost_price), max_discount_percent: num(p.max_discount_percent),
   }))
-  const products = canViewCostInContext(ctx.role, searchParams.get("context")) ? withPrices : withPrices.map(omitCost)
+  const products = canViewCostInContext(ctx, searchParams.get("context")) ? withPrices : withPrices.map(omitCost)
 
   return NextResponse.json({ products })
 }

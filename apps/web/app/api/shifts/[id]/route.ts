@@ -17,7 +17,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       .leftJoin(user, eq(user.id, shift.cashier_id))
       .leftJoin(staff_profile, eq(staff_profile.user_id, shift.cashier_id))
       .where(eq(shift.id, id)).limit(1)
-    if (!found) return NextResponse.json({ error: "Shift not found" }, { status: 404 })
+    if (!found || (!ctx.permissions.includes("shifts.view_all") && found.row.cashier_id !== ctx.userId)) {
+      return NextResponse.json({ error: "Shift not found" }, { status: 404 })
+    }
 
     const sales = await db.select({ id: sale.id, total_amount: sale.total_amount, payment_method: sale.payment_method })
       .from(sale).where(and(eq(sale.shift_id, id), eq(sale.status, "completed")))

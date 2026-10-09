@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Clock, ArrowLeft } from "lucide-react"
+import { useSessionStore, useCan } from "@/lib/store/sessionStore"
+import { useUIStore } from "@/lib/store/uiStore"
 
 interface ClockInDialogProps {
   onSuccess: () => void
@@ -19,6 +21,14 @@ export function ClockInDialog({ onSuccess }: ClockInDialogProps) {
   const [openingFloat, setOpeningFloat] = useState("")
   const [error, setError] = useState("")
   const [isPending, startTransition] = useTransition()
+  const branches = useSessionStore((s) => s.branches)
+  const profile = useSessionStore((s) => s.profile)
+  const activeBranchId = useUIStore((s) => s.activeBranchId)
+  const setActiveBranch = useUIStore((s) => s.setActiveBranch)
+  const canPickBranch = useCan("branches.all") && branches.length > 1
+  const [branchId, setBranchId] = useState(
+    branches.find((b) => b.id === activeBranchId)?.id ?? profile?.branch_id ?? branches[0]?.id ?? "",
+  )
 
   const now = new Date().toLocaleString("en-KE", {
     timeZone: "Africa/Nairobi",
@@ -40,13 +50,14 @@ export function ClockInDialog({ onSuccess }: ClockInDialogProps) {
       const res = await fetch("/api/shifts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ opening_float: float }),
+        body: JSON.stringify(canPickBranch && branchId ? { opening_float: float, branch_id: branchId } : { opening_float: float }),
       })
       if (!res.ok) {
         const data = (await res.json()) as { error?: string }
         setError(data.error ?? "Failed to clock in")
         return
       }
+      if (canPickBranch && branchId) setActiveBranch(branchId)
       onSuccess()
     })
   }
@@ -64,6 +75,20 @@ export function ClockInDialog({ onSuccess }: ClockInDialogProps) {
         </div>
 
         <div className="space-y-4">
+          {canPickBranch && (
+            <div>
+              <Label htmlFor="shift-branch" className="text-sm font-medium">Branch</Label>
+              <select
+                id="shift-branch"
+                value={branchId}
+                onChange={(e) => setBranchId(e.target.value)}
+                className="mt-1.5 h-11 w-full rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+              >
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+              <p className="text-xs text-[var(--pt-text-secondary)] mt-1">Sales and cash for this shift are recorded at this branch.</p>
+            </div>
+          )}
           <div>
             <Label htmlFor="float" className="text-sm font-medium">
               Opening float (KES)

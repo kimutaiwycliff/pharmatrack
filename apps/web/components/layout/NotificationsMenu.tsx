@@ -19,17 +19,17 @@ interface NotificationsData {
   trialEndingSoon: { trial_ends_at: string; daysLeft: number } | null
 }
 
-export function NotificationsMenu({ branchId }: { branchId: string | undefined }) {
+export function NotificationsMenu({ branchId, ready }: { branchId: string | null; ready: boolean }) {
   const router = useRouter()
 
   const { data } = useQuery<NotificationsData>({
     queryKey: ["notifications", branchId],
     queryFn: async () => {
-      const res = await fetch(`/api/notifications?branch_id=${branchId}`)
+      const res = await fetch(`/api/notifications${branchId ? `?branch_id=${branchId}` : ""}`)
       if (!res.ok) return { lowStock: [], expiring: [], trialEndingSoon: null }
       return res.json() as Promise<NotificationsData>
     },
-    enabled: !!branchId,
+    enabled: ready,
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   })

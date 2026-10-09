@@ -51,6 +51,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   const [recentScans, setRecentScans] = useState<string[]>([])
   const [cameraOpen, setCameraOpen] = useState(false)
   const addItem = useCartStore((s) => s.addItem)
+  const setSellUnit = useCartStore((s) => s.setSellUnit)
 
   const { data: lookupData, isFetching: lookupFetching } = useProductLookup(
     scannedBarcode,
@@ -119,6 +120,14 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
     prevLookup.current = scannedBarcode
     if (lookupData.found && lookupData.product) {
       handleProductAdd(lookupData.product)
+      // A pack barcode (e.g. the strip's own code) sells that pack.
+      if (lookupData.pack) {
+        const pid = lookupData.product.product_id || (lookupData.product as { id?: string }).id
+        // Only switch the unit the first time — a repeat scan of the same
+        // pack has already been counted as +1 pack by addItem.
+        const line = useCartStore.getState().items.find((i) => i.product_id === pid)
+        if (pid && line?.sell_unit?.pack_size_id !== lookupData.pack.pack_size_id) setSellUnit(pid, lookupData.pack)
+      }
       setScannedBarcode(null)
     } else {
       onBarcodeNotFound?.(scannedBarcode)

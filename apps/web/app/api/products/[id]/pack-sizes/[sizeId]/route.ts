@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { eq } from "drizzle-orm"
 import { withTenant, product_pack_size } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serializePackSize } from "@/lib/products/packsize"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
+import { forbidden } from "@/lib/api-auth"
 
 const updateSchema = z.object({
   pack_label: z.string().min(1).optional(),
@@ -14,8 +15,8 @@ const updateSchema = z.object({
   is_active: z.boolean().optional(),
 })
 
-function canWrite(role: Role) {
-  return (["owner", "manager", "pharmacist"] as Role[]).includes(role)
+function canWrite(ctx: { permissions: readonly string[] }) {
+  return ctx.permissions.includes("products.edit")
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string; sizeId: string }> }) {
@@ -24,7 +25,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!canWrite(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!canWrite(ctx)) return forbidden("products.edit")
 
   const parsed = updateSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
@@ -61,7 +62,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!canWrite(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!canWrite(ctx)) return forbidden("products.edit")
 
   await withTenant(ctx, (db) => db.delete(product_pack_size).where(eq(product_pack_size.id, sizeId)))
   return NextResponse.json({ success: true })

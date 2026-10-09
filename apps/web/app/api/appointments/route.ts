@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, asc, eq, gte, lte } from "drizzle-orm"
 import { withTenant, appointment, customer, user } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { requireFeatureApi } from "@/lib/entitlements"
 import { zUuid } from "@/lib/api/validation"
 import { queueReminders } from "@/lib/appointments/queue"
 import { apptCols, shapeAppt, fetchAppointment } from "@/lib/appointments/serialize"
+import { forbidden } from "@/lib/api-auth"
 
-const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 
 const createSchema = z.object({
   customer_id: zUuid().optional(),
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("appointments.manage")) return forbidden("appointments.manage")
   const locked = await requireFeatureApi(ctx.organizationId, "appointments")
   if (locked) return locked
 

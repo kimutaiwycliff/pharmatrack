@@ -3,7 +3,7 @@ import { z } from "zod"
 import { and, or, ilike, asc, sql, eq, isNull } from "drizzle-orm"
 import { withTenant, product } from "@pharmatrack/db"
 import { generateInternalBarcode } from "@pharmatrack/core"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { deriveGenericName } from "@/lib/generic-name"
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(product).where(where)
     return { rows, total: c?.n ?? 0 }
   })
-  const products = canViewCost(ctx.role) ? rows : rows.map(omitCost)
+  const products = canViewCost(ctx) ? rows : rows.map(omitCost)
   return NextResponse.json({ products, total, page, limit })
 }
 
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) {
+  if (!ctx.permissions.includes("products.create")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const parsed = createProductSchema.safeParse(await request.json())

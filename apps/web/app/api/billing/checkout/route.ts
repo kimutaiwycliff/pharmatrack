@@ -9,7 +9,7 @@ import { notifyPlatformSubscription } from "@/lib/notifications/platform"
 // Owner starts (or renews) their subscription payment via Paystack. Must keep
 // working while locked out — it's how a suspended tenant pays to reactivate.
 export async function POST() {
-  const ctx = await getApiContext({ roles: ["owner"], allowInactiveSubscription: true })
+  const ctx = await getApiContext({ permission: "billing.manage", allowInactiveSubscription: true })
   if ("error" in ctx) return ctx.error
 
   if (!paystackConfigured()) {

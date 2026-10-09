@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq } from "drizzle-orm"
 import { withTenant, appointment, appointment_reminder, appointment_service } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serviceRecurrenceWeeks } from "@/lib/appointments/services"
 import { queueReminders } from "@/lib/appointments/queue"
 import { fetchAppointment } from "@/lib/appointments/serialize"
+import { forbidden } from "@/lib/api-auth"
 
-const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 
 const updateSchema = z.object({
   status: z.enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"]).optional(),
@@ -25,7 +25,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("appointments.manage")) return forbidden("appointments.manage")
 
   const parsed = updateSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
@@ -78,7 +78,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("appointments.manage")) return forbidden("appointments.manage")
 
   const out = await withTenant(ctx, async (db) => {
     const [existing] = await db.select({ id: appointment.id }).from(appointment).where(eq(appointment.id, id)).limit(1)

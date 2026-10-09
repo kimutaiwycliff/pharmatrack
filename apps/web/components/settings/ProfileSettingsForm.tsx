@@ -7,6 +7,8 @@ import { authClient } from "@/lib/auth/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Profile } from "@pharmatrack/types"
+import { useSessionStore, useCan } from "@/lib/store/sessionStore"
+import { useUIStore } from "@/lib/store/uiStore"
 
 interface Props {
   profile: Profile
@@ -17,7 +19,13 @@ export function ProfileSettingsForm({ profile, hasPin }: Props) {
   const [form, setForm] = useState({
     full_name: profile.full_name,
     phone: profile.phone ?? "",
+    branch_id: profile.branch_id ?? "",
   })
+  const branches = useSessionStore((s) => s.branches)
+  const setProfile = useSessionStore((s) => s.setProfile)
+  const sessionProfile = useSessionStore((s) => s.profile)
+  const setActiveBranch = useUIStore((s) => s.setActiveBranch)
+  const canChooseBranch = useCan("branches.all") && branches.length > 1
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -46,12 +54,17 @@ export function ProfileSettingsForm({ profile, hasPin }: Props) {
         body: JSON.stringify({
           full_name: form.full_name,
           phone: form.phone || undefined,
+          ...(canChooseBranch ? { branch_id: form.branch_id || null } : {}),
         }),
       })
       const json = (await res.json()) as { error?: string }
       if (!res.ok) throw new Error(json.error ?? "Failed to save")
       toast.success("Profile updated")
       setDirty(false)
+      if (canChooseBranch && sessionProfile && (form.branch_id || null) !== sessionProfile.branch_id) {
+        setProfile({ ...sessionProfile, branch_id: form.branch_id || null })
+        setActiveBranch(form.branch_id || null)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
     } finally {
@@ -139,6 +152,25 @@ export function ProfileSettingsForm({ profile, hasPin }: Props) {
             className="h-10"
           />
         </div>
+
+        {canChooseBranch && (
+          <div>
+            <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+              Home branch
+            </label>
+            <select
+              value={form.branch_id}
+              onChange={(e) => setField("branch_id", e.target.value)}
+              className="h-10 w-full rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
+            >
+              <option value="">All branches</option>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-1">
+              Where the app opens and where new shifts start by default. You can still switch branch from the top bar any time.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">

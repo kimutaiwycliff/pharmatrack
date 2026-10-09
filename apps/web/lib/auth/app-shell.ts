@@ -1,8 +1,8 @@
 import { and, asc, eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, branch as branchTable, subscription, plan } from "@pharmatrack/db"
-import { effectivePlanCode, type PlanCode } from "@pharmatrack/core"
+import { effectivePlanCode, type PlanCode, type Capability } from "@pharmatrack/core"
 import type { Profile, Branch, UserRole } from "@pharmatrack/types"
-import { getSession } from "./helpers"
+import { getSession, loadPermissions } from "./helpers"
 import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 import { OFFLINE_MODE } from "@/lib/offline-mode"
 
@@ -17,6 +17,8 @@ export interface AppShell {
    *  "payment overdue" without adding a new subscription.status enum value. */
   trialExpired: boolean
   planCode: PlanCode
+  /** Effective role permissions (defaults + org overrides). */
+  permissions: Capability[]
 }
 
 // Loads everything the authenticated app shell (dashboard + POS layouts) needs:
@@ -42,6 +44,8 @@ export async function loadAppShell(): Promise<AppShell | null> {
     created_at: sp.created_at.toISOString(),
   }
 
+  const permissions = await loadPermissions(sp.organization_id, sp.role)
+
   const branchRows = await db.select().from(branchTable)
     .where(and(eq(branchTable.organization_id, sp.organization_id), eq(branchTable.is_active, true)))
     .orderBy(asc(branchTable.name))
@@ -62,6 +66,7 @@ export async function loadAppShell(): Promise<AppShell | null> {
       subStatus: "active",
       trialExpired: false,
       planCode: "enterprise",
+      permissions,
     }
   }
 
@@ -86,5 +91,6 @@ export async function loadAppShell(): Promise<AppShell | null> {
     // out — i.e. this block is a lapsed trial, not a missed renewal.
     trialExpired: sub?.status === "trialing" && effective !== "trialing",
     planCode: effectivePlanCode(sub?.status, sub?.planCode),
+    permissions,
   }
 }

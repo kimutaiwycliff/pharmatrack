@@ -5,10 +5,12 @@ import {
   withTenant, dbAdmin, product, product_batch, stock_adjustment,
   controlled_substance_log, user,
 } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
 import { zodErrorResponse } from "@/lib/api/errors"
+import { forbidden } from "@/lib/api-auth"
+import { invalidateBarcodeCache } from "@/lib/products/barcodeCache"
 
 const REASONS = ["count_correction", "damage", "expiry", "theft_loss", "return", "other"] as const
 const adjustSchema = z.object({
@@ -23,10 +25,7 @@ async function invalidateProductCache(orgId: string, productId: string) {
   if (!redis) return
   try {
     const [p] = await dbAdmin().select({ gtin: product.gtin, barcode_raw: product.barcode_raw }).from(product).where(eq(product.id, productId)).limit(1)
-    for (const k of [p?.gtin, p?.barcode_raw].filter(Boolean) as string[]) {
-      // branch-agnostic best-effort clear
-      await redis.del(`product:${orgId}:${k}`)
-    }
+    await invalidateBarcodeCache(orgId, [p?.gtin, p?.barcode_raw])
   } catch {}
 }
 
@@ -60,7 +59,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!(["owner", "manager"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("stock.adjust")) return forbidden("stock.adjust")
 
   const parsed = adjustSchema.safeParse(await request.json())
   if (!parsed.success) return zodErrorResponse(parsed.error)

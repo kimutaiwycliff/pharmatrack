@@ -2,6 +2,7 @@ import { pgTable, uuid, text, integer, numeric, timestamp, date } from "drizzle-
 import { organization, user } from "./auth"
 import { branch } from "./tenancy"
 import { product, supplier } from "./catalogue"
+import { purchase_order_item } from "./purchasing"
 
 // Mirrors the inventory section of infra/migrations/004_domain.sql.
 
@@ -18,6 +19,8 @@ export const product_batch = pgTable("product_batch", {
   cost_price: numeric("cost_price", { precision: 12, scale: 2 }),
   received_by: text("received_by").references(() => user.id),
   received_at: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  // Which PO line this batch was received against (migration 027).
+  purchase_order_item_id: uuid("purchase_order_item_id").references(() => purchase_order_item.id, { onDelete: "set null" }),
 })
 
 export const stock_adjustment = pgTable("stock_adjustment", {
