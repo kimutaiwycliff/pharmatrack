@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, isNotNull, asc } from "drizzle-orm"
 import { withTenant, product, product_batch, product_stock } from "@pharmatrack/db"
-import { getTenantContext, requireActiveSubscription, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { z } from "zod"
 
@@ -21,7 +21,7 @@ function openingExpiry(): string {
 async function requireManager() {
   const ctx = await getTenantContext()
   if (!ctx) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
-  if (!(["owner", "manager"] as Role[]).includes(ctx.role)) {
+  if (!ctx.permissions.includes("catalog.seed")) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
   }
   const subErr = await requireActiveSubscription(ctx.organizationId)

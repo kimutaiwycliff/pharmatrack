@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, or, eq, gt, asc } from "drizzle-orm"
-import { withTenant, product, product_batch } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { withTenant, product, product_batch, product_pack_size } from "@pharmatrack/db"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCostInContext, omitCost } from "@/lib/auth/costVisibility"
 import { redis } from "@/lib/redis"
+import type { Capability } from "@pharmatrack/core"
 
 const CACHE_TTL = 3600
 
 interface LookupResponse {
   found: boolean
   product?: Record<string, unknown>
+  /** Set when the code is a PACK barcode (e.g. the strip's own barcode). */
+  pack?: { pack_size_id: string; label: string; unit_count: number; price: number }
   suggestion?: { name: string; manufacturer: string; gtin: string }
 }
 
@@ -17,8 +20,8 @@ interface LookupResponse {
 // always stores the FULL response — filter cost only at the response edge,
 // never before caching, or a cashier's lookup would poison the cache for the
 // next owner who scans the same barcode.
-function filterLookup(resp: LookupResponse, role: Role, context: string | null): LookupResponse {
-  if (canViewCostInContext(role, context) || !resp.product) return resp
+function filterLookup(resp: LookupResponse, ctx: { permissions: readonly Capability[] }, context: string | null): LookupResponse {
+  if (canViewCostInContext(ctx, context) || !resp.product) return resp
   return { ...resp, product: omitCost(resp.product) }
 }
 
@@ -51,14 +54,26 @@ export async function GET(request: NextRequest) {
   if (redis) {
     try {
       const cached = await redis.get<LookupResponse>(cacheKey)
-      if (cached) return NextResponse.json(filterLookup(cached, ctx.role, context))
+      if (cached) return NextResponse.json(filterLookup(cached, ctx, context))
     } catch { /* miss */ }
   }
 
   const productWithStock = await withTenant(ctx, async (db) => {
-    const [p] = await db.select().from(product)
+    let [p] = await db.select().from(product)
       .where(and(eq(product.is_active, true), or(eq(product.gtin, barcode), eq(product.barcode_raw, barcode))))
       .limit(1)
+    // Not a product barcode — maybe one of its pack sizes (strip, box…).
+    let pack: LookupResponse["pack"]
+    if (!p) {
+      const [hit] = await db.select({ row: product, pack: product_pack_size }).from(product_pack_size)
+        .innerJoin(product, eq(product.id, product_pack_size.product_id))
+        .where(and(eq(product_pack_size.barcode, barcode), eq(product_pack_size.is_active, true), eq(product.is_active, true)))
+        .limit(1)
+      if (hit) {
+        p = hit.row
+        pack = { pack_size_id: hit.pack.id, label: hit.pack.label, unit_count: hit.pack.unit_count, price: Number(hit.pack.selling_price) }
+      }
+    }
     if (!p) return null
     const batches = effectiveBranchId
       ? await db.select().from(product_batch)
@@ -72,13 +87,15 @@ export async function GET(request: NextRequest) {
       stock_on_hand: stock,
       earliest_expiry: batches[0]?.expiry_date ?? null,
       batch_count: batches.length,
+      pack,
     }
   })
 
   if (productWithStock) {
-    const response: LookupResponse = { found: true, product: productWithStock }
+    const { pack, ...prod } = productWithStock
+    const response: LookupResponse = { found: true, product: prod, ...(pack ? { pack } : {}) }
     if (redis) { try { await redis.set(cacheKey, response, { ex: CACHE_TTL }) } catch {} }
-    return NextResponse.json(filterLookup(response, ctx.role, context))
+    return NextResponse.json(filterLookup(response, ctx, context))
   }
 
   const off = await fetchOpenFoodFacts(barcode)

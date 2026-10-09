@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { eq, sql } from "drizzle-orm"
-import { dbAdmin, staff_profile, user, member, session, sale } from "@pharmatrack/db"
-import { auth } from "@/lib/auth/server"
+import { and, eq, sql } from "drizzle-orm"
+import { dbAdmin, staff_profile, user, member, session, sale, branch, account } from "@pharmatrack/db"
+import { hashPassword } from "better-auth/crypto"
 import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { hashPin, validatePin } from "@/lib/auth/pin"
 import { normalizeKePhone } from "@/lib/auth/phone"
+import { forbidden } from "@/lib/api-auth"
 
 const updateSchema = z.object({
   role: z.enum(["manager", "pharmacist", "cashier"]).optional(),
@@ -24,7 +25,6 @@ const updateSchema = z.object({
   block_reason: z.enum(["suspended", "banned"]).optional(),
 })
 
-const WRITE_ROLES: Role[] = ["owner", "manager"]
 
 /** Shared guard: resolve the target staff member and check the caller may act on
  *  them (same org; managers can't touch owners/managers). */
@@ -36,7 +36,7 @@ async function resolveTarget(ctx: { organizationId: string; role: Role }, id: st
   if (!target || target.organization_id !== ctx.organizationId) {
     return { error: NextResponse.json({ error: "Staff member not found" }, { status: 404 }) }
   }
-  if (ctx.role === "manager" && ["owner", "manager"].includes(target.role)) {
+  if (ctx.role !== "owner" && ["owner", "manager"].includes(target.role)) {
     return { error: NextResponse.json({ error: "Insufficient permissions" }, { status: 403 }) }
   }
   return { target }
@@ -48,7 +48,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("staff.manage")) return forbidden("staff.manage")
   if (id === ctx.userId) return NextResponse.json({ error: "Cannot edit your own profile here" }, { status: 400 })
 
   const parsed = updateSchema.safeParse(await request.json())
@@ -63,7 +63,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!target || target.organization_id !== ctx.organizationId) return NextResponse.json({ error: "Staff member not found" }, { status: 404 })
 
   // Managers cannot edit other managers or owners.
-  if (ctx.role === "manager" && ["owner", "manager"].includes(target.role)) {
+  if (ctx.role !== "owner" && ["owner", "manager"].includes(target.role)) {
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
   }
 
@@ -79,7 +79,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const set: Partial<typeof staff_profile.$inferInsert> = {}
   if (parsed.data.role !== undefined) set.role = parsed.data.role
-  if (parsed.data.branch_id !== undefined) set.branch_id = parsed.data.branch_id
+  if (parsed.data.branch_id !== undefined) {
+    // dbAdmin bypasses RLS — make sure the branch is this org's.
+    if (parsed.data.branch_id) {
+      const [b] = await db.select({ id: branch.id }).from(branch)
+        .where(and(eq(branch.id, parsed.data.branch_id), eq(branch.organization_id, ctx.organizationId))).limit(1)
+      if (!b) return NextResponse.json({ error: "Branch not found" }, { status: 400 })
+    }
+    set.branch_id = parsed.data.branch_id
+  }
   if (normalizedPhone !== undefined) set.phone = normalizedPhone
   if (parsed.data.is_active !== undefined) set.is_active = parsed.data.is_active
   if (pin_hash !== undefined) set.pin_hash = pin_hash
@@ -87,9 +95,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   // Set the login password directly (updates the existing credential account).
   if (parsed.data.password !== undefined) {
     try {
-      const c = await auth.$context
-      const hashed = await c.password.hash(parsed.data.password)
-      await c.internalAdapter.updatePassword(id, hashed)
+      // Hash with Better Auth's default scrypt and write the credential account
+      // directly. `ctx.password.hash` / `internalAdapter.updatePassword` now
+      // need a Better Auth endpoint context (the haveIBeenPwned plugin wraps
+      // hashing) and threw "No auth context found" from this plain route.
+      // Invited staff may not have a credential account yet — create it.
+      const hashed = await hashPassword(parsed.data.password)
+      const updated = await db.update(account).set({ password: hashed, updatedAt: new Date() })
+        .where(and(eq(account.userId, id), eq(account.providerId, "credential"))).returning({ id: account.id })
+      if (updated.length === 0) {
+        await db.insert(account).values({
+          id: crypto.randomUUID(), accountId: id, providerId: "credential", userId: id, password: hashed,
+        })
+      }
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to set password" }, { status: 500 })
     }
@@ -130,7 +148,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("staff.manage")) return forbidden("staff.manage")
   if (id === ctx.userId) return NextResponse.json({ error: "You can't delete your own account" }, { status: 400 })
 
   const r = await resolveTarget(ctx, id)

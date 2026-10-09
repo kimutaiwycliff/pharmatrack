@@ -8,7 +8,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatKES } from "@/lib/store/cartStore"
-import { useSessionStore } from "@/lib/store/sessionStore"
+import { useCan } from "@/lib/store/sessionStore"
 import { CategorySelect } from "./CategorySelect"
 import { SuggestInput } from "./SuggestInput"
 import { CameraScanner } from "@/components/pos/CameraScanner"
@@ -306,13 +306,86 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   )
 }
 
+
+// ─── Sell in smaller units ───────────────────────────────────────────────────
+// Re-bases the product onto a smaller unit (strip → 10 capsules) so loose units
+// can be sold and "KES 20 worth" maps to whole units. See /split-unit route.
+function SplitUnitPanel({ product, onDone }: { product: Product; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [unit, setUnit] = useState("")
+  const [factor, setFactor] = useState("")
+  const [saving, setSaving] = useState(false)
+  const n = parseInt(factor, 10)
+  const valid = unit.trim().length > 0 && !isNaN(n) && n >= 2 && n <= 1000
+  const newPrice = valid ? Math.round((Number(product.selling_price) / n) * 100) / 100 : null
+
+  async function apply() {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/products/${product.id}/split-unit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_base_unit: unit.trim(), factor: n }),
+      })
+      const json = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(json.error ?? "Failed to change unit")
+      toast.success(`${product.name} now sells per ${unit.trim()} — the ${product.base_unit} is kept as a pack size`)
+      setOpen(false)
+      onDone()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to change unit")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (product.is_controlled) return null
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="text-xs font-semibold text-[var(--pt-green-600)] hover:underline">
+        Sell in smaller units…
+      </button>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-[var(--pt-border)] p-3 space-y-3">
+      <div>
+        <p className="text-sm font-semibold">Sell in smaller units</p>
+        <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5">
+          Split each {product.base_unit} into smaller units so you can sell loose (e.g. a strip into capsules).
+          Stock, batches and history are converted; the {product.base_unit} stays available as a pack size at its current price.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label={`Units per ${product.base_unit}`}>
+          <Input type="number" min={2} value={factor} onChange={(e) => setFactor(e.target.value)} placeholder="e.g. 10" className="h-9" />
+        </Field>
+        <Field label="New unit name">
+          <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. capsule" className="h-9" />
+        </Field>
+      </div>
+      {valid && (
+        <p className="text-xs rounded-lg bg-[var(--pt-muted)] px-3 py-2">
+          1 {product.base_unit} = {n} {unit.trim()}s · new price <span className="font-semibold">KES {newPrice!.toFixed(2)}</span> per {unit.trim()}
+          {Number(product.selling_price) / n !== newPrice && " (rounded)"}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+        <Button type="button" size="sm" className="flex-1" onClick={apply} disabled={!valid || saving}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : "Convert"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 export function EditProductSheet({ productId, onClose, onSaved }: Props) {
   const queryClient = useQueryClient()
-  const role = useSessionStore((s) => s.profile?.role)
-  const canSeeCost = ["owner", "manager"].includes(role ?? "")
+  const canSeeCost = useCan("cost.view")
 
-  const { data, isLoading } = useQuery<{ product: Product }>({
+  const { data, isLoading, refetch } = useQuery<{ product: Product }>({
     queryKey: ["product", productId],
     queryFn: async () => {
       const res = await fetch(`/api/products/${productId}`)
@@ -558,6 +631,18 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
                   <p className={`text-xs font-semibold ${parseFloat(margin) >= 20 ? "text-[var(--pt-green)]" : parseFloat(margin) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-[var(--pt-red)]"}`}>
                     Margin: {margin}%
                   </p>
+                )}
+                {product && (
+                  <SplitUnitPanel
+                    product={product}
+                    onDone={async () => {
+                      const fresh = await refetch()
+                      if (fresh.data?.product) setForm({ ...fresh.data.product })
+                      void queryClient.invalidateQueries({ queryKey: ["pack-sizes", product.id] })
+                      void queryClient.invalidateQueries({ queryKey: ["products"] })
+                      void queryClient.invalidateQueries({ queryKey: ["inventory"] })
+                    }}
+                  />
                 )}
                 <Field label="Low-stock threshold (units)" hint="Alert when stock falls to or below this">
                   <Input type="number" min={0} value={form.reorder_level ?? 10} onChange={(e) => setF("reorder_level", parseInt(e.target.value) || 0)} className="h-10" />

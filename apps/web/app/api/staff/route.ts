@@ -4,10 +4,11 @@ import { randomUUID, randomBytes } from "node:crypto"
 import { asc, eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, user, branch, member } from "@pharmatrack/db"
 import { auth } from "@/lib/auth/server"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
 import { normalizeKePhone } from "@/lib/auth/phone"
 import { requireCapacityApi } from "@/lib/entitlements"
+import { forbidden } from "@/lib/api-auth"
 
 const inviteSchema = z.object({
   email: z.string().email(),
@@ -17,14 +18,13 @@ const inviteSchema = z.object({
   phone: z.string().optional(),
 })
 
-const WRITE_ROLES: Role[] = ["owner", "manager"]
 
 export async function GET(_request: NextRequest) {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("staff.manage")) return forbidden("staff.manage")
 
   const rows = await dbAdmin().select({
     id: staff_profile.user_id, full_name: user.name, role: staff_profile.role,
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("staff.manage")) return forbidden("staff.manage")
 
   const parsed = inviteSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })

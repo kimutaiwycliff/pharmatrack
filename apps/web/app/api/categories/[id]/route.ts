@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq } from "drizzle-orm"
 import { withTenant, category, product } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
+import { forbidden } from "@/lib/api-auth"
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
@@ -12,7 +13,6 @@ const updateSchema = z.object({
 
 // Renaming / moving / deleting categories is a management action (owner/manager).
 // Inline creation during product entry stays open to pharmacists via POST /api/categories.
-const WRITE_ROLES: Role[] = ["owner", "manager"]
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("categories.manage")) return forbidden("categories.manage")
 
   const parsed = updateSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
@@ -52,7 +52,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("categories.manage")) return forbidden("categories.manage")
 
   const out = await withTenant(ctx, async (db) => {
     const [cat] = await db.select({ id: category.id }).from(category).where(eq(category.id, id)).limit(1)

@@ -18,7 +18,7 @@ const cols = {
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const ctx = await getApiContext({ roles: ["owner", "manager"] })
+  const ctx = await getApiContext({ permission: "appointment_services.manage" })
   if ("error" in ctx) return ctx.error
 
   const parsed = updateSchema.safeParse(await request.json())
@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const ctx = await getApiContext({ roles: ["owner", "manager"] })
+  const ctx = await getApiContext({ permission: "appointment_services.manage" })
   if ("error" in ctx) return ctx.error
 
   const out = await withTenant(ctx, async (db) => {

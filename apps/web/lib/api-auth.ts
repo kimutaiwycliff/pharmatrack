@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server"
-import { getTenantContext, requireActiveSubscription, type Role } from "@/lib/auth/helpers"
+import type { Capability } from "@pharmatrack/core"
+import { getTenantContext, requireActiveSubscription, type Role, type TenantContext } from "@/lib/auth/helpers"
 
 export type { Role }
 
-export interface ApiContext {
-  userId: string
-  organizationId: string
-  role: Role
-  branchId: string | null
+export type ApiContext = TenantContext
+
+/** 403 body for a missing capability — `code` lets clients show a friendly
+ *  "ask your owner" message instead of a generic error. */
+export function forbidden(cap?: Capability) {
+  return NextResponse.json(
+    { error: "You don't have permission to do this. Ask the pharmacy owner to enable it in Settings → Roles & permissions.", code: "permission_denied", capability: cap ?? null },
+    { status: 403 },
+  )
 }
 
 /**
@@ -25,16 +30,18 @@ export interface ApiContext {
  * doc comment for the full exemption list).
  */
 export async function getApiContext(
-  opts?: { roles?: Role[]; allowInactiveSubscription?: boolean },
+  opts?: { permission?: Capability | Capability[]; allowInactiveSubscription?: boolean },
 ): Promise<ApiContext | { error: NextResponse }> {
   const ctx = await getTenantContext()
   if (!ctx) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
-  if (opts?.roles && !opts.roles.includes(ctx.role)) {
-    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+  // An array means "any of these".
+  const needed = opts?.permission == null ? [] : Array.isArray(opts.permission) ? opts.permission : [opts.permission]
+  if (needed.length > 0 && !needed.some((c) => ctx.permissions.includes(c))) {
+    return { error: forbidden(needed[0]) }
   }
   if (!opts?.allowInactiveSubscription) {
     const subErr = await requireActiveSubscription(ctx.organizationId)
     if (subErr) return { error: subErr }
   }
-  return { userId: ctx.userId, organizationId: ctx.organizationId, role: ctx.role, branchId: ctx.branchId }
+  return ctx
 }

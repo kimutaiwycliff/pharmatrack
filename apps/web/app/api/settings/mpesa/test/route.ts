@@ -5,6 +5,7 @@ import { dbAdmin, mpesa_config } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { getMpesaConfig, isConfigured } from "@/lib/mpesa/config"
 import { getDarajaToken, stkPush } from "@/lib/mpesa/daraja"
+import { forbidden } from "@/lib/api-auth"
 
 const schema = z.object({ stkPhone: z.string().trim().optional() })
 
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (ctx.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 })
+  if (!ctx.permissions.includes("settings.organization")) return forbidden("settings.organization")
 
   const parsed = schema.safeParse(await request.json().catch(() => ({})))
   const stkPhone = parsed.success ? parsed.data.stkPhone : undefined

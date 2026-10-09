@@ -34,7 +34,7 @@ export function OfflineSync() {
         }
         if (rejected > 0) {
           toast.error(
-            `${rejected} offline sale${rejected > 1 ? "s" : ""} couldn't sync — insufficient stock. Removed from the queue.`,
+            `${rejected} offline sale${rejected > 1 ? "s" : ""} couldn't sync. Saved under "Needs review" in the POS header so the cash and stock can be reconciled.`,
           )
         }
       } finally {

@@ -4,9 +4,9 @@ import { useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Receipt, ChevronLeft, ChevronRight, Search } from "lucide-react"
 import { SaleDetailSheet } from "@/components/sales/SaleDetailSheet"
-import { useUIStore } from "@/lib/store/uiStore"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { formatKES } from "@/lib/store/cartStore"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
 
 interface SaleRow {
   id: string
@@ -27,12 +27,12 @@ interface SalesResponse {
 
 const PAGE_SIZE = 20
 
-function useSales(branchId: string | null, from: string, to: string, q: string, page: number) {
+function useSales(branchId: string | null, ready: boolean, from: string, to: string, q: string, page: number) {
   return useQuery<SalesResponse>({
     queryKey: ["sales", branchId, from, to, q, page],
     queryFn: async () => {
       const params = new URLSearchParams({
-        branch_id: branchId!,
+        ...(branchId ? { branch_id: branchId } : {}),
         page: String(page),
         limit: String(PAGE_SIZE),
       })
@@ -43,7 +43,7 @@ function useSales(branchId: string | null, from: string, to: string, q: string, 
       if (!res.ok) throw new Error("Failed to load sales")
       return res.json() as Promise<SalesResponse>
     },
-    enabled: !!branchId,
+    enabled: ready,
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   })
@@ -68,7 +68,7 @@ function weekStart() {
 }
 
 export default function SalesPage() {
-  const branchId = useUIStore((s) => s.activeBranchId)
+  const { branchId, ready } = useBranchScope()
   const [from, setFrom] = useState(weekStart())
   const [to, setTo] = useState(today())
   const [rawSearch, setRawSearch] = useState("")
@@ -76,7 +76,7 @@ export default function SalesPage() {
   const [page, setPage] = useState(1)
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
 
-  const { data, isLoading, isFetching } = useSales(branchId, from, to, q, page)
+  const { data, isLoading, isFetching } = useSales(branchId, ready, from, to, q, page)
 
   const handleFilterChange = useCallback(() => setPage(1), [])
 

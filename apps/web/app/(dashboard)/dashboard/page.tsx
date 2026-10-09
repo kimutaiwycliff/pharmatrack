@@ -5,8 +5,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts"
 import { TrendingUp, ShoppingCart, CreditCard, Smartphone, AlertTriangle, PackageX, Clock } from "lucide-react"
-import { useUIStore } from "@/lib/store/uiStore"
 import { formatKES } from "@/lib/store/cartStore"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
 
 interface DashboardData {
   kpis: {
@@ -39,15 +39,15 @@ interface DashboardData {
   alerts: { outOfStock: number; lowStock: number; expiring: number }
 }
 
-function useDashboard(branchId: string | null) {
+function useDashboard(branchId: string | null, ready: boolean) {
   return useQuery<DashboardData>({
     queryKey: ["dashboard", branchId],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard?branch_id=${branchId}`)
+      const res = await fetch(`/api/dashboard${branchId ? `?branch_id=${branchId}` : ""}`)
       if (!res.ok) throw new Error("Failed to load dashboard")
       return res.json() as Promise<DashboardData>
     },
-    enabled: !!branchId,
+    enabled: ready,
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   })
@@ -122,8 +122,8 @@ function ChartTooltipContent({ active, payload, label }: any) {
 }
 
 export default function DashboardPage() {
-  const branchId = useUIStore((s) => s.activeBranchId)
-  const { data, isLoading } = useDashboard(branchId)
+  const { branchId, ready } = useBranchScope()
+  const { data, isLoading } = useDashboard(branchId, ready)
 
   const todayLabel = new Date().toLocaleDateString("en-KE", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",

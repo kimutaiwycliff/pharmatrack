@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         selling_price: num(p.selling_price), cost_price: num(p.cost_price),
         max_discount_percent: num(p.max_discount_percent),
       }))
-    return canViewCost(ctx.role) ? withPrices : withPrices.map(omitCost)
+    return canViewCost(ctx) ? withPrices : withPrices.map(omitCost)
   })
 
   return NextResponse.json({ products })

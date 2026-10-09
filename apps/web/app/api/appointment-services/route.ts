@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const ctx = await getApiContext({ roles: ["owner", "manager"] })
+  const ctx = await getApiContext({ permission: "appointment_services.manage" })
   if ("error" in ctx) return ctx.error
 
   const parsed = createSchema.safeParse(await request.json())

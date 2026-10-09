@@ -52,6 +52,10 @@ export interface TenantArg {
   organizationId: string
   role?: string | null
   branchId?: string | null
+  /** Pin this session to `branchId`. When omitted, falls back to the role
+   *  default (cashier/pharmacist locked). The web app passes it explicitly,
+   *  derived from the configurable `branches.all` permission. */
+  branchLocked?: boolean
 }
 
 /**
@@ -75,10 +79,11 @@ export async function withTenant<T>(
   const role = typeof arg === "string" ? null : arg.role ?? null
   // Branch-locked roles always pin a branch (their own, or NO_BRANCH when
   // unassigned → fail-closed). All other roles run org-wide (no app.branch_id).
-  const branchId =
-    role != null && BRANCH_LOCKED_ROLES.has(role)
-      ? (typeof arg === "string" ? null : arg.branchId) || NO_BRANCH
-      : null
+  const locked =
+    typeof arg === "string"
+      ? false
+      : arg.branchLocked ?? (role != null && BRANCH_LOCKED_ROLES.has(role))
+  const branchId = locked && typeof arg !== "string" ? arg.branchId || NO_BRANCH : null
 
   return dbAuthenticated().transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.organization_id', ${organizationId}, true)`)

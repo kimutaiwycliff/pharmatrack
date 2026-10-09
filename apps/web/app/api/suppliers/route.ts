@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { asc, ilike } from "drizzle-orm"
 import { withTenant, supplier } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serializeSupplier } from "@/lib/suppliers/serialize"
+import { forbidden } from "@/lib/api-auth"
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Supplier name is required").max(120),
@@ -13,7 +14,6 @@ const createSchema = z.object({
 })
 
 // Creating suppliers is allowed during product/stock entry, so pharmacists qualify too.
-const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 
 export async function GET(_request: NextRequest) {
   const ctx = await getTenantContext()
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!(["suppliers.manage", "stock.receive", "products.create"] as const).some((c) => ctx.permissions.includes(c))) return forbidden("suppliers.manage")
 
   const parsed = createSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })

@@ -1,7 +1,7 @@
 import Dexie, { type Table } from "dexie"
 import type { ProductWithStock, CartItem } from "@pharmatrack/types"
 
-interface OfflineSale {
+export interface OfflineSale {
   id?: number
   saleId: string
   branchId: string
@@ -22,6 +22,18 @@ interface OfflineSale {
   synced: 0 | 1
 }
 
+/** A queued sale the server permanently rejected (e.g. 409 insufficient
+ *  stock). Kept — never silently deleted — so a manager can reconcile the
+ *  cash/stock by hand, then dismiss it. */
+export interface DeadLetterSale {
+  id?: number
+  saleId: string
+  sale: OfflineSale
+  status: number
+  error: string
+  failedAt: string
+}
+
 interface CachedProduct extends ProductWithStock {
   cachedAt: number
 }
@@ -29,6 +41,7 @@ interface CachedProduct extends ProductWithStock {
 class PharmaTrackDB extends Dexie {
   products!: Table<CachedProduct, string>
   offlineSales!: Table<OfflineSale, number>
+  deadLetters!: Table<DeadLetterSale, number>
 
   constructor() {
     super("pharmatrack-pos")
@@ -46,6 +59,12 @@ class PharmaTrackDB extends Dexie {
       await tx.table("offlineSales").toCollection().modify((s: OfflineSale) => {
         s.synced = s.synced ? 1 : 0
       })
+    })
+    // v3: dead-letter store for sales the server permanently rejects.
+    this.version(3).stores({
+      products: "product_id, gtin, barcode_raw, branch_id, cachedAt",
+      offlineSales: "++id, saleId, branchId, synced, createdAt",
+      deadLetters: "++id, saleId, failedAt",
     })
   }
 }
@@ -109,4 +128,17 @@ export async function markSaleSynced(id: number) {
 /** Remove a queued sale that can never sync (e.g. malformed payload). */
 export async function deleteOfflineSale(id: number) {
   return posDB.offlineSales.delete(id)
+}
+
+/** Move a permanently-rejected queued sale to the dead-letter store. */
+export async function moveToDeadLetter(sale: OfflineSale, status: number, error: string) {
+  await posDB.transaction("rw", posDB.offlineSales, posDB.deadLetters, async () => {
+    const { id: _id, ...rest } = sale
+    await posDB.deadLetters.add({ saleId: sale.saleId, sale: rest as OfflineSale, status, error, failedAt: new Date().toISOString() })
+    if (sale.id != null) await posDB.offlineSales.delete(sale.id)
+  })
+}
+
+export async function dismissDeadLetter(id: number) {
+  return posDB.deadLetters.delete(id)
 }

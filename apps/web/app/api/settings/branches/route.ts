@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm"
 import { withTenant, branch } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { requireCapacityApi } from "@/lib/entitlements"
+import { forbidden } from "@/lib/api-auth"
 
 const branchSchema = z.object({
   name: z.string().min(2),
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (ctx.role !== "owner") return NextResponse.json({ error: "Only owners can create branches" }, { status: 403 })
+  if (!ctx.permissions.includes("settings.organization")) return forbidden("settings.organization")
 
   const parsed = branchSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })

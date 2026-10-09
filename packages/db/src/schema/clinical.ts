@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, date } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, integer, boolean, timestamp, date, jsonb } from "drizzle-orm/pg-core"
 import { organization, user } from "./auth"
 import { branch } from "./tenancy"
 import { product } from "./catalogue"
@@ -99,6 +99,6 @@ export const audit_log = pgTable("audit_log", {
   action: text("action").notNull(),
   entity: text("entity"),
   entity_id: text("entity_id"),
-  diff: text("diff"),
+  diff: jsonb("diff").$type<Record<string, unknown>>(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })

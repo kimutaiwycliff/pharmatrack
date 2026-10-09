@@ -1,14 +1,16 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, UserCheck, Pencil, KeyRound, Lock, Send, PauseCircle, Ban, Trash2, Loader2 } from "lucide-react"
+import { MoreHorizontal, UserCheck, Pencil, KeyRound, Lock, Send, PauseCircle, Ban, Trash2, Loader2, GitBranch, Check } from "lucide-react"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
 import { SetPinDialog } from "./SetPinDialog"
 import { SetPasswordDialog } from "./SetPasswordDialog"
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu"
+import { useSessionStore } from "@/lib/store/sessionStore"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import type { Branch } from "@pharmatrack/types"
 
@@ -53,8 +55,12 @@ function ActionMenu({
   const [showPassword, setShowPassword] = useState(false)
   const queryClient = useQueryClient()
   const confirm = useConfirm()
+  const myRole = useSessionStore((s) => s.profile?.role)
 
+  // Mirrors the API: nobody edits themselves or an owner here, and only an
+  // owner can act on another manager.
   if (member.id === currentUserId || member.role === "owner") return null
+  if (myRole !== "owner" && member.role === "manager") return null
 
   const blocked = !!member.banned
 
@@ -105,6 +111,32 @@ function ActionMenu({
                 Change to {r.charAt(0).toUpperCase() + r.slice(1)}
               </DropdownMenuItem>
             ))}
+          {branches.length > 0 && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <GitBranch size={13} className="text-[var(--pt-text-tertiary)]" /> Move to branch
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="min-w-[180px]">
+                {/* Managers work across branches by default, so "no fixed
+                    branch" is meaningful for them; branch-locked roles need one. */}
+                {member.role === "manager" && (
+                  <DropdownMenuItem onClick={() => patch({ branch_id: null }, `${member.full_name} now has no fixed branch`)}>
+                    <span className="flex-1">All branches</span>
+                    {member.branch_id === null && <Check size={13} />}
+                  </DropdownMenuItem>
+                )}
+                {branches.map((b) => (
+                  <DropdownMenuItem
+                    key={b.id}
+                    onClick={() => b.id !== member.branch_id && patch({ branch_id: b.id }, `${member.full_name} moved to ${b.name}`)}
+                  >
+                    <span className="flex-1">{b.name}</span>
+                    {member.branch_id === b.id && <Check size={13} />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setShowPin(true)}>
             <KeyRound size={13} className="text-[var(--pt-text-tertiary)]" /> Set Login PIN

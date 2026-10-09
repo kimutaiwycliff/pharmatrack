@@ -7,6 +7,7 @@ import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { encryptSecret } from "@/lib/crypto"
 import { getMpesaConfig, isConfigured } from "@/lib/mpesa/config"
 import { planCodeForOrg } from "@/lib/entitlements"
+import { forbidden } from "@/lib/api-auth"
 
 // Owner-managed M-Pesa Daraja config. Secrets are write-only (never returned).
 export async function GET() {
@@ -14,7 +15,7 @@ export async function GET() {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (ctx.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 })
+  if (!ctx.permissions.includes("settings.organization")) return forbidden("settings.organization")
 
   const cfg = await getMpesaConfig(ctx.organizationId)
   const planAllowed = hasFeature(await planCodeForOrg(ctx.organizationId), "mpesa_stk")
@@ -44,7 +45,7 @@ export async function PUT(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (ctx.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 })
+  if (!ctx.permissions.includes("settings.organization")) return forbidden("settings.organization")
 
   const parsed = schema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })

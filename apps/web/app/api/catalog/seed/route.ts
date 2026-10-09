@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, isNotNull, inArray, sql } from "drizzle-orm"
 import { dbAdmin, withTenant, drug_catalog, product, product_batch, sale_item, category } from "@pharmatrack/db"
-import { getTenantContext, requireActiveSubscription, type Role } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { z } from "zod"
 
 // Quick Start: materialise the shared drug_catalog into an org's products by
@@ -13,7 +13,7 @@ import { z } from "zod"
 async function requireManager() {
   const ctx = await getTenantContext()
   if (!ctx) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
-  if (!(["owner", "manager"] as Role[]).includes(ctx.role)) {
+  if (!ctx.permissions.includes("catalog.seed")) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
   }
   const subErr = await requireActiveSubscription(ctx.organizationId)

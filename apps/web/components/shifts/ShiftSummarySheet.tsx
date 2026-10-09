@@ -1,13 +1,19 @@
 "use client"
 
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { useQuery } from "@tanstack/react-query"
-import { Clock, X, TrendingUp, Banknote, Smartphone, AlertTriangle } from "lucide-react"
+import { useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { Clock, X, TrendingUp, Banknote, Smartphone, AlertTriangle, Power, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { useSessionStore, useCan } from "@/lib/store/sessionStore"
 import { formatKES } from "@/lib/store/cartStore"
 import { varianceSeverity } from "@/lib/shifts/variance"
 
 interface ShiftRow {
   id: string
+  staff_id: string
   clocked_in_at: string
   clocked_out_at: string | null
   opening_float: number
@@ -71,7 +77,82 @@ function useShiftDetail(id: string | null) {
   })
 }
 
+/** End a shift that is still open — someone else's (needs shifts.close_others)
+ *  or your own. Cash count is optional for someone else's shift: the person who
+ *  knows the drawer may not be there, and a guessed count would fabricate a
+ *  variance. A reason is required so the history explains itself. */
+function CloseOpenShift({ shift, isOwn }: { shift: ShiftRow; isOwn: boolean }) {
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [cash, setCash] = useState("")
+  const [reason, setReason] = useState("")
+  const [saving, setSaving] = useState(false)
+  const closingCash = cash.trim() === "" ? undefined : Number(cash)
+  const cashValid = closingCash === undefined ? !isOwn : !isNaN(closingCash) && closingCash >= 0
+  const reasonValid = isOwn || reason.trim().length >= 3
+
+  async function submit() {
+    setSaving(true)
+    try {
+      const res = await fetch("/api/shifts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shift_id: shift.id, closing_cash: closingCash, notes: reason.trim() || undefined }),
+      })
+      const json = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(json.error ?? "Failed to close shift")
+      toast.success(isOwn ? "Shift closed" : `${shift.profiles.full_name}'s shift closed`)
+      setOpen(false)
+      void queryClient.invalidateQueries({ queryKey: ["shifts"] })
+      void queryClient.invalidateQueries({ queryKey: ["shift-detail", shift.id] })
+      void queryClient.invalidateQueries({ queryKey: ["activeShift"] })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to close shift")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button variant="outline" className="w-full gap-2 text-[var(--pt-red)] border-red-200 dark:border-red-500/30" onClick={() => setOpen(true)}>
+        <Power size={15} /> {isOwn ? "End this shift" : "Force-close this shift"}
+      </Button>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-[var(--pt-border)] p-4 space-y-3">
+      <p className="text-sm font-semibold">{isOwn ? "End your shift" : `Close ${shift.profiles.full_name}'s shift`}</p>
+      <div>
+        <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+          Closing cash (KES){isOwn ? "" : " — optional"}
+        </label>
+        <Input type="number" min="0" step="50" value={cash} onChange={(e) => setCash(e.target.value)} placeholder={isOwn ? "0.00" : "Leave blank if the drawer wasn't counted"} className="h-10" />
+        {closingCash !== undefined && cashValid && (
+          <p className="text-xs text-[var(--pt-text-secondary)] mt-1">
+            Expected {formatKES(shift.opening_float + shift.cash_sales)} · variance {formatKES(closingCash - (shift.opening_float + shift.cash_sales))}
+          </p>
+        )}
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+          {isOwn ? "Notes (optional)" : "Reason"}
+        </label>
+        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={isOwn ? "Any handover notes…" : "e.g. Forgot to clock out"} className="h-10" />
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" className="flex-1" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+        <Button className="flex-1 bg-[var(--pt-red)] hover:bg-red-700 text-white border-0" onClick={submit} disabled={saving || !cashValid || !reasonValid}>
+          {saving ? <Loader2 size={15} className="animate-spin" /> : "Close shift"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function ShiftSummarySheet({ shiftId, onClose }: Props) {
+  const me = useSessionStore((s) => s.profile?.id)
+  const canCloseOthers = useCan("shifts.close_others")
   const { data, isLoading } = useShiftDetail(shiftId)
   const shift = data?.shift
 
@@ -205,8 +286,12 @@ export function ShiftSummarySheet({ shiftId, onClose }: Props) {
               {shift.notes && (
                 <div className="space-y-2">
                   <p className="text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wide">Notes</p>
-                  <p className="text-sm bg-[var(--pt-muted)] rounded-xl px-4 py-3 text-[var(--pt-text)]">{shift.notes}</p>
+                  <p className="text-sm bg-[var(--pt-muted)] rounded-xl px-4 py-3 text-[var(--pt-text)] whitespace-pre-line">{shift.notes}</p>
                 </div>
+              )}
+
+              {!shift.clocked_out_at && (shift.staff_id === me || canCloseOthers) && (
+                <CloseOpenShift key={shift.id} shift={shift} isOwn={shift.staff_id === me} />
               )}
             </>
           )}

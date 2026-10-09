@@ -14,41 +14,43 @@ import {
   Receipt,
   CalendarClock,
   ClipboardList,
+  ClipboardCheck,
   BarChart3,
   Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
-import { hasFeature, type Feature } from "@pharmatrack/core"
+import { hasFeature, type Feature, type Capability } from "@pharmatrack/core"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { LogoutButton } from "@/components/LogoutButton"
-import type { UserRole } from "@pharmatrack/types"
 
 interface NavItem {
   label: string
   href: string
   icon: React.ComponentType<{ size?: number; className?: string }>
-  roles: UserRole[]
+  /** Shown when the user holds ANY of these permissions (omit = everyone). */
+  permission?: Capability[]
   // When set, the item is hidden unless the org's plan includes this feature.
   feature?: Feature
 }
 
 const NAV: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["owner", "manager", "pharmacist"], feature: "dashboard" },
-  { label: "POS Terminal", href: "/pos", icon: ShoppingCart, roles: ["owner", "manager", "pharmacist", "cashier"], feature: "pos" },
-  { label: "Inventory", href: "/inventory", icon: Package, roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-  { label: "Products", href: "/products", icon: Pill, roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-  { label: "Stock Receive", href: "/inventory/receive", icon: PackagePlus, roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-  { label: "Suppliers", href: "/suppliers", icon: Truck, roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-  { label: "Appointments", href: "/appointments", icon: CalendarClock, roles: ["owner", "manager", "pharmacist"], feature: "appointments" },
-  { label: "Prescriptions", href: "/prescriptions", icon: ClipboardList, roles: ["owner", "manager", "pharmacist"], feature: "prescriptions" },
-  { label: "Staff", href: "/staff", icon: Users, roles: ["owner", "manager"] },
-  { label: "Shifts", href: "/shifts", icon: Clock, roles: ["owner", "manager"] },
-  { label: "Sales", href: "/sales", icon: Receipt, roles: ["owner", "manager", "pharmacist", "cashier"] },
-  { label: "Reports", href: "/reports", icon: BarChart3, roles: ["owner", "manager"], feature: "reports" },
-  { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: ["dashboard.view"], feature: "dashboard" },
+  { label: "POS Terminal", href: "/pos", icon: ShoppingCart, permission: ["pos.sell"], feature: "pos" },
+  { label: "Inventory", href: "/inventory", icon: Package, permission: ["products.view"], feature: "inventory" },
+  { label: "Products", href: "/products", icon: Pill, permission: ["products.view"], feature: "inventory" },
+  { label: "Stock Receive", href: "/inventory/receive", icon: PackagePlus, permission: ["stock.receive"], feature: "inventory" },
+  { label: "Purchase Orders", href: "/purchase-orders", icon: ClipboardCheck, permission: ["purchasing.manage", "purchasing.receive"], feature: "inventory" },
+  { label: "Suppliers", href: "/suppliers", icon: Truck, permission: ["products.view", "suppliers.manage"], feature: "inventory" },
+  { label: "Appointments", href: "/appointments", icon: CalendarClock, permission: ["appointments.manage"], feature: "appointments" },
+  { label: "Prescriptions", href: "/prescriptions", icon: ClipboardList, permission: ["prescriptions.manage"], feature: "prescriptions" },
+  { label: "Staff", href: "/staff", icon: Users, permission: ["staff.manage"] },
+  { label: "Shifts", href: "/shifts", icon: Clock, permission: ["shifts.view_all"] },
+  { label: "Sales", href: "/sales", icon: Receipt },
+  { label: "Reports", href: "/reports", icon: BarChart3, permission: ["reports.view"], feature: "reports" },
+  { label: "Settings", href: "/settings", icon: Settings },
 ]
 
 function initials(name: string) {
@@ -68,11 +70,13 @@ export function Sidebar() {
   const setMobileNavOpen = useUIStore((s) => s.setMobileNavOpen)
   const profile = useSessionStore((s) => s.profile)
   const planCode = useSessionStore((s) => s.planCode)
-  const role = (profile?.role ?? "cashier") as UserRole
+  const permissions = useSessionStore((s) => s.permissions)
 
-  // Show an item only when the role allows it AND the plan includes its feature.
+  // Show an item only when a role permission allows it AND the plan includes its feature.
   const visibleNav = NAV.filter(
-    (item) => item.roles.includes(role) && (!item.feature || hasFeature(planCode, item.feature)),
+    (item) =>
+      (!item.permission || item.permission.some((c) => permissions.includes(c))) &&
+      (!item.feature || hasFeature(planCode, item.feature)),
   )
 
   return (

@@ -3,9 +3,10 @@ import { z } from "zod"
 import { asc, eq } from "drizzle-orm"
 import { withTenant, product, product_pack_size } from "@pharmatrack/db"
 import { generateInternalBarcode } from "@pharmatrack/core"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { serializePackSize } from "@/lib/products/packsize"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
+import { forbidden } from "@/lib/api-auth"
 
 const MAX_BARCODE_GENERATION_ATTEMPTS = 5
 
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("products.edit")) return forbidden("products.edit")
 
   const parsed = packSizeSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })

@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, asc, eq, ilike, isNull } from "drizzle-orm"
 import { withTenant, category } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { zUuid } from "@/lib/api/validation"
+import { forbidden } from "@/lib/api-auth"
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Category name is required").max(60),
   parent_id: zUuid().nullable().optional(),
 })
 
-const WRITE_ROLES: Role[] = ["owner", "manager", "pharmacist"]
 
 export async function GET() {
   const ctx = await getTenantContext()
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("products.create") && !ctx.permissions.includes("categories.manage")) return forbidden("products.create")
 
   const parsed = createSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })

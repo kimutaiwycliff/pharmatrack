@@ -1,10 +1,11 @@
-import { getUnsyncedSales, markSaleSynced, deleteOfflineSale } from "./db"
+import { getUnsyncedSales, markSaleSynced, deleteOfflineSale, moveToDeadLetter } from "./db"
 import { isUuid } from "@/lib/utils"
 
 export interface SyncResult {
   synced: number
   dropped: number
-  /** Server rejected permanently (e.g. 409 insufficient stock) — removed from the queue. */
+  /** Server rejected permanently (e.g. 409 insufficient stock) — moved to the
+   *  dead-letter store for a manager to reconcile (never silently deleted). */
   rejected: number
 }
 
@@ -58,8 +59,11 @@ export async function syncOfflineSales(): Promise<SyncResult> {
         synced++
       } else if (res.status >= 400 && res.status < 500 && res.status !== 429) {
         // Permanent rejection (e.g. 409 insufficient stock, 400 invalid) — it can
-        // never succeed on retry, so drop it instead of blocking the queue.
-        if (s.id != null) await deleteOfflineSale(s.id)
+        // never succeed on retry, so take it out of the queue, but keep it in
+        // the dead-letter store: the customer already paid, so someone has to
+        // reconcile it.
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        await moveToDeadLetter(s, res.status, body.error ?? `Rejected (HTTP ${res.status})`)
         rejected++
       } else {
         // 5xx / 429 / transient — stop and keep the rest queued for next time.

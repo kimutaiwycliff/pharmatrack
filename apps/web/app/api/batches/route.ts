@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq, asc } from "drizzle-orm"
-import { withTenant, product, product_batch } from "@pharmatrack/db"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { withTenant, product, product_batch, branch } from "@pharmatrack/db"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
 import { redis } from "@/lib/redis"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
+import { forbidden } from "@/lib/api-auth"
+import { resolveBranchScope } from "@/lib/inventory/aggregate"
 
 const createBatchSchema = z.object({
   product_id: zUuid(),
@@ -34,19 +36,24 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const productId = searchParams.get("product_id")
   const branchId = searchParams.get("branch_id")
-  if (!productId || !branchId) return apiError("product_id and branch_id required")
+  if (!productId) return apiError("product_id required")
 
   const ctx = await getTenantContext()
   if (!ctx) return apiError("Unauthorized", 401)
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
 
-  const rows = await withTenant(ctx, (db) =>
-    db.select().from(product_batch)
-      .where(and(eq(product_batch.product_id, productId), eq(product_batch.branch_id, branchId)))
+  // No branch → every branch's batches ("All branches" view), each tagged
+  // with its branch name; branch-locked staff are always pinned to their own.
+  const scopedBranch = resolveBranchScope(ctx, branchId)
+  const found = await withTenant(ctx, (db) =>
+    db.select({ row: product_batch, branch_name: branch.name }).from(product_batch)
+      .leftJoin(branch, eq(branch.id, product_batch.branch_id))
+      .where(and(eq(product_batch.product_id, productId), scopedBranch ? eq(product_batch.branch_id, scopedBranch) : undefined))
       .orderBy(asc(product_batch.expiry_date)),
   )
-  const batches = canViewCost(ctx.role) ? rows : rows.map(omitCost)
+  const rows = found.map(({ row, branch_name }) => ({ ...row, branch_name }))
+  const batches = canViewCost(ctx) ? rows : rows.map(omitCost)
   return NextResponse.json({ batches })
 }
 
@@ -55,7 +62,7 @@ export async function POST(request: NextRequest) {
   if (!ctx) return apiError("Unauthorized", 401)
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) return apiError("Forbidden", 403)
+  if (!ctx.permissions.includes("stock.receive")) return forbidden("stock.receive")
 
   const parsed = createBatchSchema.safeParse(await request.json())
   if (!parsed.success) return zodErrorResponse(parsed.error)
@@ -99,7 +106,7 @@ export async function PATCH(request: NextRequest) {
   if (!ctx) return apiError("Unauthorized", 401)
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!(["owner", "manager", "pharmacist"] as Role[]).includes(ctx.role)) return apiError("Forbidden", 403)
+  if (!ctx.permissions.includes("stock.receive")) return forbidden("stock.receive")
 
   const parsed = updateBatchSchema.safeParse(await request.json())
   if (!parsed.success) return zodErrorResponse(parsed.error)
@@ -110,7 +117,7 @@ export async function PATCH(request: NextRequest) {
   if (d.batch_number !== undefined) set.batch_number = d.batch_number
   // Correcting an already-recorded batch's cost is "browsing", not the one-off
   // entry receiving allows — restrict it like every other cost edit.
-  if (d.cost_price !== undefined && canViewCost(ctx.role)) set.cost_price = d.cost_price === null ? null : String(d.cost_price)
+  if (d.cost_price !== undefined && canViewCost(ctx)) set.cost_price = d.cost_price === null ? null : String(d.cost_price)
 
   const [updated] = await withTenant(ctx, (db) =>
     db.update(product_batch).set(set).where(eq(product_batch.id, d.id)).returning(),
@@ -128,5 +135,5 @@ export async function PATCH(request: NextRequest) {
     } catch {}
   }
 
-  return NextResponse.json({ batch: canViewCost(ctx.role) ? updated : omitCost(updated) })
+  return NextResponse.json({ batch: canViewCost(ctx) ? updated : omitCost(updated) })
 }

@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, user } from "@pharmatrack/db"
 import { auth } from "@/lib/auth/server"
-import { getTenantContext, type Role, requireActiveSubscription } from "@/lib/auth/helpers"
+import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
+import { forbidden } from "@/lib/api-auth"
 
-const WRITE_ROLES: Role[] = ["owner", "manager"]
 
 // Re-send a staff member's "set your password" link (for invites that expired
 // before the member used them). Owner/manager only; same org.
@@ -14,7 +14,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
-  if (!WRITE_ROLES.includes(ctx.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!ctx.permissions.includes("staff.manage")) return forbidden("staff.manage")
 
   const db = dbAdmin()
   const [target] = await db

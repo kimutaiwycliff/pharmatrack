@@ -4,6 +4,7 @@ import { withTenant, product_stock } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { searchThreshold } from "@/lib/search"
+import { mergeAcrossBranches, resolveBranchScope } from "@/lib/inventory/aggregate"
 
 const EXPIRY_WARN_DAYS = 90
 const num = (v: string | number | null) => (v == null ? null : Number(v))
@@ -31,20 +32,20 @@ function getStatus(p: Row): string[] {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  const branchId = searchParams.get("branch_id")
+  const requestedBranch = searchParams.get("branch_id")
   const q = searchParams.get("q")?.trim() ?? ""
   const status = searchParams.get("status") ?? "all"
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
-  if (!branchId) return NextResponse.json({ error: "branch_id required" }, { status: 400 })
-
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const subErr = await requireActiveSubscription(ctx.organizationId)
   if (subErr) return subErr
+  // null → "All branches": one row per product, summed across branches.
+  const branchId = resolveBranchScope(ctx, requestedBranch)
 
   const where = and(
-    eq(product_stock.branch_id, branchId),
+    branchId ? eq(product_stock.branch_id, branchId) : undefined,
     eq(product_stock.is_active, true),
     q.length >= 2
       ? or(
@@ -59,7 +60,8 @@ export async function GET(request: NextRequest) {
   const thr = searchThreshold(searchParams.get("threshold"))
   const all = await withTenant(ctx, async (db) => {
     if (q.length >= 2) await db.execute(sql`SET LOCAL pg_trgm.similarity_threshold = ${sql.raw(String(thr))}`)
-    return db.select().from(product_stock).where(where).orderBy(asc(product_stock.name))
+    const rows = await db.select().from(product_stock).where(where).orderBy(asc(product_stock.name))
+    return branchId ? rows : mergeAcrossBranches(rows)
   })
   // PostgREST returned numerics as numbers; Drizzle/postgres.js returns strings — coerce.
   const withPrices = all.map((p) => ({
@@ -67,7 +69,7 @@ export async function GET(request: NextRequest) {
     selling_price: num(p.selling_price), cost_price: num(p.cost_price),
     max_discount_percent: num(p.max_discount_percent),
   }))
-  const products = canViewCost(ctx.role) ? withPrices : withPrices.map(omitCost)
+  const products = canViewCost(ctx) ? withPrices : withPrices.map(omitCost)
 
   let outOfStock = 0, lowStock = 0, expiring = 0, controlled = 0
   for (const p of products) {

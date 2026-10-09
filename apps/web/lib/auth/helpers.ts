@@ -1,14 +1,14 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
-import { eq } from "drizzle-orm"
-import { dbAdmin, staff_profile, platform_admin, subscription } from "@pharmatrack/db"
+import { and, eq } from "drizzle-orm"
+import { dbAdmin, staff_profile, platform_admin, subscription, role_permission } from "@pharmatrack/db"
+import { resolvePermissions, type Capability } from "@pharmatrack/core"
 import { auth } from "./server"
 import { effectiveSubscriptionStatus, ACTIVE_STATUSES } from "@/lib/billing/subscription-status"
 import { OFFLINE_MODE } from "@/lib/offline-mode"
 
 export type Role = "owner" | "manager" | "pharmacist" | "cashier"
-const RANK: Record<Role, number> = { owner: 4, manager: 3, pharmacist: 2, cashier: 1 }
 
 /** Current Better Auth session (or null). */
 export async function getSession() {
@@ -20,6 +20,26 @@ export interface TenantContext {
   organizationId: string
   role: Role
   branchId: string | null
+  /** Effective capabilities: role defaults + this org's overrides
+   *  (packages/core/src/permissions.ts). Read fresh on every request, so a
+   *  change in Settings → Roles & permissions applies to the next API call. */
+  permissions: Capability[]
+  /** Pinned to `branchId` at the DB layer (no `branches.all` permission). */
+  branchLocked: boolean
+}
+
+/** Effective capabilities for a role in an org (defaults + stored overrides). */
+export async function loadPermissions(organizationId: string, role: string): Promise<Capability[]> {
+  if (role === "owner") return resolvePermissions("owner")
+  const overrides = await dbAdmin()
+    .select({ role: role_permission.role, capability: role_permission.capability, allowed: role_permission.allowed })
+    .from(role_permission)
+    .where(and(eq(role_permission.organization_id, organizationId), eq(role_permission.role, role)))
+  return resolvePermissions(role, overrides)
+}
+
+export function hasPermission(ctx: { permissions: readonly Capability[] }, cap: Capability): boolean {
+  return ctx.permissions.includes(cap)
 }
 
 /** Resolve the signed-in user's tenant context (org + role + branch) from
@@ -33,11 +53,14 @@ export async function getTenantContext(): Promise<TenantContext | null> {
     .where(eq(staff_profile.user_id, session.user.id))
     .limit(1)
   if (!sp) return null
+  const permissions = await loadPermissions(sp.organization_id, sp.role)
   return {
     userId: session.user.id,
     organizationId: sp.organization_id,
     role: sp.role as Role,
     branchId: sp.branch_id,
+    permissions,
+    branchLocked: !permissions.includes("branches.all"),
   }
 }
 
@@ -48,10 +71,12 @@ export async function requireTenant(): Promise<TenantContext> {
   return ctx
 }
 
-/** Enforce a minimum role; bounce to /dashboard when insufficient. */
-export async function requireRole(min: Role): Promise<TenantContext> {
+/** Enforce a capability for a server page; bounce to /home (which routes the
+ *  user to the first area they CAN use) when missing. */
+export async function requirePermissionPage(cap: Capability | Capability[]): Promise<TenantContext> {
   const ctx = await requireTenant()
-  if (RANK[ctx.role] < RANK[min]) redirect("/dashboard")
+  const any = Array.isArray(cap) ? cap : [cap]
+  if (!any.some((c) => ctx.permissions.includes(c))) redirect("/home?denied=" + encodeURIComponent(any[0]!))
   return ctx
 }
 

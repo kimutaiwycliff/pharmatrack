@@ -4,9 +4,9 @@ import { useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Clock, ChevronLeft, ChevronRight } from "lucide-react"
 import { ShiftSummarySheet } from "@/components/shifts/ShiftSummarySheet"
-import { useUIStore } from "@/lib/store/uiStore"
 import { formatKES } from "@/lib/store/cartStore"
 import { varianceSeverity } from "@/lib/shifts/variance"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
 
 interface ShiftRow {
   id: string
@@ -20,6 +20,7 @@ interface ShiftRow {
   mpesa_sales: number
   variance: number | null
   profiles: { full_name: string; role: string }
+  branch_name?: string | null
 }
 
 interface ShiftsResponse {
@@ -31,12 +32,12 @@ interface ShiftsResponse {
 
 const PAGE_SIZE = 20
 
-function useShifts(branchId: string | null, from: string, to: string, page: number) {
+function useShifts(branchId: string | null, ready: boolean, from: string, to: string, page: number) {
   return useQuery<ShiftsResponse>({
     queryKey: ["shifts", branchId, from, to, page],
     queryFn: async () => {
       const params = new URLSearchParams({
-        branch_id: branchId!,
+        ...(branchId ? { branch_id: branchId } : {}),
         page: String(page),
         limit: String(PAGE_SIZE),
       })
@@ -46,7 +47,7 @@ function useShifts(branchId: string | null, from: string, to: string, page: numb
       if (!res.ok) throw new Error("Failed to load shifts")
       return res.json() as Promise<ShiftsResponse>
     },
-    enabled: !!branchId,
+    enabled: ready,
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   })
@@ -78,13 +79,13 @@ function weekStart() {
 }
 
 export default function ShiftsPage() {
-  const branchId = useUIStore((s) => s.activeBranchId)
+  const { branchId, ready, isAll } = useBranchScope()
   const [from, setFrom] = useState(weekStart())
   const [to, setTo] = useState(today())
   const [page, setPage] = useState(1)
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null)
 
-  const { data, isLoading, isFetching } = useShifts(branchId, from, to, page)
+  const { data, isLoading, isFetching } = useShifts(branchId, ready, from, to, page)
 
   const handleDateChange = useCallback(() => setPage(1), [])
 
@@ -158,7 +159,9 @@ export default function ShiftsPage() {
                   >
                     <td className="px-5 py-3.5">
                       <p className="font-semibold text-[13px]">{s.profiles.full_name}</p>
-                      <p className="text-[11px] text-[var(--pt-text-tertiary)] capitalize">{s.profiles.role}</p>
+                      <p className="text-[11px] text-[var(--pt-text-tertiary)] capitalize">
+                        {s.profiles.role}{isAll && s.branch_name ? ` · ${s.branch_name}` : ""}
+                      </p>
                     </td>
                     <td className="px-4 py-3.5 text-[var(--pt-text-secondary)] hidden sm:table-cell">{fmt(s.clocked_in_at)}</td>
                     <td className="px-4 py-3.5 hidden md:table-cell">

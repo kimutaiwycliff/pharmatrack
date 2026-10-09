@@ -41,7 +41,7 @@ const updateSchema = z.object({
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const ctx = await getApiContext({ roles: ["owner", "manager", "pharmacist"] })
+  const ctx = await getApiContext({ permission: "customers.manage" })
   if ("error" in ctx) return ctx.error
 
   const parsed = updateSchema.safeParse(await request.json())
