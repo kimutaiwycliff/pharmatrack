@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Alert, RefreshControl, StyleSheet, View } from "react-native"
+import { RefreshControl, StyleSheet, View } from "react-native"
 import { FlashList } from "@shopify/flash-list"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiJson, errorMessage } from "../src/lib/api"
@@ -16,6 +16,7 @@ import {
 import {
   isDepartmentDone, seedResultMessage, seedTotals, unseedResultMessage, type Department,
 } from "../src/features/catalogue/logic/catalogSeed"
+import { confirm as askConfirm } from "../src/lib/confirm"
 
 // Mirrors apps/web/app/api/catalog/seed/route.ts: GET returns the department
 // breakdown (KEML catalog total vs already-seeded per department), POST seeds
@@ -84,15 +85,15 @@ export default function CatalogSeed() {
     }
   }
 
-  function confirmUnseed() {
-    Alert.alert(
-      "Remove seeded products?",
-      "Removes catalog-seeded products that have never been received into stock or sold. Anything you've already used stays untouched.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: () => void unseed() },
-      ],
-    )
+  async function confirmUnseed() {
+    const ok = await askConfirm({
+      title: "Remove seeded products?",
+      message:
+        "Removes catalog-seeded products that have never been received into stock or sold. Anything you've already used stays untouched.",
+      confirmLabel: "Remove",
+      destructive: true,
+    })
+    if (ok) void unseed()
   }
 
   const totals = seedTotals(departments)

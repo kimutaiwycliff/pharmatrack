@@ -1,7 +1,8 @@
 import type { ReactNode } from "react"
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native"
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native"
 import { useTheme } from "../theme/useTheme"
-import { space, TOUCH_TARGET } from "../theme/tokens"
+import { motion, space, TOUCH_TARGET } from "../theme/tokens"
+import { PressableScale } from "./PressableScale"
 import { Text } from "./Text"
 
 interface ListRowProps {
@@ -22,8 +23,9 @@ interface ListRowProps {
 export function ListRow({ title, subtitle, leading, trailing, meta, onPress, disabled, accessibilityLabel, accessibilityHint, style }: ListRowProps) {
   const theme = useTheme()
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
+      scaleTo={motion.rowPressScale}
       disabled={disabled || !onPress}
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={accessibilityLabel}
@@ -50,7 +52,7 @@ export function ListRow({ title, subtitle, leading, trailing, meta, onPress, dis
         {meta}
       </View>
       {trailing}
-    </Pressable>
+    </PressableScale>
   )
 }
 

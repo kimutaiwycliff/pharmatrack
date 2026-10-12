@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { buildSalePayload } from "../../../../lib/sync/core/payload"
 import {
-  baseQtyInCart, cartTotals, clampDiscount, lineCap, lineKey, maxSellQty, needsPrescriptionCheck, remainingFor, sellQty, toCartLineInput, type CartItem,
+  baseQtyInCart, cartTotals, clampDiscount, lineCap, lineKey, maxSellQty, needsPrescriptionCheck, remainingFor, restoreLine, sellQty, toCartLineInput, type CartItem,
 } from "../cart"
 
 const item = (over: Partial<CartItem> = {}): CartItem => ({
@@ -99,5 +99,36 @@ describe("lines per product", () => {
     // 30 − 20 in strips = 10 loose max
     expect(lineCap(items, loose)).toBe(10)
     expect(remainingFor(items, loose.productId, 30)).toBe(5)
+  })
+})
+
+describe("restoreLine (Undo a removed line)", () => {
+  const a = item({ productId: "a", productName: "A" })
+  const b = item({ productId: "b", productName: "B", quantity: 2 })
+  const c = item({ productId: "c", productName: "C" })
+
+  it("puts the line back at its old position with the fresh limit", () => {
+    const r = restoreLine([a, c], b, 1, 40)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.items.map((i) => i.productId)).toEqual(["a", "b", "c"])
+    expect(r.items[1]).toMatchObject({ quantity: 2, stockOnHand: 40 })
+  })
+
+  it("clamps an out-of-range index", () => {
+    const r = restoreLine([a], b, 9, 40)
+    expect(r.ok && r.items.map((i) => i.productId)).toEqual(["a", "b"])
+  })
+
+  it("refuses when the same line was added back meanwhile", () => {
+    expect(restoreLine([a, b], b, 0, 40)).toEqual({ ok: false, reason: "exists" })
+  })
+
+  it("never oversells: refuses when the line no longer fits the cap", () => {
+    const loose = item({ productId: "b", quantity: 10 })
+    const stripLine = item({ productId: "b", quantity: 10, sellUnit: strip })
+    // 10 loose already in the cart, the removed strip line is 10 more, only 15 allowed.
+    expect(restoreLine([loose], stripLine, 0, 15)).toEqual({ ok: false, reason: "limit" })
+    expect(restoreLine([loose], stripLine, 0, 20).ok).toBe(true)
   })
 })

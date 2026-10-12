@@ -1,11 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { Alert, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { Button, ListRow, Sheet, StatusBadge, Text } from "../../../components"
 import { formatDay, formatTime } from "../../../lib/dates"
 import { useTheme } from "../../../theme/useTheme"
 import { space } from "../../../theme/tokens"
 import { availableActions, statusBadge, type AppointmentAction } from "../logic/appointments"
 import type { Appointment } from "../types"
+import { confirm as askConfirm } from "../../../lib/confirm"
 
 // Row + action sheet for the Appointments tab — the mobile take on web's
 // components/appointments/AppointmentCard.tsx (same actions per status).
@@ -85,10 +86,15 @@ export function AppointmentSheet({ appt, canManage, busy, onClose, onAction }: A
   function run(action: AppointmentAction) {
     if (!appt) return
     if (action === "cancel") {
-      Alert.alert("Cancel this appointment?", "Pending reminders won't be sent.", [
-        { text: "Keep it", style: "cancel" },
-        { text: "Cancel appointment", style: "destructive", onPress: () => onAction(appt, "cancel") },
-      ])
+      void askConfirm({
+        title: "Cancel this appointment?",
+        message: "Pending reminders won't be sent.",
+        cancelLabel: "Keep it",
+        confirmLabel: "Cancel appointment",
+        destructive: true,
+      }).then((ok) => {
+        if (ok) onAction(appt, "cancel")
+      })
       return
     }
     onAction(appt, action)

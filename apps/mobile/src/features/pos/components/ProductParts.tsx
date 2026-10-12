@@ -1,10 +1,13 @@
 import { toCents } from "@pharmatrack/core"
 import { memo } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
-import { Chip, Money, Text } from "../../../components"
+import { StyleSheet, View } from "react-native"
+import Animated from "react-native-reanimated"
+import { Chip, Money, PressableScale, Text, useFlash } from "../../../components"
 import { env } from "../../../lib/env"
+import { useCartStore } from "../../../store/cart"
 import { useTheme } from "../../../theme/useTheme"
-import { radius, space, TOUCH_TARGET } from "../../../theme/tokens"
+import { motion, radius, space, TOUCH_TARGET } from "../../../theme/tokens"
+import { remainingFor } from "../logic/cart"
 
 const OFFLINE_EDITION = env.EXPO_PUBLIC_OFFLINE_MODE
 
@@ -35,27 +38,51 @@ export interface ProductTileData {
   sellingPrice: number
   requiresPrescription: boolean
   isControlled: boolean
+  /** What this till may sell before the cart is counted. */
+  sellable: number
 }
 
-interface RowProps {
-  product: ProductTileData
-  /** Base units still sellable once the cart is counted. */
-  left: number
-  onPress: () => void
+interface RowProps<P extends ProductTileData> {
+  product: P
+  /** Stable callback (useCallback in the screen) so memo holds; resolves true when added. */
+  onAdd: (product: P) => Promise<boolean> | boolean | void
+}
+
+/**
+ * Base units still sellable once the cart is counted. Each row subscribes to
+ * just this number, so adding one product re-renders only that product's row
+ * (no FlashList extraData churn on every cart change).
+ */
+function useLeft(productId: string, sellable: number): number {
+  return useCartStore((s) => remainingFor(s.items, productId, sellable))
+}
+
+/** Press → add → brief green flash on success (opacity only, UI thread). */
+function useAddPress<P extends ProductTileData>(product: P, onAdd: RowProps<P>["onAdd"]) {
+  const { style, flash } = useFlash()
+  const onPress = () => {
+    void Promise.resolve(onAdd(product)).then((ok) => {
+      if (ok !== false) flash()
+    })
+  }
+  return { flashStyle: style, onPress }
 }
 
 // One search result: big tap target with everything a cashier checks before
 // adding — name + strength, price per base unit, how many are left, Rx flags.
-export const ProductResultRow = memo(function ProductResultRow({ product, left, onPress }: RowProps) {
+function ProductResultRowImpl<P extends ProductTileData>({ product, onAdd }: RowProps<P>) {
   const theme = useTheme()
+  const left = useLeft(product.productId, product.sellable)
+  const { flashStyle, onPress } = useAddPress(product, onAdd)
   const none = left <= 0
   const sub = [product.genericName && product.genericName !== product.name ? product.genericName : null, product.brandName]
     .filter(Boolean)
     .join(" · ")
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={none}
+      scaleTo={motion.rowPressScale}
       accessibilityRole="button"
       accessibilityLabel={`${product.name}${product.strength ? ` ${product.strength}` : ""}, ${leftLabel(left)}`}
       accessibilityHint={none ? undefined : "Adds one to the cart"}
@@ -66,6 +93,7 @@ export const ProductResultRow = memo(function ProductResultRow({ product, left, 
         none && styles.disabled,
       ]}
     >
+      <Animated.View pointerEvents="none" style={[styles.flash, { backgroundColor: theme.green100 }, flashStyle]} />
       <View style={styles.rowBody}>
         <Text variant="bodyStrong" numberOfLines={2}>
           {product.name}
@@ -89,31 +117,31 @@ export const ProductResultRow = memo(function ProductResultRow({ product, left, 
           per {product.baseUnit}
         </Text>
       </View>
-    </Pressable>
+    </PressableScale>
   )
-})
+}
+export const ProductResultRow = memo(ProductResultRowImpl) as typeof ProductResultRowImpl
 
-interface TileProps extends RowProps {
+interface TileProps<P extends ProductTileData> extends RowProps<P> {
   width: number
 }
 
 /** Large "Quick add" tile (best sellers). */
-export function QuickAddTile({ product, left, onPress, width }: TileProps) {
+function QuickAddTileImpl<P extends ProductTileData>({ product, onAdd, width }: TileProps<P>) {
   const theme = useTheme()
+  const left = useLeft(product.productId, product.sellable)
+  const { flashStyle, onPress } = useAddPress(product, onAdd)
   const none = left <= 0
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={none}
       accessibilityRole="button"
       accessibilityLabel={`Quick add ${product.name}${product.strength ? ` ${product.strength}` : ""}`}
       accessibilityState={{ disabled: none }}
-      style={({ pressed }) => [
-        styles.tile,
-        { width, borderColor: theme.border, backgroundColor: pressed ? theme.green50 : theme.surface },
-        none && styles.disabled,
-      ]}
+      style={[styles.tile, { width, borderColor: theme.border, backgroundColor: theme.surface }, none && styles.disabled]}
     >
+      <Animated.View pointerEvents="none" style={[styles.flash, { backgroundColor: theme.green100 }, flashStyle]} />
       <Text variant="label" numberOfLines={2}>
         {product.name}
         {product.strength ? ` ${product.strength}` : ""}
@@ -126,12 +154,14 @@ export function QuickAddTile({ product, left, onPress, width }: TileProps) {
           </Text>
         ) : null}
       </View>
-    </Pressable>
+    </PressableScale>
   )
 }
+export const QuickAddTile = memo(QuickAddTileImpl) as typeof QuickAddTileImpl
 
 const styles = StyleSheet.create({
   badges: { flexDirection: "row", gap: space.xs },
+  flash: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, opacity: 0 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -152,6 +182,7 @@ const styles = StyleSheet.create({
     padding: space.md,
     justifyContent: "space-between",
     gap: space.xs,
+    overflow: "hidden",
   },
   tileFoot: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
 })

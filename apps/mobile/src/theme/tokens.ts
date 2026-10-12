@@ -103,6 +103,57 @@ export const elevation = {
   lg: { elevation: 12, shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 6 } },
 } as const
 
+// ── Motion (animation pass) ─────────────────────────────────────────────────
+// Pure numbers only (no Reanimated import) so vitest can read them; the hooks
+// and builders that turn these into animations live in src/lib/motion.ts.
+// Rules: transform/opacity only, exits ~30% faster than enters, screens
+// ≤ 300 ms, springs critically damped (nothing wobbles on a money figure).
+
+/** Cubic-bezier control points (x1, y1, x2, y2). */
+export type BezierPoints = readonly [number, number, number, number]
+
+export const motion = {
+  duration: {
+    /** Press feedback, toggles, tiny state changes. */
+    fast: 120,
+    /** Enter animations (sheets' content, toasts, cards). */
+    base: 220,
+    /** Screen-level transitions — the ceiling. */
+    slow: 300,
+    /** Money/qty roll to a new value. */
+    number: 250,
+  },
+  /** Exits run this much of the matching enter duration. */
+  exitFactor: 0.7,
+  easing: {
+    /** Material 3 "emphasized decelerate" — things arriving on screen. */
+    emphasizedDecelerate: [0.05, 0.7, 0.1, 1] as BezierPoints,
+    /** Material 3 "standard" — things moving within the screen. */
+    standard: [0.2, 0, 0, 1] as BezierPoints,
+    /** Material 3 "standard accelerate" — things leaving. */
+    accelerate: [0.3, 0, 1, 1] as BezierPoints,
+  },
+  spring: {
+    /** Press release, badge bumps, sliding indicators. Critically damped. */
+    snappy: { duration: 260, dampingRatio: 1 },
+    /** Hero elements (sale-complete circle, toasts). Critically damped. */
+    gentle: { duration: 380, dampingRatio: 1 },
+    /** Bottom sheets opening/snapping. Critically damped, no overshoot. */
+    sheet: { duration: 280, dampingRatio: 1 },
+  },
+  /** Dimming behind sheets and dialogs. */
+  backdropOpacity: 0.5,
+  /** Press-in scale for PressableScale (full-width rows use rowPressScale). */
+  pressScale: 0.97,
+  rowPressScale: 0.985,
+  /** Stagger step for lists that enter together (capped by staggerMax). */
+  stagger: 30,
+  staggerMax: 8,
+} as const
+
+export type MotionDuration = keyof typeof motion.duration
+export type MotionSpring = keyof typeof motion.spring
+
 /** Minimum touch target (Material 48dp) — every new touchable meets this. */
 export const TOUCH_TARGET = 48
 

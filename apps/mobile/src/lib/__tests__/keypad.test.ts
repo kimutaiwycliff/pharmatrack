@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { applyKeypadKey, keypadNumber } from "../keypad"
+import { applyKeypadKey, applyPinKey, keypadNumber } from "../keypad"
 
 describe("applyKeypadKey", () => {
   it("appends digits and 00", () => {
@@ -20,5 +20,18 @@ describe("applyKeypadKey", () => {
     expect(applyKeypadKey("12345", "00", 6)).toBe("123450")
     expect(keypadNumber("")).toBe(0)
     expect(keypadNumber("250")).toBe(250)
+  })
+})
+
+describe("applyPinKey", () => {
+  it("keeps leading zeros (PINs can start with 0)", () => {
+    expect(applyPinKey("", "0")).toBe("0")
+    expect(applyPinKey("0", "7")).toBe("07")
+  })
+  it("ignores 00, supports back/clear, caps the length", () => {
+    expect(applyPinKey("12", "00")).toBe("12")
+    expect(applyPinKey("12", "back")).toBe("1")
+    expect(applyPinKey("12", "clear")).toBe("")
+    expect(applyPinKey("1234", "5", 4)).toBe("1234")
   })
 })

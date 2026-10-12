@@ -1,11 +1,13 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useState, type ReactNode } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
-import { Button, ErrorState, Sheet, SkeletonBlock, Text, TextField } from "../../../components"
+import { StyleSheet, View } from "react-native"
+import Animated from "react-native-reanimated"
+import { Button, ErrorState, PressableScale, Sheet, SkeletonBlock, Text, TextField } from "../../../components"
 import { useCan } from "../../../hooks/useCan"
 import { useQuery } from "../../../hooks/useQuery"
 import { ApiError, errorMessage } from "../../../lib/api"
 import { env } from "../../../lib/env"
+import { useMotion } from "../../../lib/motion"
 import { toast } from "../../../lib/toast"
 import { useTheme } from "../../../theme/useTheme"
 import { radius, space } from "../../../theme/tokens"
@@ -30,6 +32,7 @@ const LOCAL = env.EXPO_PUBLIC_OFFLINE_MODE
 // parent each time it opens so it starts fresh.
 export function DeleteProductSheet({ open, product, onClose, onDone }: DeleteProductSheetProps) {
   const theme = useTheme()
+  const m = useMotion()
   const can = useCan()
   const [mode, setMode] = useState<"choose" | "permanent">("choose")
   const [typed, setTyped] = useState("")
@@ -83,7 +86,7 @@ export function DeleteProductSheet({ open, product, onClose, onDone }: DeletePro
     : null
 
   const deactivateOption = (state: "available" | "already") => (
-    <Pressable
+    <PressableScale
       onPress={deactivate}
       disabled={busy !== null || state === "already"}
       accessibilityRole="button"
@@ -101,10 +104,20 @@ export function DeleteProductSheet({ open, product, onClose, onDone }: DeletePro
       <Text variant="caption" tone="secondary">
         Hidden from POS and inventory. All history is kept and you can reactivate it any time.
       </Text>
-    </Pressable>
+    </PressableScale>
   )
 
   let body: ReactNode
+  // Which state the body shows — each change cross-fades.
+  const bodyKey = LOCAL
+    ? "local"
+    : q.error && !impact
+      ? "error"
+      : !impact || !plan
+        ? "loading"
+        : plan.kind === "clean"
+          ? "clean"
+          : mode
   if (LOCAL) {
     body = (
       <>
@@ -141,7 +154,7 @@ export function DeleteProductSheet({ open, product, onClose, onDone }: DeletePro
         </View>
         {plan.deactivate !== "hidden" ? deactivateOption(plan.deactivate) : null}
         {plan.permanent ? (
-          <Pressable
+          <PressableScale
             onPress={() => setMode("permanent")}
             disabled={busy !== null}
             accessibilityRole="button"
@@ -158,7 +171,7 @@ export function DeleteProductSheet({ open, product, onClose, onDone }: DeletePro
             <Text variant="caption" tone="secondary">
               Erases the product, its batches and stock adjustments. Can&apos;t be undone.
             </Text>
-          </Pressable>
+          </PressableScale>
         ) : null}
         {plan.deactivate === "hidden" && !plan.permanent ? (
           <Text variant="caption" tone="secondary">
@@ -206,7 +219,9 @@ export function DeleteProductSheet({ open, product, onClose, onDone }: DeletePro
 
   return (
     <Sheet open={open} onClose={onClose} title={`Remove “${product.name}”?`} snapPoints={["85%"]} scrollable>
-      {body}
+      <Animated.View key={bodyKey} entering={m.fadeIn} exiting={m.fadeOut} style={styles.body}>
+        {body}
+      </Animated.View>
     </Sheet>
   )
 }
@@ -218,6 +233,7 @@ const styles = StyleSheet.create({
   box: { borderWidth: 1, borderRadius: radius.lg, padding: space.md, gap: space.xxs },
   kept: { marginTop: space.sm },
   loading: { gap: space.md },
+  body: { gap: space.md },
   actions: { flexDirection: "row", gap: space.md },
   flex: { flex: 1 },
 })

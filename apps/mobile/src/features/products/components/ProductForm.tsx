@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { router } from "expo-router"
 import { useState, type ReactNode } from "react"
-import { Alert, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { Button, Card, FormScroll, IconButton, Text, TextField } from "../../../components"
 import { useCan } from "../../../hooks/useCan"
 import { useQuery } from "../../../hooks/useQuery"
@@ -24,6 +24,7 @@ import { ImageField } from "./ImageField"
 import { PickerField, type PickerOption } from "./PickerField"
 import { SuggestionChips } from "./SuggestionChips"
 import { ToggleRow } from "./ToggleRow"
+import { confirm as askConfirm } from "../../../lib/confirm"
 
 type ProductFormProps =
   | { mode: "create"; prefill?: { gtin?: string | null; name?: string | null } }
@@ -123,10 +124,11 @@ export function ProductForm(props: ProductFormProps) {
     } catch (err) {
       const dupe = err instanceof ApiError && err.status === 409 ? existingProductId(err.body) : null
       if (dupe) {
-        Alert.alert("Already in your catalogue", errorMessage(err), [
-          { text: "Stay here", style: "cancel" },
-          { text: "Open it", onPress: () => router.replace({ pathname: "/products/[id]", params: { id: dupe } }) },
-        ])
+        void askConfirm({ title: "Already in your catalogue", message: errorMessage(err), cancelLabel: "Stay here", confirmLabel: "Open it" }).then(
+          (ok) => {
+            if (ok) router.replace({ pathname: "/products/[id]", params: { id: dupe } })
+          },
+        )
       } else {
         setFormError(errorMessage(err))
       }

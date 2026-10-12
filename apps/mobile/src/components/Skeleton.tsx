@@ -1,42 +1,71 @@
-import { useEffect, useState } from "react"
-import { Animated, StyleSheet, View, type DimensionValue, type StyleProp, type ViewStyle } from "react-native"
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react"
+import { StyleSheet, View, type DimensionValue, type StyleProp, type ViewStyle } from "react-native"
+import Animated, { cancelAnimation, Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated"
+import { useMotion } from "../lib/motion"
 import { useTheme } from "../theme/useTheme"
 import { radius, space } from "../theme/tokens"
 
-// R3 loading placeholders: grey blocks that gently pulse in the shape of the
-// content that's coming, instead of a lone spinner or "Loading…".
+// R3 loading placeholders: grey blocks in the shape of the content that's
+// coming. One Reanimated opacity pulse (UI thread) per skeleton group — the
+// blocks inside a SkeletonList/SkeletonCards share their container's pulse; a
+// lone SkeletonBlock pulses by itself. Under reduced motion they sit still.
+// When the real content replaces a skeleton it fades out over it (exiting
+// animation), so loading → loaded reads as a crossfade, not a pop.
+
+const PULSE_MS = 800
+const PULSE_LOW = 0.45
+
+/** True inside a container that already pulses. */
+const PulseOwned = createContext(false)
+
+function usePulseStyle(enabled: boolean) {
+  const { reduced } = useMotion()
+  const opacity = useSharedValue(1)
+  useEffect(() => {
+    if (!enabled || reduced) {
+      opacity.value = 1
+      return
+    }
+    opacity.value = withRepeat(
+      withTiming(PULSE_LOW, { duration: PULSE_MS, easing: Easing.inOut(Easing.ease), reduceMotion: ReduceMotion.Never }),
+      -1,
+      true,
+    )
+    return () => cancelAnimation(opacity)
+  }, [enabled, reduced, opacity])
+  return useAnimatedStyle(() => ({ opacity: opacity.value }))
+}
+
+function PulseGroup({ children, style, label = "Loading" }: { children: ReactNode; style?: StyleProp<ViewStyle>; label?: string }) {
+  const m = useMotion()
+  const pulse = usePulseStyle(true)
+  return (
+    <Animated.View
+      exiting={m.fadeOut}
+      style={[style, pulse]}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
+    >
+      <PulseOwned.Provider value>{children}</PulseOwned.Provider>
+    </Animated.View>
+  )
+}
 
 export function SkeletonBlock({ width = "100%", height = 14, style }: { width?: DimensionValue; height?: number; style?: StyleProp<ViewStyle> }) {
   const theme = useTheme()
-  return <View style={[{ width, height, borderRadius: radius.sm, backgroundColor: theme.mutedStrong }, style]} />
-}
-
-function usePulse() {
-  const [opacity] = useState(() => new Animated.Value(1))
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.45, duration: 700, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-      ]),
-    )
-    loop.start()
-    return () => loop.stop()
-  }, [opacity])
-  return opacity
+  const owned = useContext(PulseOwned)
+  const pulse = usePulseStyle(!owned)
+  const base = useMemo(() => ({ width, height, borderRadius: radius.sm, backgroundColor: theme.mutedStrong }), [width, height, theme])
+  if (owned) return <View style={[base, style]} />
+  return <Animated.View style={[base, style, pulse]} />
 }
 
 /** List-shaped skeleton: `rows` rows of title + subtitle (+ a trailing figure). */
 export function SkeletonList({ rows = 6, style }: { rows?: number; style?: StyleProp<ViewStyle> }) {
   const theme = useTheme()
-  const opacity = usePulse()
   return (
-    <Animated.View
-      style={[{ opacity }, style]}
-      accessible
-      accessibilityRole="progressbar"
-      accessibilityLabel="Loading"
-    >
+    <PulseGroup style={style}>
       {Array.from({ length: rows }, (_, i) => (
         <View key={i} style={[styles.row, { borderBottomColor: theme.border }]}>
           <View style={styles.body}>
@@ -46,23 +75,22 @@ export function SkeletonList({ rows = 6, style }: { rows?: number; style?: Style
           <SkeletonBlock width={64} height={16} />
         </View>
       ))}
-    </Animated.View>
+    </PulseGroup>
   )
 }
 
 /** Card grid skeleton (dashboard KPIs). */
 export function SkeletonCards({ count = 4 }: { count?: number }) {
   const theme = useTheme()
-  const opacity = usePulse()
   return (
-    <Animated.View style={[styles.cards, { opacity }]} accessible accessibilityRole="progressbar" accessibilityLabel="Loading">
+    <PulseGroup style={styles.cards}>
       {Array.from({ length: count }, (_, i) => (
         <View key={i} style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <SkeletonBlock width="50%" height={12} />
           <SkeletonBlock width="80%" height={22} />
         </View>
       ))}
-    </Animated.View>
+    </PulseGroup>
   )
 }
 

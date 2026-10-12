@@ -1,10 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
-import { useState } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
-import { Button, Chip, MpesaFlow, NumericKeypad, Sheet, Text, TextField } from "../../../components"
+import { useEffect, useRef, useState } from "react"
+import { StyleSheet, View } from "react-native"
+import Animated, { interpolateColor, useAnimatedStyle, useSharedValue } from "react-native-reanimated"
+import { AnimatedNumber, Button, Chip, MpesaFlow, NumericKeypad, PressableScale, Sheet, Text, TextField } from "../../../components"
 import { env } from "../../../lib/env"
 import { keypadNumber } from "../../../lib/keypad"
+import { useMotion } from "../../../lib/motion"
 import type { CartItem } from "../../../store/cart"
 import { useTheme } from "../../../theme/useTheme"
 import { radius, space, TOUCH_TARGET } from "../../../theme/tokens"
@@ -46,6 +48,7 @@ const tenderCents = (t: Tender) => t.exactCents ?? keypadNumber(t.digits) * 100
 // one per checkout (key it) so nothing carries over from the last sale.
 export function PaymentSheet(p: PaymentSheetProps) {
   const theme = useTheme()
+  const m = useMotion()
   const total = cartTotals(p.items).total
   const rx = needsPrescriptionCheck(p.items)
   const [method, setMethod] = useState<Method>("cash")
@@ -58,7 +61,7 @@ export function PaymentSheet(p: PaymentSheetProps) {
   const tendered = tenderCents(tender)
   const change = changeCents(tendered, total)
 
-  const methods: { id: Method; label: string; disabled?: boolean }[] = OFFLINE_EDITION
+  const methods: MethodOption[] = OFFLINE_EDITION
     ? [{ id: "cash", label: "Cash" }]
     : [
         { id: "cash", label: "Cash" },
@@ -102,7 +105,7 @@ export function PaymentSheet(p: PaymentSheetProps) {
       </View>
 
       {rx.required ? (
-        <Pressable
+        <PressableScale
           onPress={() => setRxSeen((v) => !v)}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: rxSeen }}
@@ -118,35 +121,25 @@ export function PaymentSheet(p: PaymentSheetProps) {
                 : "This sale has prescription-only items. Check the prescription before taking payment."}
             </Text>
           </View>
-        </Pressable>
+        </PressableScale>
       ) : null}
 
-      {methods.length > 1 ? (
-        <View style={styles.methods} accessibilityRole="radiogroup">
-          {methods.map((m) => (
-            <Chip
-              key={m.id}
-              label={m.label}
-              selected={method === m.id}
-              disabled={m.disabled}
-              onPress={() => setMethod(m.id)}
-              style={styles.methodChip}
-            />
-          ))}
-        </View>
-      ) : null}
+      {methods.length > 1 ? <MethodTabs methods={methods} value={method} onChange={setMethod} /> : null}
       {!OFFLINE_EDITION && p.mpesaOffered && !p.isOnline ? (
         <Text variant="caption" tone="warning">
           M-Pesa prompts and Split need internet — use Till/Paybill for M-Pesa paid to the shop.
         </Text>
       ) : null}
 
+      {/* Sections cross-fade when the method changes. */}
       {method === "cash" ? (
-        <CashEntry total={total} tender={tender} onTender={setTender} label="Cash received" />
+        <Animated.View key="cash" entering={m.fadeIn} exiting={m.fadeOut}>
+          <CashEntry total={total} tender={tender} onTender={setTender} label="Cash received" />
+        </Animated.View>
       ) : null}
 
       {method === "till" ? (
-        <View style={styles.section}>
+        <Animated.View key="till" entering={m.fadeIn} exiting={m.fadeOut} style={styles.section}>
           <Text variant="body">
             M-Pesa paid to the shop&apos;s till/paybill · <Text variant="bodyStrong">{formatKES(total)}</Text>
           </Text>
@@ -162,35 +155,116 @@ export function PaymentSheet(p: PaymentSheetProps) {
             helper="Check the customer's M-Pesa message first. The owner verifies these later."
           />
           <Button title="Record M-Pesa payment" size="lg" onPress={recordTill} loading={p.committing} disabled={!rxOk} />
-        </View>
+        </Animated.View>
       ) : null}
 
       {/* isOnline only gates which methods are SELECTABLE — once a flow is
           active a mid-flow disconnect doesn't tear it down ("Confirm
           received" / manual code need no network). */}
       {method === "mpesa" ? (
-        rxOk ? (
-          <MpesaFlow amountCents={total} onConfirmed={p.onMpesa} inSheet />
-        ) : (
-          <Text tone="warning">Tick “Prescription seen” first.</Text>
-        )
+        <Animated.View key="mpesa" entering={m.fadeIn} exiting={m.fadeOut}>
+          {rxOk ? <MpesaFlow amountCents={total} onConfirmed={p.onMpesa} inSheet /> : <Text tone="warning">Tick “Prescription seen” first.</Text>}
+        </Animated.View>
       ) : null}
 
-      {method === "split" ? <SplitEntry total={total} rxOk={rxOk} onConfirmed={p.onSplit} /> : null}
+      {method === "split" ? (
+        <Animated.View key="split" entering={m.fadeIn} exiting={m.fadeOut}>
+          <SplitEntry total={total} rxOk={rxOk} onConfirmed={p.onSplit} />
+        </Animated.View>
+      ) : null}
 
       {p.error ? (
-        <Text tone="danger" accessibilityLiveRegion="assertive">
-          {p.error}
-        </Text>
+        <Animated.View entering={m.riseIn}>
+          <Text tone="danger" accessibilityLiveRegion="assertive">
+            {p.error}
+          </Text>
+        </Animated.View>
       ) : null}
     </Sheet>
   )
 }
 
+type MethodOption = { id: Method; label: string; disabled?: boolean }
+
+const TABS_PAD = 4
+
+/**
+ * Payment-method picker: equal segments with a selection pill that slides
+ * (translateX on the UI thread, critically damped) to the chosen method.
+ */
+function MethodTabs({ methods, value, onChange }: { methods: MethodOption[]; value: Method; onChange: (m: Method) => void }) {
+  const theme = useTheme()
+  const motionApi = useMotion()
+  const [width, setWidth] = useState(0)
+  const segW = width > 0 ? (width - TABS_PAD * 2) / methods.length : 0
+  const index = Math.max(0, methods.findIndex((m) => m.id === value))
+  const x = useSharedValue(0)
+  const placed = useRef(false)
+  useEffect(() => {
+    if (segW <= 0) return
+    if (!placed.current) {
+      placed.current = true
+      x.value = index * segW
+      return
+    }
+    x.value = motionApi.spring(index * segW, "snappy")
+  }, [index, segW, x, motionApi])
+  const pill = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }))
+
+  return (
+    <View
+      style={[styles.tabs, { backgroundColor: theme.mutedStrong }]}
+      accessibilityRole="radiogroup"
+      accessibilityLabel="Payment method"
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
+      {segW > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.pill, { width: segW, backgroundColor: theme.surface, borderColor: theme.green }, pill]}
+        />
+      ) : null}
+      {methods.map((m) => {
+        const selected = m.id === value
+        return (
+          <PressableScale
+            key={m.id}
+            onPress={() => onChange(m.id)}
+            disabled={m.disabled}
+            haptic="tick"
+            accessibilityRole="radio"
+            accessibilityLabel={m.label}
+            accessibilityState={{ selected, disabled: !!m.disabled }}
+            style={[styles.tab, m.disabled && styles.tabDisabled]}
+          >
+            <Text
+              variant="label"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={{ color: selected ? theme.green600 : theme.textSecondary }}
+            >
+              {m.label}
+            </Text>
+          </PressableScale>
+        )
+      })}
+    </View>
+  )
+}
+
 function CashEntry({ total, tender, onTender, label }: { total: number; tender: Tender; onTender: (t: Tender) => void; label: string }) {
+  const theme = useTheme()
+  const m = useMotion()
   const tendered = tenderCents(tender)
   const change = changeCents(tendered, total)
   const options = quickCashOptions(total)
+  // Change (green) ↔ short (red) colour glides instead of flipping.
+  const enough = useSharedValue(change >= 0 ? 1 : 0)
+  useEffect(() => {
+    enough.value = m.timing(change >= 0 ? 1 : 0, "fast")
+  }, [change, enough, m])
+  const changeColor = useAnimatedStyle(() => ({ color: interpolateColor(enough.value, [0, 1], [theme.red, theme.green600]) }))
   return (
     <View style={styles.section}>
       <View style={styles.tenderRow}>
@@ -203,14 +277,20 @@ function CashEntry({ total, tender, onTender, label }: { total: number; tender: 
           </Text>
         </View>
         {tendered > 0 ? (
-          <View style={styles.changeCol} accessibilityLiveRegion="polite">
+          <Animated.View entering={m.fadeIn} style={styles.changeCol} accessibilityLiveRegion="polite">
             <Text variant="caption" tone="secondary">
               {change >= 0 ? "Change" : "Short by"}
             </Text>
-            <Text variant="title" tone={change >= 0 ? "success" : "danger"} tabular>
-              {formatKES(Math.abs(change))}
-            </Text>
-          </View>
+            {/* Rolls when a quick-cash amount is tapped; tracks every key while typing. */}
+            <AnimatedNumber
+              value={Math.abs(change)}
+              format={formatKES}
+              variant="title"
+              animate={tender.exactCents !== null}
+              animatedStyle={changeColor}
+              accessibilityLabel={`${change >= 0 ? "Change" : "Short by"} ${formatKES(Math.abs(change))}`}
+            />
+          </Animated.View>
         ) : null}
       </View>
       <View style={styles.quick}>
@@ -273,8 +353,10 @@ const styles = StyleSheet.create({
     padding: space.md,
     minHeight: TOUCH_TARGET,
   },
-  methods: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  methodChip: { flexGrow: 1, justifyContent: "center" },
+  tabs: { flexDirection: "row", padding: TABS_PAD, borderRadius: radius.lg, minHeight: TOUCH_TARGET + TABS_PAD * 2 },
+  pill: { position: "absolute", top: TABS_PAD, bottom: TABS_PAD, left: TABS_PAD, borderRadius: radius.md, borderWidth: 1.5 },
+  tab: { flex: 1, minHeight: TOUCH_TARGET, alignItems: "center", justifyContent: "center", paddingHorizontal: space.xs },
+  tabDisabled: { opacity: 0.4 },
   section: { gap: space.md },
   tenderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   changeCol: { alignItems: "flex-end" },

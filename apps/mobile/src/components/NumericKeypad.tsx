@@ -1,9 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { StyleSheet, Text, View } from "react-native"
 import { haptics } from "../lib/haptics"
-import { applyKeypadKey, type KeypadKey } from "../lib/keypad"
+import { applyKeypadKey, applyPinKey, type KeypadKey } from "../lib/keypad"
 import { useTheme } from "../theme/useTheme"
 import { radius, space } from "../theme/tokens"
+import { PressableScale } from "./PressableScale"
 
 interface NumericKeypadProps {
   value: string
@@ -13,6 +14,8 @@ interface NumericKeypadProps {
   hideDoubleZero?: boolean
   /** Key height; 56 on phones, larger on tablets. */
   keyHeight?: number
+  /** "pin": every digit counts (leading zeros kept), no "00" key. */
+  mode?: "amount" | "pin"
 }
 
 const ROWS: KeypadKey[][] = [
@@ -26,22 +29,25 @@ const ROWS: KeypadKey[][] = [
 // NOT a TextInput, so a USB/Bluetooth scanner's keystrokes can never land in
 // the tendered amount, and the system keyboard never covers the totals.
 // Long-press ⌫ clears; a separate Clear key sits under the grid.
-export function NumericKeypad({ value, onChange, maxLength = 7, hideDoubleZero, keyHeight = 56 }: NumericKeypadProps) {
+export function NumericKeypad({ value, onChange, maxLength = 7, hideDoubleZero, keyHeight = 56, mode = "amount" }: NumericKeypadProps) {
   const theme = useTheme()
+  const pin = mode === "pin"
+  const noDoubleZero = hideDoubleZero || pin
   const press = (key: KeypadKey) => {
     haptics.tick()
-    onChange(applyKeypadKey(value, key, maxLength))
+    onChange(pin ? applyPinKey(value, key, maxLength) : applyKeypadKey(value, key, maxLength))
   }
   return (
     <View style={styles.grid}>
       {ROWS.map((row, i) => (
         <View key={i} style={styles.row}>
           {row.map((key) => {
-            if (key === "00" && hideDoubleZero) return <View key={key} style={[styles.key, { height: keyHeight }]} />
+            if (key === "00" && noDoubleZero) return <View key={key} style={[styles.key, { height: keyHeight }]} />
             const isBack = key === "back"
             return (
-              <Pressable
+              <PressableScale
                 key={key}
+                scaleTo={0.94}
                 onPress={() => press(key)}
                 onLongPress={isBack ? () => press("clear") : undefined}
                 accessibilityRole="button"
@@ -57,19 +63,19 @@ export function NumericKeypad({ value, onChange, maxLength = 7, hideDoubleZero, 
                 ) : (
                   <Text style={[styles.keyText, { color: theme.text }]}>{key}</Text>
                 )}
-              </Pressable>
+              </PressableScale>
             )
           })}
         </View>
       ))}
-      <Pressable
+      <PressableScale
         onPress={() => press("clear")}
         accessibilityRole="button"
         accessibilityLabel="Clear"
         style={({ pressed }) => [styles.clear, { backgroundColor: pressed ? theme.mutedStrong : "transparent" }]}
       >
         <Text style={[styles.clearText, { color: theme.textSecondary }]}>Clear</Text>
-      </Pressable>
+      </PressableScale>
     </View>
   )
 }

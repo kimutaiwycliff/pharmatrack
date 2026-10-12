@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react"
 import { Linking, StyleSheet, View } from "react-native"
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera"
-import { router, Stack, useLocalSearchParams } from "expo-router"
+import { router, useLocalSearchParams } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { Button, IconButton, Text } from "../src/components"
+import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated"
+import { Button, IconButton, Text, useFlash } from "../src/components"
+import { useMotion } from "../src/lib/motion"
 import { addScanned } from "../src/features/pos/actions"
 import { deliverScan } from "../src/lib/scanCapture"
 import { useCartStore } from "../src/store/cart"
 import { useTheme } from "../src/theme/useTheme"
-import { radius, space } from "../src/theme/tokens"
+import { motion, radius, space } from "../src/theme/tokens"
 import { cartTotals } from "../src/features/pos/logic/cart"
 import { formatKES } from "@pharmatrack/core"
 
@@ -37,6 +39,11 @@ export default function Scan() {
   const busy = useRef(false)
   const items = useCartStore((s) => s.items)
   const totals = cartTotals(items)
+  const m = useMotion()
+  // Success feedback: the viewfinder frame flashes green and the count bumps.
+  const { style: frameFlash, flash } = useFlash()
+  const bump = useSharedValue(1)
+  const bumpStyle = useAnimatedStyle(() => ({ transform: [{ scale: bump.value }] }))
 
   // Capture mode: closing without a read resolves the caller with null.
   useEffect(() => {
@@ -64,7 +71,16 @@ export default function Scan() {
     busy.current = true
     try {
       const name = await addScanned(code)
-      if (name) setLastAdded(name)
+      if (name) {
+        setLastAdded(name)
+        flash()
+        if (!m.reduced) {
+          bump.value = withSequence(
+            withTiming(1.2, { duration: motion.duration.fast, reduceMotion: ReduceMotion.Never }),
+            withSpring(1, { ...motion.spring.snappy, reduceMotion: ReduceMotion.Never }),
+          )
+        }
+      }
     } finally {
       busy.current = false
     }
@@ -79,7 +95,6 @@ export default function Scan() {
   if (!permission.granted) {
     return (
       <View style={[styles.fill, styles.denied, { backgroundColor: theme.bg, paddingTop: insets.top + space.lg }]}>
-        <Stack.Screen options={{ presentation: "fullScreenModal", animation: "slide_from_bottom" }} />
         <View style={styles.deniedClose}>{closeButton}</View>
         <Ionicons name="camera-outline" size={56} color={theme.textSecondary} />
         <Text variant="title" align="center">
@@ -102,7 +117,6 @@ export default function Scan() {
 
   return (
     <View style={[styles.fill, { backgroundColor: theme.scrim }]}>
-      <Stack.Screen options={{ presentation: "fullScreenModal", animation: "slide_from_bottom" }} />
       <CameraView
         style={StyleSheet.absoluteFill}
         facing="back"
@@ -116,7 +130,18 @@ export default function Scan() {
         <View style={[styles.flex, { backgroundColor: theme.scrim }]} />
         <View style={styles.frameRow}>
           <View style={[styles.flex, { backgroundColor: theme.scrim }]} />
-          <View style={[styles.frame, { borderColor: theme.green }]} accessibilityElementsHidden />
+          <View style={[styles.frame, { borderColor: theme.green }]} accessibilityElementsHidden>
+            <Animated.View style={[styles.frameFlash, frameFlash]}>
+              <View style={[styles.fill, styles.flashTint, { backgroundColor: theme.green }]} />
+            </Animated.View>
+            {!capture && totals.count > 0 ? (
+              <Animated.View entering={m.popIn} style={[styles.countBadge, { backgroundColor: theme.greenCta }, bumpStyle]}>
+                <Text variant="label" tabular style={{ color: theme.onAccent }}>
+                  {totals.count}
+                </Text>
+              </Animated.View>
+            ) : null}
+          </View>
           <View style={[styles.flex, { backgroundColor: theme.scrim }]} />
         </View>
         <View style={[styles.flex, { backgroundColor: theme.scrim }]} />
@@ -166,6 +191,19 @@ const styles = StyleSheet.create({
   deniedClose: { position: "absolute", top: space.xxxl, right: space.lg },
   frameRow: { flexDirection: "row", height: FRAME },
   frame: { width: FRAME, height: FRAME, borderWidth: 3, borderRadius: radius.lg },
+  frameFlash: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: radius.lg - 3, overflow: "hidden", opacity: 0 },
+  flashTint: { opacity: 0.35 },
+  countBadge: {
+    position: "absolute",
+    top: -16,
+    right: -16,
+    minWidth: 32,
+    height: 32,
+    borderRadius: 16,
+    paddingHorizontal: space.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   topBar: {
     position: "absolute",
     top: 0,

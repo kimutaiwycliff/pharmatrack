@@ -1,5 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { StyleSheet, View } from "react-native"
+import { StyleSheet } from "react-native"
+import Animated from "react-native-reanimated"
+import { useMotion } from "../lib/motion"
 import { useTheme } from "../theme/useTheme"
 import { space } from "../theme/tokens"
 import { Button } from "./Button"
@@ -18,19 +20,20 @@ interface ErrorStateProps {
 // page while older data is still on screen.
 export function ErrorState({ message, onRetry, title = "Couldn't load this", compact }: ErrorStateProps) {
   const theme = useTheme()
+  const m = useMotion()
   if (compact) {
     return (
-      <View style={[styles.banner, { backgroundColor: theme.red50, borderColor: theme.red }]} accessibilityLiveRegion="polite">
+      <Animated.View entering={m.fadeIn} style={[styles.banner, { backgroundColor: theme.red50, borderColor: theme.red }]} accessibilityLiveRegion="polite">
         <Ionicons name="alert-circle-outline" size={18} color={theme.red} />
         <Text variant="caption" tone="danger" style={styles.flex}>
           {message}
         </Text>
         {onRetry ? <Button title="Retry" size="sm" variant="ghost" onPress={onRetry} /> : null}
-      </View>
+      </Animated.View>
     )
   }
   return (
-    <View style={styles.block} accessibilityLiveRegion="polite">
+    <Animated.View entering={m.fadeIn} style={styles.block} accessibilityLiveRegion="polite">
       <Ionicons name="cloud-offline-outline" size={36} color={theme.textTertiary} />
       <Text variant="headline" align="center">
         {title}
@@ -47,7 +50,7 @@ export function ErrorState({ message, onRetry, title = "Couldn't load this", com
           style={styles.retry}
         />
       ) : null}
-    </View>
+    </Animated.View>
   )
 }
 

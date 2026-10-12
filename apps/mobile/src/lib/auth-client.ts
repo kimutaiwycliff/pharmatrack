@@ -1,4 +1,3 @@
-import { Alert } from "react-native"
 import { router } from "expo-router"
 import { createAuthClient } from "better-auth/react"
 import { expoClient } from "@better-auth/expo/client"
@@ -6,6 +5,7 @@ import * as SecureStore from "expo-secure-store"
 import { env } from "./env"
 import { useStaffStore } from "../store/staff"
 import { useSyncStore } from "../store/sync"
+import { confirm as askConfirm } from "./confirm"
 
 // ADR-013 — @better-auth/expo manages its own cookie jar in SecureStore
 // (captures Set-Cookie, replays it as a Cookie header on later authClient
@@ -38,26 +38,19 @@ export const getCookie = (authClient as any).getCookie as () => string
 // confirm-then-redirect behavior can't drift between them again — index.tsx's
 // session redirect only evaluates once at cold start, so callers must
 // explicitly navigate to /login after signOut() resolves.
-export function confirmSignOut() {
-  Alert.alert("Log out", "Are you sure you want to log out?", [
-    { text: "Cancel", style: "cancel" },
-    {
-      text: "Log out",
-      style: "destructive",
-      onPress: async () => {
-        // R1: signing out also releases the till — the next person picks
-        // themselves (offline PIN) on a registered phone. Signing out while
-        // offline must still work, so a failed server call isn't fatal.
-        try {
-          await signOut()
-        } catch {
-          // offline — the local session is cleared regardless
-        }
-        useStaffStore.getState().clear()
-        router.replace(useSyncStore.getState().device ? "/switch-user" : "/login")
-      },
-    },
-  ])
+export async function confirmSignOut() {
+  const ok = await askConfirm({ title: "Log out", message: "Are you sure you want to log out?", confirmLabel: "Log out", destructive: true })
+  if (!ok) return
+  // R1: signing out also releases the till — the next person picks
+  // themselves (offline PIN) on a registered phone. Signing out while
+  // offline must still work, so a failed server call isn't fatal.
+  try {
+    await signOut()
+  } catch {
+    // offline — the local session is cleared regardless
+  }
+  useStaffStore.getState().clear()
+  router.replace(useSyncStore.getState().device ? "/switch-user" : "/login")
 }
 
 export async function signInEmail(email: string, password: string) {

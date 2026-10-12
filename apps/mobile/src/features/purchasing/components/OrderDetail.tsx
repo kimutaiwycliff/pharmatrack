@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { useEffect, useState } from "react"
-import { Alert, BackHandler, RefreshControl, ScrollView, StyleSheet, View } from "react-native"
+import { BackHandler, RefreshControl, ScrollView, StyleSheet, View } from "react-native"
 import {
   Button, Card, ErrorState, Money, ScreenHeader, SkeletonList, Text,
 } from "../../../components"
@@ -16,6 +16,7 @@ import { canCancelStatus, canReceiveStatus } from "../logic/status"
 import { kesToCents, packName, unitsText, type PoItem, type PurchaseOrderDetail } from "../logic/types"
 import { PoStatusBadge } from "./PoStatusBadge"
 import { ReceiveDelivery } from "./ReceiveDelivery"
+import { confirm as askConfirm } from "../../../lib/confirm"
 
 interface OrderDetailProps {
   id: string
@@ -116,38 +117,38 @@ export function OrderDetail({ id, embedded, onChanged, onDeleted }: OrderDetailP
     }
   }
 
-  function confirmCancel(o: PurchaseOrderDetail) {
-    Alert.alert(
-      `Cancel ${o.po_number}?`,
-      o.status === "partially_received"
-        ? "Stock already received stays in inventory; nothing more will be expected."
-        : "The supplier won't be notified automatically — let them know too.",
-      [
-        { text: "Keep order", style: "cancel" },
-        { text: "Cancel order", style: "destructive", onPress: () => void patch("cancel", "Order cancelled") },
-      ],
-    )
+  async function confirmCancel(o: PurchaseOrderDetail) {
+    const ok = await askConfirm({
+      title: `Cancel ${o.po_number}?`,
+      message:
+        o.status === "partially_received"
+          ? "Stock already received stays in inventory; nothing more will be expected."
+          : "The supplier won't be notified automatically — let them know too.",
+      cancelLabel: "Keep order",
+      confirmLabel: "Cancel order",
+      destructive: true,
+    })
+    if (ok) void patch("cancel", "Order cancelled")
   }
 
-  function confirmDelete(o: PurchaseOrderDetail) {
-    Alert.alert("Delete draft?", `Delete draft ${o.po_number}? This can't be undone.`, [
-      { text: "Keep", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          setBusy("delete")
-          apiJson(`/api/purchase-orders/${id}`, { method: "DELETE" })
-            .then(() => {
-              toast.success("Draft deleted")
-              onChanged?.()
-              onDeleted?.()
-            })
-            .catch((err: unknown) => toast.error(errorMessage(err)))
-            .finally(() => setBusy(null))
-        },
-      },
-    ])
+  async function confirmDelete(o: PurchaseOrderDetail) {
+    const ok = await askConfirm({
+      title: "Delete draft?",
+      message: `Delete draft ${o.po_number}? This can't be undone.`,
+      cancelLabel: "Keep",
+      confirmLabel: "Delete",
+      destructive: true,
+    })
+    if (!ok) return
+    setBusy("delete")
+    apiJson(`/api/purchase-orders/${id}`, { method: "DELETE" })
+      .then(() => {
+        toast.success("Draft deleted")
+        onChanged?.()
+        onDeleted?.()
+      })
+      .catch((err: unknown) => toast.error(errorMessage(err)))
+      .finally(() => setBusy(null))
   }
 
   const receivable = canReceive && canReceiveStatus(order.status) && order.items.some((i) => i.product_id)

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Alert, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { Button, IconButton, Sheet, Text, TextField } from "../../../components"
 import { useIsOnline } from "../../../components/NeedsInternet"
 import { errorMessage } from "../../../lib/api"
@@ -12,6 +12,7 @@ import { addPackSize, deletePackSize, setPackSizeActive, updatePackSize } from "
 import { EMPTY_PACK_SIZE, packSizeValues, plural, validatePackSize, type PackSizeErrors, type PackSizeValues } from "../logic/units"
 import type { PackSize } from "../types"
 import { ToggleRow } from "./ToggleRow"
+import { confirm as askConfirm } from "../../../lib/confirm"
 
 interface PackSizeSheetProps {
   open: boolean
@@ -79,28 +80,26 @@ export function PackSizeSheet({ open, productId, baseUnit, packSize, onClose, on
     }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!packSize) return
-    Alert.alert("Remove pack size", `Remove “${packSize.pack_label}”? Sales already made keep their receipts.`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: async () => {
-          setBusy("delete")
-          try {
-            await deletePackSize(productId, packSize.id)
-            toast.success("Pack size removed")
-            onDeleted(packSize.id)
-            onClose()
-          } catch (err) {
-            toast.error(errorMessage(err))
-          } finally {
-            setBusy(null)
-          }
-        },
-      },
-    ])
+    const ok = await askConfirm({
+      title: "Remove pack size",
+      message: `Remove “${packSize.pack_label}”? Sales already made keep their receipts.`,
+      confirmLabel: "Remove",
+      destructive: true,
+    })
+    if (!ok) return
+    setBusy("delete")
+    try {
+      await deletePackSize(productId, packSize.id)
+      toast.success("Pack size removed")
+      onDeleted(packSize.id)
+      onClose()
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(null)
+    }
   }
 
   return (

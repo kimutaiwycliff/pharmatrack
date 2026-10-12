@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Alert, RefreshControl, StyleSheet, View } from "react-native"
+import { RefreshControl, StyleSheet, View } from "react-native"
 import { FlashList } from "@shopify/flash-list"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { apiJson, errorMessage } from "../src/lib/api"
@@ -16,6 +16,7 @@ import {
 import {
   buildCategoryRows, categoryNameError, parentOptions, type Category, type CategoryRow,
 } from "../src/features/catalogue/logic/categories"
+import { confirm as askConfirm } from "../src/lib/confirm"
 
 // Mirrors apps/web/app/api/categories/route.ts (GET list, POST create) and
 // apps/web/app/api/categories/[id]/route.ts (PATCH rename, DELETE). Two write
@@ -105,10 +106,14 @@ export default function Categories() {
 
   function confirmDelete(row: CategoryRow) {
     const extra = row.childCount > 0 ? " Move or delete its subcategories first." : " Products in it become uncategorised."
-    Alert.alert("Delete category", `Delete “${row.cat.name}”? This cannot be undone.${extra}`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => void deleteCategory(row.cat) },
-    ])
+    void askConfirm({
+      title: "Delete category",
+      message: `Delete “${row.cat.name}”? This cannot be undone.${extra}`,
+      confirmLabel: "Delete",
+      destructive: true,
+    }).then((ok) => {
+      if (ok) void deleteCategory(row.cat)
+    })
   }
 
   async function deleteCategory(cat: Category) {
