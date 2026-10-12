@@ -1,4 +1,4 @@
-import { openDatabaseSync } from "expo-sqlite"
+import { openDatabaseSync, type SQLiteDatabase } from "expo-sqlite"
 import { drizzle } from "drizzle-orm/expo-sqlite"
 import * as schema from "./schema"
 
@@ -6,34 +6,60 @@ const sqliteDb = openDatabaseSync("pharmatrack.db")
 
 export const db = drizzle(sqliteDb, { schema })
 
-// SQLite has no `ADD COLUMN IF NOT EXISTS` — run this one alone, before the
-// main block, so a second run (where the column already exists and this
-// throws) doesn't abort the CREATE TABLE IF NOT EXISTS statements below it.
-try {
-  sqliteDb.execSync(`ALTER TABLE products ADD COLUMN supplier_id TEXT;`)
-} catch {
-  // already added on a previous run — expected, not an error worth surfacing
-}
-try {
-  sqliteDb.execSync(`ALTER TABLE products ADD COLUMN manufacturer TEXT;`)
-} catch {
-  // already added on a previous run
-}
-try {
-  sqliteDb.execSync(`ALTER TABLE branches ADD COLUMN registration_number TEXT;`)
-} catch {
-  // already added on a previous run
-}
-try {
-  sqliteDb.execSync(`ALTER TABLE branches ADD COLUMN email TEXT;`)
-} catch {
-  // already added on a previous run
+/** Raw handle for work that must be atomic: drizzle's expo-sqlite driver is
+ *  synchronous underneath, and an async callback passed to db.transaction()
+ *  can commit before its awaited queries run. The sync engine's sale commit
+ *  and pull apply use sqlite.withTransactionSync() + *Sync calls instead. */
+export const sqlite: SQLiteDatabase = sqliteDb
+
+// ── Migrations ──────────────────────────────────────────────────────────────
+// Ordered, idempotent steps tracked with PRAGMA user_version. Every step is
+// safe to re-run (CREATE … IF NOT EXISTS, addColumn checks table_info first),
+// so installs that predate user_version (0) simply replay them all.
+//
+// This replaced a module-scope block that ran `ALTER TABLE products ADD
+// COLUMN supplier_id/manufacturer` BEFORE the CREATE TABLE statements: on a
+// fresh install the ALTERs failed (table missing, error swallowed) and the
+// columns were never added, so every drizzle select of `products` broke.
+// Never edit a shipped step — append a new one.
+
+function hasColumn(table: string, column: string): boolean {
+  const cols = sqliteDb.getAllSync<{ name: string }>(`PRAGMA table_info(${table})`)
+  return cols.some((c) => c.name === column)
 }
 
-// Create tables on first run. No migration framework needed for a schema this
-// small — if a column is added later, bump this to a real migration rather
-// than editing the CREATE TABLE below in place.
-sqliteDb.execSync(`
+function addColumn(table: string, column: string, definition: string): void {
+  if (!hasColumn(table, column)) sqliteDb.execSync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`)
+}
+
+const MIGRATIONS: (() => void)[] = [
+  // 1 — base schema (online mirror + Offline Edition tables, ADR-014).
+  () => sqliteDb.execSync(BASE_SCHEMA),
+  // 2 — columns added after the base schema shipped.
+  () => {
+    addColumn("products", "supplier_id", "TEXT")
+    addColumn("products", "manufacturer", "TEXT")
+    addColumn("branches", "registration_number", "TEXT")
+    addColumn("branches", "email", "TEXT")
+  },
+  // 3 — R1 offline-first sync: outbox, per-device stock allowances, staff
+  // roster (offline PIN switching) and device-local shifts. See schema.ts.
+  () => sqliteDb.execSync(SYNC_SCHEMA),
+]
+
+function migrate(): void {
+  const row = sqliteDb.getFirstSync<{ user_version: number }>("PRAGMA user_version")
+  const current = row?.user_version ?? 0
+  for (let v = current; v < MIGRATIONS.length; v++) {
+    sqliteDb.withTransactionSync(() => {
+      MIGRATIONS[v]!()
+      // PRAGMA can't take bound parameters; v is our own integer.
+      sqliteDb.execSync(`PRAGMA user_version = ${v + 1}`)
+    })
+  }
+}
+
+const BASE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS products (
     product_id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
@@ -332,4 +358,61 @@ sqliteDb.execSync(`
     last_seq INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (branch_id, date_key)
   );
-`)
+`
+
+const SYNC_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS outbox (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    summary TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_code TEXT,
+    error_message TEXT,
+    server_id TEXT,
+    flags TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    synced_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_outbox_status_seq ON outbox(status, seq);
+
+  CREATE TABLE IF NOT EXISTS allowances (
+    product_id TEXT PRIMARY KEY NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    reserved_until TEXT,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS roster (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    phone TEXT,
+    branch_id TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    pin_hash TEXT,
+    permissions TEXT NOT NULL DEFAULT '[]',
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until INTEGER,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS local_shifts (
+    client_id TEXT PRIMARY KEY NOT NULL,
+    cashier_id TEXT NOT NULL,
+    cashier_name TEXT,
+    opened_at INTEGER NOT NULL,
+    opening_float_cents INTEGER NOT NULL DEFAULT 0,
+    cash_sales_cents INTEGER NOT NULL DEFAULT 0,
+    sales_count INTEGER NOT NULL DEFAULT 0,
+    closed_at INTEGER,
+    closing_cash_cents INTEGER,
+    notes TEXT,
+    closed_by TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_local_shifts_cashier ON local_shifts(cashier_id, closed_at);
+`
+
+migrate()

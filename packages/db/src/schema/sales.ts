@@ -17,6 +17,9 @@ export const shift = pgTable("shift", {
   notes: text("notes"),
   opened_at: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
   closed_at: timestamp("closed_at", { withTimezone: true }),
+  // Offline sync (migration 029): the device that opened it + its client id.
+  device_id: uuid("device_id"),
+  client_id: text("client_id"),
 })
 
 export const sale = pgTable("sale", {
@@ -38,7 +41,10 @@ export const sale = pgTable("sale", {
   change_given: numeric("change_given", { precision: 12, scale: 2 }),
   customer_name: text("customer_name"),
   customer_phone: text("customer_phone"),
+  // For device sales this is the real time of sale; synced_at = server receipt (migration 029).
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  device_id: uuid("device_id"),
+  synced_at: timestamp("synced_at", { withTimezone: true }),
 })
 
 export const sale_item = pgTable("sale_item", {

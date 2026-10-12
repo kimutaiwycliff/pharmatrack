@@ -35,6 +35,9 @@ interface CachedSession {
   subStatus: string | null
   planCode: string
   contact: Contact | null
+  // Capability list from packages/core/src/permissions.ts (e.g. devices.manage).
+  // Optional: caches written before R1 don't have it.
+  permissions?: string[]
 }
 
 const CACHE_KEY = "session"
@@ -47,6 +50,7 @@ interface SessionState {
   subStatus: string | null
   planCode: string | null
   contact: Contact | null
+  permissions: string[]
   loaded: boolean
   error: string | null
   stale: boolean
@@ -72,6 +76,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   subStatus: null,
   planCode: null,
   contact: null,
+  permissions: [],
   loaded: false,
   error: null,
   stale: false,
@@ -92,6 +97,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         subStatus: "active",
         planCode: "enterprise",
         contact: null,
+        permissions: [],
       }
       set({ ...cached, loaded: true, stale: false })
       return
@@ -107,6 +113,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         subStatus: string | null
         planCode: string
         contact: Contact | null
+        permissions?: string[]
       }
       const cached: CachedSession = {
         organizationId: data.organizationId,
@@ -116,6 +123,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         subStatus: data.subStatus,
         planCode: data.planCode,
         contact: data.contact,
+        permissions: data.permissions ?? [],
       }
       set({ ...cached, loaded: true, stale: false })
       await kvSet(CACHE_KEY, cached)
@@ -130,7 +138,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       const detail = err instanceof Error ? err.message : String(err)
       const cached = await kvGet<CachedSession>(CACHE_KEY)
       if (cached) {
-        set({ ...cached, loaded: true, stale: true, error: `Offline — showing last known data (${detail})` })
+        set({ ...cached, permissions: cached.permissions ?? [], loaded: true, stale: true, error: `Offline — showing last known data (${detail})` })
       } else {
         set({ error: `Could not reach the server: ${detail}` })
       }

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { and, eq, gt, gte, lte, asc, desc, ilike, inArray, sql } from "drizzle-orm"
 import {
-  withTenant, product, product_batch, product_pack_size, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings,
+  withTenant, product, product_batch, product_pack_size, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings, type DrizzleDB,
 } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
+import { reservedByDevices } from "@/lib/sync/allocation"
 import { zUuid } from "@/lib/api/validation"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
 import { resolveBranchScope } from "@/lib/inventory/aggregate"
@@ -217,7 +218,12 @@ export async function POST(request: NextRequest) {
     }).from(product_batch)
       .where(and(eq(product_batch.branch_id, data.branch_id), inArray(product_batch.product_id, productIds), gt(product_batch.quantity_remaining, 0)))
       .groupBy(product_batch.product_id)
-    const availMap = new Map(availRows.map((r) => [r.pid, Number(r.avail)]))
+    // Units held by registered devices' offline allowances aren't ours to sell
+    // here — that's what guarantees offline devices can never oversell.
+    // Same per-branch lock as allocation refresh, so the two can't race.
+    await db.execute(sql`select pg_advisory_xact_lock(hashtext(${"alloc:" + data.branch_id}))`)
+    const held = await reservedByDevices(db as unknown as DrizzleDB, data.branch_id, productIds)
+    const availMap = new Map(availRows.map((r) => [r.pid, Math.max(0, Number(r.avail) - (held.get(r.pid) ?? 0))]))
 
     const requested = new Map<string, number>()
     for (const i of data.items) requested.set(i.product_id, (requested.get(i.product_id) ?? 0) + i.quantity)

@@ -9,6 +9,7 @@ export const category = pgTable("category", {
   parent_id: uuid("parent_id"),
   name: text("name").notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const supplier = pgTable("supplier", {
@@ -95,4 +96,5 @@ export const product_pack_size = pgTable("product_pack_size", {
   cost_price: numeric("cost_price", { precision: 12, scale: 2 }),
   barcode: text("barcode"),
   is_active: boolean("is_active").notNull().default(true),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })

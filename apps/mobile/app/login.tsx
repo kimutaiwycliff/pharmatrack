@@ -6,6 +6,9 @@ import { signInEmail, signInPin } from "../src/lib/auth-client"
 import { cacheDeviceUserAfterPinLogin, tryOfflinePinLogin } from "../src/lib/device-users"
 import { verifyLocalPin } from "../src/lib/local-auth"
 import { env } from "../src/lib/env"
+import { findRosterByPhone, rosterToStaff, verifyRosterPin } from "../src/lib/sync/roster"
+import { adoptSignedInUser, switchStaff } from "../src/lib/sync/staff-session"
+import { useSyncStore } from "../src/store/sync"
 import { useTheme } from "../src/theme/useTheme"
 import type { Theme } from "../src/theme/tokens"
 import { Button, Screen } from "../src/components"
@@ -35,12 +38,15 @@ export default function Login() {
           setError(result.error)
           return
         }
+        router.replace("/pos")
+        return
       } else if (mode === "email") {
         const { error: signInError } = await signInEmail(email, password)
         if (signInError) {
           setError(signInError.message ?? "Invalid email or password")
           return
         }
+        await adoptSignedInUser()
       } else {
         // A reachable server's own answer is authoritative — a definite
         // "wrong PIN" (or similar) 401 here must never be second-guessed by
@@ -54,15 +60,30 @@ export default function Login() {
             return
           }
           await cacheDeviceUserAfterPinLogin(phone, pin)
+          await adoptSignedInUser()
         } catch {
+          // R1: on a registered phone the synced staff roster is the offline
+          // credential store (server bcrypt hashes) — no cached cookie needed.
+          const member = useSyncStore.getState().device ? findRosterByPhone(phone) : null
+          if (member) {
+            const r = await verifyRosterPin(member.id, pin)
+            if (!r.ok) {
+              setError(r.error)
+              return
+            }
+            await switchStaff(rosterToStaff(r.member))
+            router.replace("/pos")
+            return
+          }
           const offline = await tryOfflinePinLogin(phone, pin)
           if (!offline.ok) {
             setError(offline.error)
             return
           }
+          await adoptSignedInUser()
         }
       }
-      router.replace("/pos")
+      router.replace("/checking")
     } finally {
       setPending(false)
     }

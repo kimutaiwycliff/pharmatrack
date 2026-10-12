@@ -1,13 +1,17 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES, fromCents, type BarcodeScanEvent } from "@pharmatrack/core"
 import type { ProductRow } from "../../src/db/schema"
 import { findByBarcode, searchLocalProducts } from "../../src/lib/sync/catalogue"
-import { buildSalePayload, queueSale } from "../../src/lib/sync/sales"
-import { useSyncEngine } from "../../src/lib/sync/useSyncEngine"
 import { env } from "../../src/lib/env"
+import { AllowanceError, commitDeviceSale, sellableFor } from "../../src/lib/sync/commit-sale"
+import { refreshSyncState, requestTopUp, scheduleSoonSync } from "../../src/lib/sync/engine"
+import type { PaymentInput } from "../../src/lib/sync/core/payload"
+import { useSyncStore } from "../../src/store/sync"
+import { useStaffStore } from "../../src/store/staff"
+import type { CartItem } from "../../src/store/cart"
 import { commitLocalSale } from "../../src/repo/sales"
 import { getCurrentStaffId } from "../../src/lib/local-auth"
 import { fetchMpesaAvailability, type MpesaAvailability } from "../../src/lib/mpesa"
@@ -18,32 +22,48 @@ import { confirmSignOut } from "../../src/lib/auth-client"
 import { toast } from "../../src/lib/toast"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
-import { Button, Card, EmptyState, HardwareScanCatcher, MpesaFlow, Screen, StatusBadge } from "../../src/components"
+import {
+  Button, Card, DeviceGate, EmptyState, HardwareScanCatcher, MpesaFlow, Screen, SellingLock, StatusBadge, SyncBanners, SyncStatusBar,
+} from "../../src/components"
 
-type PaymentMethod = "cash" | "mpesa" | "split"
+// "till" = M-Pesa paid to the shop's till/paybill and keyed in by hand —
+// works offline, uploaded with mpesa_verified=false for the owner to check.
+type PaymentMethod = "cash" | "mpesa" | "till" | "split"
 
-function randomUUID(): string {
-  // crypto.randomUUID isn't available in the Hermes runtime; RFC4122-ish v4.
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === "x" ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
+const MPESA_CODE_RE = /^[A-Z0-9]{10}$/i
+const OFFLINE_EDITION = env.EXPO_PUBLIC_OFFLINE_MODE
+
+const toLines = (items: CartItem[]) =>
+  items.map((i) => ({
+    productId: i.productId,
+    productName: i.productName,
+    productStrength: i.productStrength,
+    baseUnit: i.baseUnit,
+    quantity: i.quantity,
+    unitPriceCents: i.unitPrice,
+    discountPercent: i.discountPercent,
+    isControlled: i.isControlled,
+  }))
 
 export default function Pos() {
   const theme = useTheme()
   const styles = createStyles(theme)
   const { branchId, loadMe, loaded, error: sessionError } = useSessionStore()
   const { activeShift, loadActiveShift } = useShiftStore()
-  const { isOnline, lastSyncedAt } = useSyncEngine(branchId)
-  const { items, addProduct, incrementQty, clear, subtotal, discountTotal, total, setDiscountPercent, maxAllowedDiscountPercent } =
+  // R1: the app-wide sync engine (mounted in the root layout) replaced the
+  // per-screen useSyncEngine hook; this screen only reads its state.
+  const { online: isOnline, lastSyncAt, device, status: syncStatus, lock } = useSyncStore()
+  const currentStaff = useStaffStore((s) => s.current)
+  const { items, addProduct, incrementQty, clear, subtotal, discountTotal, total, setDiscountPercent, maxAllowedDiscountPercent, setStockLimit } =
     useCartStore()
 
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<ProductRow[]>([])
   const [tendered, setTendered] = useState("")
   const [receipt, setReceipt] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [tillCode, setTillCode] = useState("")
+  const [committing, setCommitting] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [discountInput, setDiscountInput] = useState("")
 
@@ -54,12 +74,25 @@ export default function Pos() {
 
   useEffect(() => {
     loadMe()
+  }, [loadMe])
+
+  // The shift gate follows whoever is selling (local shifts, R1 rule 5).
+  useEffect(() => {
     loadActiveShift()
-  }, [loadMe, loadActiveShift])
+  }, [loadActiveShift, currentStaff?.id])
+
+  // Online build: what the till may sell = min(this phone's allowance, cached
+  // stock) — shown in the list and used as each cart line's cap (R1 rule 2).
+  const withSellable = useCallback((rows: ProductRow[]): ProductRow[] => {
+    if (OFFLINE_EDITION) return rows
+    const active = rows.filter((p) => p.isActive)
+    const sellable = sellableFor(active.map((p) => p.productId))
+    return active.map((p) => ({ ...p, stockOnHand: sellable.get(p.productId) ?? 0 }))
+  }, [])
 
   useEffect(() => {
-    searchLocalProducts(query).then(setResults)
-  }, [query, lastSyncedAt])
+    searchLocalProducts(query).then((rows) => setResults(withSellable(rows)))
+  }, [query, lastSyncAt, refreshKey, withSellable])
 
   // Fetched once on screen load, not re-fetched on every render — mirrors the
   // web POS's mpesaAvailable query (apps/web/app/(pos)/pos/page.tsx), just
@@ -95,12 +128,106 @@ export default function Pos() {
   async function onHardwareScan(event: BarcodeScanEvent) {
     const code = event.gtin ?? event.raw
     const product = await findByBarcode(code)
-    if (!product) {
+    if (!product || (!OFFLINE_EDITION && !product.isActive)) {
       toast.error(`No product found for "${code}"`)
       return
     }
-    addProduct(product)
-    toast.success(product.name)
+    const [row] = withSellable([product])
+    if (row && (await addSellable(row))) toast.success(product.name)
+  }
+
+  // Ask the server for more of this product when the phone's allowance runs
+  // out mid-sale (online only). Returns the new sellable quantity.
+  async function topUp(productId: string, wanted: number): Promise<number | null> {
+    if (OFFLINE_EDITION || !isOnline) return null
+    const granted = await requestTopUp(productId, wanted)
+    if (granted <= 0) return null
+    const next = sellableFor([productId]).get(productId) ?? 0
+    setStockLimit(productId, next)
+    setRefreshKey((k) => k + 1)
+    return next
+  }
+
+  async function addSellable(product: ProductRow): Promise<boolean> {
+    const inCart = items.find((i) => i.productId === product.productId)?.quantity ?? 0
+    let limit = product.stockOnHand
+    if (inCart + 1 > limit) {
+      const next = await topUp(product.productId, inCart + 1 - limit)
+      if (next != null) limit = next
+    }
+    if (inCart + 1 > limit) {
+      addProduct({ ...product, stockOnHand: limit }) // shows the "Only N left" toast
+      return false
+    }
+    addProduct({ ...product, stockOnHand: limit })
+    return true
+  }
+
+  async function onIncrement(item: CartItem) {
+    if (item.quantity + 1 > item.stockOnHand) await topUp(item.productId, item.quantity + 1 - item.stockOnHand)
+    incrementQty(item.productId, 1)
+  }
+
+  function finishSale(receiptNumber: string) {
+    setReceipt(receiptNumber)
+    clear()
+    setTendered("")
+    setDiscountInput("")
+    setTillCode("")
+    setSplitCash("")
+    setSplitMpesa("")
+    setPaymentMethod("cash")
+    setRefreshKey((k) => k + 1)
+  }
+
+  // R1 rules 2 + 7: the one commit path for the online build — allowance
+  // check, receipt number, stock/allowance decrement and outbox row in a
+  // single SQLite transaction. Retries once after a top-up when online.
+  async function commitOnline(payment: PaymentInput): Promise<void> {
+    setCheckoutError(null)
+    if (!device || !currentStaff || !activeShift) {
+      setCheckoutError("Clock in before taking sales")
+      return
+    }
+    // The deadline may have passed while the cart was open.
+    refreshSyncState()
+    const live = useSyncStore.getState()
+    if (live.lock.locked) {
+      setCheckoutError("Selling is locked — sync first")
+      return
+    }
+    setCommitting(true)
+    try {
+      const attempt = () =>
+        commitDeviceSale({
+          deviceCode: device.code,
+          cashierId: currentStaff.id,
+          shiftClientId: activeShift.id,
+          lines: toLines(useCartStore.getState().items),
+          payment,
+          overrideClientId: live.lock.underOverride && live.override ? live.override.client_id : null,
+        })
+      let result
+      try {
+        result = attempt()
+      } catch (err) {
+        if (!(err instanceof AllowanceError)) throw err
+        const line = useCartStore.getState().items.find((i) => i.productId === err.productId)
+        const next = line ? await topUp(err.productId, line.quantity - err.available) : null
+        if (next == null || !line || next < line.quantity) {
+          setStockLimit(err.productId, err.available)
+          throw err
+        }
+        result = attempt()
+      }
+      finishSale(result.receiptNumber)
+      refreshSyncState()
+      scheduleSoonSync()
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCommitting(false)
+    }
   }
 
   function onDiscountChange(text: string) {
@@ -123,11 +250,11 @@ export default function Pos() {
       return
     }
     const tenderedAmount = Number(tendered)
-    if (!branchId || items.length === 0 || !tenderedAmount || tenderedAmount * 100 < total()) {
+    if ((OFFLINE_EDITION && !branchId) || items.length === 0 || !tenderedAmount || tenderedAmount * 100 < total()) {
       setCheckoutError("Enter a tendered amount covering the total")
       return
     }
-    if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+    if (OFFLINE_EDITION && branchId) {
       const cashierId = (await getCurrentStaffId()) ?? "unknown"
       const amountTenderedCents = Math.round(tenderedAmount * 100)
       const { receiptNumber } = await commitLocalSale({
@@ -140,63 +267,27 @@ export default function Pos() {
       setDiscountInput("")
       return
     }
-    const offlineReference = randomUUID()
-    const payload = buildSalePayload({
-      paymentMethod: "cash",
-      branchId,
-      shiftId: activeShift.id,
-      items,
-      totalCents: total(),
-      offlineReference,
-      amountTenderedCents: Math.round(tenderedAmount * 100),
-    })
-    await queueSale(payload)
-    setReceipt(offlineReference)
-    clear()
-    setTendered("")
-    setDiscountInput("")
+    await commitOnline({ method: "cash", tenderedCents: Math.round(tenderedAmount * 100) })
   }
 
   async function onMpesaConfirmed(reference: string | null) {
-    if (!branchId || !activeShift || items.length === 0) return
-    const offlineReference = randomUUID()
-    const payload = buildSalePayload({
-      paymentMethod: "mpesa",
-      branchId,
-      shiftId: activeShift.id,
-      items,
-      totalCents: total(),
-      offlineReference,
-      mpesaReference: reference,
-    })
-    await queueSale(payload)
-    setReceipt(offlineReference)
-    clear()
-    setDiscountInput("")
-    setPaymentMethod("cash")
+    if (items.length === 0) return
+    await commitOnline({ method: "mpesa", reference, verified: true })
+  }
+
+  async function onTillConfirmed() {
+    const code = tillCode.trim().toUpperCase()
+    if (code && !MPESA_CODE_RE.test(code)) {
+      setCheckoutError("M-Pesa codes are 10 letters/numbers — or leave it blank")
+      return
+    }
+    if (items.length === 0) return
+    await commitOnline({ method: "mpesa", reference: code || null, verified: false })
   }
 
   async function onSplitConfirmed(reference: string | null) {
-    if (!branchId || !activeShift || items.length === 0 || splitCashCents == null || splitMpesaCents == null) return
-    const offlineReference = randomUUID()
-    const payload = buildSalePayload({
-      paymentMethod: "split",
-      branchId,
-      shiftId: activeShift.id,
-      items,
-      totalCents: total(),
-      offlineReference,
-      cashAmountCents: splitCashCents,
-      mpesaAmountCents: splitMpesaCents,
-      mpesaReference: reference,
-    })
-    await queueSale(payload)
-    setReceipt(offlineReference)
-    clear()
-    setSplitCash("")
-    setSplitMpesa("")
-    setDiscountInput("")
-    setPaymentMethod("cash")
+    if (items.length === 0 || splitCashCents == null || splitMpesaCents == null) return
+    await commitOnline({ method: "split", cashCents: splitCashCents, mpesaCents: splitMpesaCents, reference, verified: true })
   }
 
   if (receipt) {
@@ -204,8 +295,12 @@ export default function Pos() {
       <Screen style={styles.receiptContainer}>
         <Ionicons name="checkmark-circle-outline" size={56} color={theme.green} />
         <Text style={styles.title}>Sale recorded</Text>
-        <Text style={styles.receiptText}>Reference: {receipt}</Text>
-        <Text style={styles.receiptText}>{isOnline ? "Syncing to server…" : "Queued — will sync once back online"}</Text>
+        <Text style={styles.receiptText}>Receipt: {receipt}</Text>
+        {OFFLINE_EDITION ? null : (
+          <Text style={styles.receiptText}>
+            {isOnline ? "Saved on this phone — uploading…" : "Saved on this phone — will upload when back online"}
+          </Text>
+        )}
         <Button title="New sale" onPress={() => setReceipt(null)} style={styles.newSaleButton} />
       </Screen>
     )
@@ -214,11 +309,13 @@ export default function Pos() {
   return (
     <Screen style={styles.container}>
       <View style={styles.header}>
-        <StatusBadge
-          status={isOnline ? "ok" : "warning"}
-          label={isOnline ? "Online" : "Offline — sales will queue"}
-        />
+        {OFFLINE_EDITION ? <StatusBadge status="ok" label="Offline edition" /> : <SyncStatusBar />}
         <View style={styles.headerActions}>
+          {OFFLINE_EDITION ? null : (
+            <Pressable onPress={() => router.push("/switch-user")} style={styles.iconButton} hitSlop={8} accessibilityLabel="Switch user">
+              <Ionicons name="people-outline" size={22} color={theme.text} />
+            </Pressable>
+          )}
           <Pressable
             onPress={() => router.push("/scan")}
             style={styles.iconButton}
@@ -232,7 +329,24 @@ export default function Pos() {
         </View>
       </View>
 
-      {!loaded ? (
+      {OFFLINE_EDITION ? null : <SyncBanners />}
+
+      {/* R1 gates (online build): registered phone → selling not locked →
+          someone chosen to sell → (below) an open local shift. */}
+      {!OFFLINE_EDITION && (!device || syncStatus === "revoked") ? (
+        <DeviceGate />
+      ) : !OFFLINE_EDITION && lock.locked ? (
+        <SellingLock />
+      ) : !OFFLINE_EDITION && !currentStaff ? (
+        <Card style={styles.errorCard}>
+          <Text style={styles.receiptText}>Choose who is selling on this phone</Text>
+          <Button
+            title="Choose staff"
+            onPress={() => router.push("/switch-user")}
+            icon={<Ionicons name="people-outline" size={18} color="#fff" />}
+          />
+        </Card>
+      ) : !loaded ? (
         sessionError ? (
           <Card style={styles.errorCard}>
             <Text style={styles.error}>{sessionError}</Text>
@@ -253,7 +367,7 @@ export default function Pos() {
               (kv.ts) when the network is down — the catalogue is local SQLite
               regardless, so the sale flow below still works. This banner is
               informational only; it must never block the UI beneath it. */}
-          {sessionError ? (
+          {sessionError && OFFLINE_EDITION ? (
             <Card style={styles.offlineNoticeCard}>
               <Text style={styles.offlineNoticeText}>{sessionError}</Text>
             </Card>
@@ -273,7 +387,7 @@ export default function Pos() {
             keyExtractor={(p) => p.productId}
             style={styles.productList}
             renderItem={({ item }) => (
-              <Pressable onPress={() => addProduct(item)}>
+              <Pressable onPress={() => void addSellable(item)} style={styles.productPress}>
                 <Card style={styles.productCard}>
                   <View style={styles.productRow}>
                     <View style={styles.productInfo}>
@@ -282,7 +396,9 @@ export default function Pos() {
                         {item.strength ? ` (${item.strength})` : ""}
                       </Text>
                       <Text style={item.stockOnHand > 0 ? styles.stockText : styles.stockTextEmpty}>
-                        {item.stockOnHand > 0 ? `${item.stockOnHand} in stock` : "Out of stock"}
+                        {OFFLINE_EDITION
+                          ? item.stockOnHand > 0 ? `${item.stockOnHand} in stock` : "Out of stock"
+                          : item.stockOnHand > 0 ? `${item.stockOnHand} available on this phone` : "None left on this phone"}
                       </Text>
                     </View>
                     <Text style={styles.priceText}>{formatKES(Math.round(item.sellingPrice * 100))}</Text>
@@ -307,11 +423,11 @@ export default function Pos() {
               <Card style={styles.cartCard}>
                 <View style={styles.cartRow}>
                   <Text style={styles.cartItemName}>{item.productName}</Text>
-                  <Pressable onPress={() => incrementQty(item.productId, -1)} hitSlop={8}>
+                  <Pressable onPress={() => incrementQty(item.productId, -1)} hitSlop={12} style={styles.qtyPress}>
                     <Text style={styles.qtyButton}>−</Text>
                   </Pressable>
                   <Text style={styles.qty}>{item.quantity}</Text>
-                  <Pressable onPress={() => incrementQty(item.productId, 1)} hitSlop={8}>
+                  <Pressable onPress={() => void onIncrement(item)} hitSlop={12} style={styles.qtyPress}>
                     <Text style={styles.qtyButton}>+</Text>
                   </Pressable>
                 </View>
@@ -360,7 +476,7 @@ export default function Pos() {
             </Card>
           ) : (
             <>
-              {mpesaOffered ? (
+              {mpesaOffered || !OFFLINE_EDITION ? (
                 <>
                   <View style={styles.methodRow}>
                     <Button
@@ -369,23 +485,37 @@ export default function Pos() {
                       onPress={() => setPaymentMethod("cash")}
                       style={styles.methodButton}
                     />
-                    <Button
-                      title="M-Pesa"
-                      variant={paymentMethod === "mpesa" ? "primary" : "secondary"}
-                      onPress={() => setPaymentMethod("mpesa")}
-                      disabled={!isOnline}
-                      style={styles.methodButton}
-                    />
-                    <Button
-                      title="Split"
-                      variant={paymentMethod === "split" ? "primary" : "secondary"}
-                      onPress={() => setPaymentMethod("split")}
-                      disabled={!isOnline}
-                      style={styles.methodButton}
-                    />
+                    {mpesaOffered ? (
+                      <Button
+                        title="M-Pesa"
+                        variant={paymentMethod === "mpesa" ? "primary" : "secondary"}
+                        onPress={() => setPaymentMethod("mpesa")}
+                        disabled={!isOnline}
+                        style={styles.methodButton}
+                      />
+                    ) : null}
+                    {OFFLINE_EDITION ? null : (
+                      <Button
+                        title="Till/Paybill"
+                        variant={paymentMethod === "till" ? "primary" : "secondary"}
+                        onPress={() => setPaymentMethod("till")}
+                        style={styles.methodButton}
+                      />
+                    )}
+                    {mpesaOffered ? (
+                      <Button
+                        title="Split"
+                        variant={paymentMethod === "split" ? "primary" : "secondary"}
+                        onPress={() => setPaymentMethod("split")}
+                        disabled={!isOnline}
+                        style={styles.methodButton}
+                      />
+                    ) : null}
                   </View>
-                  {!isOnline ? (
-                    <Text style={styles.offlineNoticeText}>M-Pesa and Split require an internet connection</Text>
+                  {!isOnline && mpesaOffered ? (
+                    <Text style={styles.offlineNoticeText}>
+                      M-Pesa prompts and Split need internet — use Till/Paybill for M-Pesa paid to the shop
+                    </Text>
                   ) : null}
                 </>
               ) : null}
@@ -404,10 +534,35 @@ export default function Pos() {
                   <Button
                     title="Complete cash sale"
                     onPress={onCheckout}
+                    loading={committing}
                     disabled={items.length === 0}
                     icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
                   />
                 </>
+              ) : null}
+
+              {paymentMethod === "till" && !OFFLINE_EDITION ? (
+                <Card style={styles.discountCard}>
+                  <Text style={styles.discountLabel}>M-Pesa paid to the shop&apos;s till/paybill · {formatKES(total())}</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="M-Pesa code (optional)"
+                    placeholderTextColor={theme.textTertiary}
+                    autoCapitalize="characters"
+                    maxLength={10}
+                    value={tillCode}
+                    onChangeText={(v) => setTillCode(v.toUpperCase().slice(0, 10))}
+                  />
+                  <Text style={styles.stockText}>Check the customer&apos;s M-Pesa message first. The owner verifies these later.</Text>
+                  {checkoutError ? <Text style={styles.error}>{checkoutError}</Text> : null}
+                  <Button
+                    title="Record M-Pesa payment"
+                    onPress={onTillConfirmed}
+                    loading={committing}
+                    disabled={items.length === 0}
+                    icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
+                  />
+                </Card>
               ) : null}
 
               {/* isOnline only gates which methods are SELECTABLE (above) — once
@@ -416,7 +571,10 @@ export default function Pos() {
                   need no network at all, and a failed Send/Resend surfaces its
                   own error from sendStkPush()'s network catch. */}
               {paymentMethod === "mpesa" && mpesaOffered ? (
-                <MpesaFlow amountCents={total()} onConfirmed={onMpesaConfirmed} />
+                <>
+                  <MpesaFlow amountCents={total()} onConfirmed={onMpesaConfirmed} />
+                  {checkoutError ? <Text style={styles.error}>{checkoutError}</Text> : null}
+                </>
               ) : null}
 
               {paymentMethod === "split" && mpesaOffered ? (
@@ -447,6 +605,7 @@ export default function Pos() {
                   {splitReady && splitMpesaCents != null ? (
                     <MpesaFlow amountCents={splitMpesaCents} onConfirmed={onSplitConfirmed} />
                   ) : null}
+                  {checkoutError ? <Text style={styles.error}>{checkoutError}</Text> : null}
                 </>
               ) : null}
             </>
@@ -461,7 +620,7 @@ function createStyles(theme: Theme) {
   return StyleSheet.create({
     container: { gap: 8 },
     receiptContainer: { alignItems: "center", justifyContent: "center", gap: 8 },
-    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 },
     headerActions: { flexDirection: "row", gap: 4 },
     iconButton: { padding: 8, borderRadius: 8 },
     title: { fontSize: 18, fontWeight: "700", marginTop: 8, color: theme.text },
@@ -500,6 +659,8 @@ function createStyles(theme: Theme) {
     cartRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     cartItemName: { flex: 1, color: theme.text },
     qtyButton: { fontSize: 20, paddingHorizontal: 10, color: theme.text },
+    qtyPress: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
+    productPress: { minHeight: 48 },
     qty: { width: 24, textAlign: "center", color: theme.text },
     totalsCard: { gap: 4 },
     discountCard: { gap: 6 },

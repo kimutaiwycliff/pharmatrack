@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone, ShieldCheck } from "lucide-react"
+import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone, ShieldCheck, TabletSmartphone } from "lucide-react"
 import { hasFeature, type Feature, type Capability } from "@pharmatrack/core"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
@@ -11,6 +11,7 @@ import { AppointmentServiceList, SERVICES_MANAGE_KEY } from "@/components/settin
 import { BillingPanel } from "@/components/settings/BillingPanel"
 import { MpesaSettings } from "@/components/settings/MpesaSettings"
 import { RolePermissionsPanel } from "@/components/settings/RolePermissionsPanel"
+import { DevicesPanel } from "@/components/settings/DevicesPanel"
 import { ThemeSegmented } from "@/components/theme/ThemeToggle"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import type { Organization, Branch, Profile, AppointmentService } from "@pharmatrack/types"
@@ -34,13 +35,14 @@ function useSettings() {
   })
 }
 
-type Tab = "org" | "branches" | "services" | "payments" | "billing" | "permissions" | "profile" | "appearance"
+type Tab = "org" | "branches" | "devices" | "services" | "payments" | "billing" | "permissions" | "profile" | "appearance"
 
 // `anyOf`: shown when the user holds any of these permissions (omit = everyone).
 // `ownerOnly`: the permissions matrix itself is never delegable.
 const TABS: { key: Tab; label: string; icon: React.ElementType; anyOf?: Capability[]; ownerOnly?: boolean; requiresFeature?: Feature }[] = [
   { key: "org",        label: "Organization", icon: Building2, anyOf: ["settings.organization", "branches.manage"] },
   { key: "branches",   label: "Branches",     icon: GitBranch, anyOf: ["settings.organization", "branches.manage"] },
+  { key: "devices",    label: "Devices",      icon: TabletSmartphone, anyOf: ["devices.manage"] },
   { key: "services",   label: "Services",     icon: Syringe, anyOf: ["appointment_services.manage", "appointments.manage"] },
   { key: "payments",   label: "Payments",     icon: Smartphone, anyOf: ["settings.organization"], requiresFeature: "mpesa_stk" },
   { key: "billing",    label: "Billing",      icon: CreditCard, anyOf: ["billing.manage"] },
@@ -131,6 +133,8 @@ export default function SettingsPage() {
         <MpesaSettings />
       ) : tab === "billing" ? (
         <BillingPanel />
+      ) : tab === "devices" ? (
+        <DevicesPanel />
       ) : tab === "permissions" ? (
         <RolePermissionsPanel />
       ) : isLoading ? (

@@ -4,6 +4,8 @@ import { createAuthClient } from "better-auth/react"
 import { expoClient } from "@better-auth/expo/client"
 import * as SecureStore from "expo-secure-store"
 import { env } from "./env"
+import { useStaffStore } from "../store/staff"
+import { useSyncStore } from "../store/sync"
 
 // ADR-013 — @better-auth/expo manages its own cookie jar in SecureStore
 // (captures Set-Cookie, replays it as a Cookie header on later authClient
@@ -43,8 +45,16 @@ export function confirmSignOut() {
       text: "Log out",
       style: "destructive",
       onPress: async () => {
-        await signOut()
-        router.replace("/login")
+        // R1: signing out also releases the till — the next person picks
+        // themselves (offline PIN) on a registered phone. Signing out while
+        // offline must still work, so a failed server call isn't fatal.
+        try {
+          await signOut()
+        } catch {
+          // offline — the local session is cleared regardless
+        }
+        useStaffStore.getState().clear()
+        router.replace(useSyncStore.getState().device ? "/switch-user" : "/login")
       },
     },
   ])

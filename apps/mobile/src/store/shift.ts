@@ -1,9 +1,11 @@
 import { create } from "zustand"
-import { apiFetch } from "../lib/api-fetch"
 import { kvGet, kvSet, kvDelete } from "../lib/kv"
 import { env } from "../lib/env"
 import { getCurrentStaffId } from "../lib/local-auth"
 import { getActiveLocalShift, clockInLocal, clockOutLocal } from "../repo/sales"
+import { closeShift, getOpenShiftFor, getShift, openShift } from "../lib/sync/shifts"
+import { useStaffStore } from "./staff"
+import type { LocalShiftRow } from "../db/schema"
 
 const CACHE_KEY = "active_shift"
 
@@ -43,21 +45,38 @@ interface ShiftState {
   // clears both the in-memory state and the cached kv row rather than
   // leaving the previous cashier's shift visible under the new identity.
   resetShift: () => Promise<void>
+  // R1: a manager with shifts.close_others ends someone else's open shift on
+  // this phone (no cash count — the server records it as force-closed).
+  forceCloseShift: (clientId: string) => Promise<boolean>
 }
 
-function toActiveShift(shift: ShiftResponse): ActiveShift {
-  return { id: shift.id, openingFloat: shift.opening_float, clockedInAt: shift.clocked_in_at }
+function fromLocal(row: LocalShiftRow): ActiveShift {
+  return { id: row.clientId, openingFloat: row.openingFloatCents / 100, clockedInAt: new Date(row.openedAt).toISOString() }
 }
 
-// Populates from GET /api/shifts/active, POST /api/shifts (clock-in), and
-// PATCH /api/shifts (clock-out) — apps/web/app/api/shifts/{active/,}route.ts,
-// both verified working with no server changes needed. Surfaces failures
-// (network error, non-2xx, unparseable body) as `error` instead of leaving
-// the caller stuck, mirroring the session store's pattern (src/store/session.ts).
-// loadActiveShift falls back to the last-known shift cached in local SQLite
-// (kv.ts) on failure, so POS's "clock in before taking sales" gate doesn't
-// fire just because the network dropped mid-shift — clock-in/out themselves
-// still require a live request since shift state is server-authoritative.
+function localToResponse(row: LocalShiftRow, varianceCents: number | null): ShiftResponse {
+  const opened = new Date(row.openedAt).toISOString()
+  return {
+    id: row.clientId,
+    branch_id: "",
+    staff_id: row.cashierId,
+    opening_float: row.openingFloatCents / 100,
+    closing_cash: row.closingCashCents == null ? null : row.closingCashCents / 100,
+    variance: varianceCents == null ? null : varianceCents / 100,
+    clocked_in_at: opened,
+    clocked_out_at: row.closedAt == null ? null : new Date(row.closedAt).toISOString(),
+    notes: row.notes,
+    created_at: opened,
+  }
+}
+
+const errMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+// ONLINE build (R1 rule 5): shifts are device-local (lib/sync/shifts.ts) and
+// upload through the sync outbox as shift_open/shift_close, so clock-in and
+// clock-out work with no connection — the shift belongs to the current staff
+// member (store/staff.ts), whoever signed in or PIN-switched on this phone.
+// OFFLINE EDITION (ADR-014): the `shifts` table in repo/sales.ts, unchanged.
 export const useShiftStore = create<ShiftState>((set, get) => ({
   activeShift: null,
   loaded: false,
@@ -81,25 +100,12 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       }
       return
     }
-    try {
-      const res = await apiFetch("/api/shifts/active")
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = (await res.json()) as { shift: ShiftResponse | null; cashSales: number }
-      const active = data.shift ? toActiveShift(data.shift) : null
-      set({ activeShift: active, loaded: true, stale: false })
-      if (active) await kvSet(CACHE_KEY, active)
-      else await kvDelete(CACHE_KEY)
-    } catch (err) {
-      // See session.ts's loadMe() catch block for why the real message is
-      // surfaced instead of a generic string.
-      const detail = err instanceof Error ? err.message : String(err)
-      const cached = await kvGet<ActiveShift>(CACHE_KEY)
-      if (cached) {
-        set({ activeShift: cached, loaded: true, stale: true, error: `Offline — showing last known shift (${detail})` })
-      } else {
-        set({ error: `Could not reach the server: ${detail}` })
-      }
-    }
+    const current = useStaffStore.getState().current
+    const row = current ? getOpenShiftFor(current.id) : null
+    const active = row ? fromLocal(row) : null
+    set({ activeShift: active, loaded: true, stale: false })
+    if (active) await kvSet(CACHE_KEY, active)
+    else await kvDelete(CACHE_KEY)
   },
   async clockIn(openingFloat, branchId) {
     set({ error: null })
@@ -111,22 +117,18 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       await kvSet(CACHE_KEY, active)
       return
     }
+    const current = useStaffStore.getState().current
+    if (!current) {
+      set({ error: "Choose who is selling first" })
+      return
+    }
     try {
-      const res = await apiFetch("/api/shifts", {
-        method: "POST",
-        body: JSON.stringify({ branch_id: branchId, opening_float: openingFloat }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        set({ error: (body as { error?: string }).error ?? `Could not clock in (HTTP ${res.status})` })
-        return
-      }
-      const data = (await res.json()) as { shift: ShiftResponse }
-      const active = toActiveShift(data.shift)
+      const row = openShift({ cashierId: current.id, cashierName: current.name, openingFloatCents: Math.round(openingFloat * 100) })
+      const active = fromLocal(row)
       set({ activeShift: active, stale: false })
       await kvSet(CACHE_KEY, active)
     } catch (err) {
-      set({ error: `Could not reach the server: ${err instanceof Error ? err.message : String(err)}` })
+      set({ error: errMessage(err) })
     }
   },
   async clockOut(closingCash, notes) {
@@ -150,26 +152,30 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       }
     }
     try {
-      const res = await apiFetch("/api/shifts", {
-        method: "PATCH",
-        body: JSON.stringify({ shift_id: active.id, closing_cash: closingCash, notes }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        set({ error: (body as { error?: string }).error ?? `Could not clock out (HTTP ${res.status})` })
-        return null
-      }
-      const data = (await res.json()) as { shift: ShiftResponse }
+      const { shift, varianceCents } = closeShift({ clientId: active.id, closingCashCents: Math.round(closingCash * 100), notes: notes ?? null })
       set({ activeShift: null })
       await kvDelete(CACHE_KEY)
-      return { shift: data.shift, variance: data.shift.variance }
+      return { shift: localToResponse(shift, varianceCents), variance: varianceCents == null ? null : varianceCents / 100 }
     } catch (err) {
-      set({ error: `Could not reach the server: ${err instanceof Error ? err.message : String(err)}` })
+      set({ error: errMessage(err) })
       return null
     }
   },
   async resetShift() {
     set({ activeShift: null, loaded: false, error: null, stale: false })
     await kvDelete(CACHE_KEY)
+  },
+  async forceCloseShift(clientId) {
+    const current = useStaffStore.getState().current
+    const target = getShift(clientId)
+    if (!current || !target) return false
+    try {
+      closeShift({ clientId, closingCashCents: null, notes: `Force-closed on this phone by ${current.name}`, closedBy: current.id })
+      if (get().activeShift?.id === clientId) set({ activeShift: null })
+      return true
+    } catch (err) {
+      set({ error: errMessage(err) })
+      return false
+    }
   },
 }))

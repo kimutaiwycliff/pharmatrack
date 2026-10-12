@@ -336,6 +336,73 @@ export const receiptCounters = sqliteTable("receipt_counters", {
   lastSeq: integer("last_seq").notNull().default(0),
 }, (t) => [primaryKey({ columns: [t.branchId, t.dateKey] })])
 
+// ── R1 offline-first sync (online build only; inert in the Offline Edition) ──
+// See lib/sync/engine.ts. The device uploads these rows in `seq` order via
+// POST /api/sync/push (shapes: lib/sync/core/payload.ts, mirroring
+// apps/web/lib/sync/push-schema.ts). Rows are never deleted: a synced row
+// keeps its server id, a rejected one keeps the server's reason and shows
+// under "Needs attention" until a manager dismisses it.
+export const outbox = sqliteTable("outbox", {
+  seq: integer("seq").primaryKey({ autoIncrement: true }),
+  clientId: text("client_id").notNull().unique(),
+  // shift_open | shift_close | sale | override | legacy_sale (pre-R1 queue, never pushed)
+  type: text("type").notNull(),
+  payload: text("payload").notNull(), // JSON push item
+  summary: text("summary"), // one-line description for the sync screen
+  status: text("status", { enum: ["pending", "synced", "rejected", "dismissed"] }).notNull().default("pending"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  serverId: text("server_id"),
+  flags: text("flags"), // JSON string[] from the server (late_sync, price_mismatch…)
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  syncedAt: integer("synced_at"),
+})
+
+// Server-granted share of branch stock this device may sell offline (pull
+// `allocation`, /api/sync/allocate top-ups). Sellable = min(allowance, cached
+// stock); every committed sale decrements it in the same transaction.
+export const allowances = sqliteTable("allowances", {
+  productId: text("product_id").primaryKey(),
+  quantity: integer("quantity").notNull().default(0),
+  reservedUntil: text("reserved_until"),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// Staff who may sell on this device's branch (pull `staff`), with the server's
+// bcrypt PIN hash for offline PIN switching + manager overrides, and the same
+// 5-strikes/15-minute lockout as device-users.ts.
+export const roster = sqliteTable("roster", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  role: text("role").notNull(),
+  phone: text("phone"),
+  branchId: text("branch_id"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  pinHash: text("pin_hash"),
+  permissions: text("permissions").notNull().default("[]"), // JSON Capability[]
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: integer("locked_until"),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// Till sessions opened/closed on this device (client_id "sh-<uuid>"), synced
+// as shift_open/shift_close outbox items. cash_sales_cents accumulates in the
+// sale transaction so the local variance needs no server round trip.
+export const localShifts = sqliteTable("local_shifts", {
+  clientId: text("client_id").primaryKey(),
+  cashierId: text("cashier_id").notNull(),
+  cashierName: text("cashier_name"),
+  openedAt: integer("opened_at").notNull(),
+  openingFloatCents: integer("opening_float_cents").notNull().default(0),
+  cashSalesCents: integer("cash_sales_cents").notNull().default(0),
+  salesCount: integer("sales_count").notNull().default(0),
+  closedAt: integer("closed_at"),
+  closingCashCents: integer("closing_cash_cents"),
+  notes: text("notes"),
+  closedBy: text("closed_by"),
+})
+
 export type ProductRow = typeof products.$inferSelect
 export type QueuedSaleRow = typeof queuedSales.$inferSelect
 export type BranchRow = typeof branches.$inferSelect
@@ -355,3 +422,7 @@ export type AppointmentRow = typeof appointments.$inferSelect
 export type PrescriptionRow = typeof prescriptions.$inferSelect
 export type PrescriptionItemRow = typeof prescriptionItems.$inferSelect
 export type DrugInteractionRow = typeof drugInteractions.$inferSelect
+export type OutboxRow = typeof outbox.$inferSelect
+export type AllowanceRow = typeof allowances.$inferSelect
+export type RosterRow = typeof roster.$inferSelect
+export type LocalShiftRow = typeof localShifts.$inferSelect

@@ -24,6 +24,7 @@ export const staff_profile = pgTable("staff_profile", {
   pin_hash: text("pin_hash"),
   is_active: boolean("is_active").notNull().default(true),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const platform_admin = pgTable("platform_admin", {

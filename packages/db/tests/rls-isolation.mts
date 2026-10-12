@@ -20,6 +20,8 @@ const admin = dbAdmin()
 async function cleanup() {
   // Children/refs first; orgs cascade most, but be explicit for re-runs.
   for (const orgId of [T1, T2]) {
+    await admin.delete(s.sync_issue).where(eq(s.sync_issue.organization_id, orgId))
+    await admin.delete(s.device).where(eq(s.device.organization_id, orgId))
     await admin.delete(s.purchase_order).where(eq(s.purchase_order.organization_id, orgId))
     await admin.delete(s.role_permission).where(eq(s.role_permission.organization_id, orgId))
     await admin.delete(s.sale).where(eq(s.sale.organization_id, orgId))
@@ -37,6 +39,10 @@ async function seed(orgId: string, tag: string) {
   await admin.insert(s.role_permission).values({ organization_id: orgId, role: "cashier", capability: "reports.view", allowed: true })
   const [po] = await admin.insert(s.purchase_order).values({ organization_id: orgId, branch_id: b.id, po_number: `PO-${tag}` }).returning()
   await admin.insert(s.purchase_order_item).values({ purchase_order_id: po.id, product_id: p.id, product_name: p.name, quantity_ordered: 3 })
+  const [dev] = await admin.insert(s.device).values({ organization_id: orgId, branch_id: b.id, name: `${tag}-tablet`, device_code: "D01", token_hash: `hash-${tag}` }).returning()
+  await admin.insert(s.device_stock_allocation).values({ device_id: dev.id, product_id: p.id, quantity: 5, reserved_until: new Date(Date.now() + 3_600_000) })
+  await admin.insert(s.sync_issue).values({ organization_id: orgId, branch_id: b.id, device_id: dev.id, kind: "late_sync", details: { tag } })
+  await admin.insert(s.sync_tombstone).values({ organization_id: orgId, entity: "product", entity_id: `gone-${tag}` })
   await admin.insert(s.customer).values({ organization_id: orgId, full_name: `${tag}-customer` })
   await admin.insert(s.sale).values({ organization_id: orgId, branch_id: b.id, payment_method: "cash", total_amount: "5.00" })
 }
@@ -49,6 +55,7 @@ async function run() {
   const tables: Array<[string, any]> = [
     ["branch", s.branch], ["product", s.product], ["customer", s.customer], ["sale", s.sale],
     ["role_permission", s.role_permission], ["purchase_order", s.purchase_order],
+    ["device", s.device], ["sync_issue", s.sync_issue], ["sync_tombstone", s.sync_tombstone],
   ]
 
   // Each org sees only its own rows on each table.
@@ -71,6 +78,16 @@ async function run() {
     leaked === 0 && items.length >= 1
       ? ok(`purchase_order_item: org A sees its own (${items.length}), none of org B`)
       : bad(`purchase_order_item: leaked=${leaked} visible=${items.length}`)
+  }
+
+  // device_stock_allocation is scoped through its device.
+  {
+    const ownDevIds = new Set((await admin.select().from(s.device).where(eq(s.device.organization_id, T1))).map((r: any) => r.id))
+    const allocs = await withTenant(T1, (db: any) => db.select().from(s.device_stock_allocation))
+    const leaked = allocs.filter((a: any) => !ownDevIds.has(a.device_id)).length
+    leaked === 0 && allocs.length >= 1
+      ? ok(`device_stock_allocation: org A sees its own (${allocs.length}), none of org B`)
+      : bad(`device_stock_allocation: leaked=${leaked} visible=${allocs.length}`)
   }
 
   // Branch lock: a branch-locked session pinned to another branch sees no POs.

@@ -7,6 +7,7 @@ import { kvSet } from "./kv"
 import { useSessionStore } from "../store/session"
 import { useShiftStore } from "../store/shift"
 import { useCartStore } from "../store/cart"
+import * as lockoutPolicy from "./sync/core/lockout"
 
 // Offline till-switching: a shared device (till) can have several staff sign
 // in with their own PIN over time. @better-auth/expo already keeps the LAST
@@ -43,8 +44,8 @@ const COOKIE_KEY = "pharmatrack_cookie"
 const SESSION_DATA_KEY = "pharmatrack_session_data"
 const DEVICE_USERS_KEY = "pharmatrack_device_users"
 
-const MAX_FAILED_ATTEMPTS = 5
-const LOCKOUT_MS = 15 * 60 * 1000
+// Shared with the R1 roster PIN check (lib/sync/roster.ts) — one policy.
+const { MAX_FAILED_ATTEMPTS, LOCKOUT_MS } = lockoutPolicy
 
 interface DeviceUserBranch {
   id: string
