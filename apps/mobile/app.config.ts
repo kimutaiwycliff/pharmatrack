@@ -7,7 +7,9 @@ const BUNDLE_ID = "co.ke.pharmatrack.mobile"
 const config: ExpoConfig = {
   name: "PharmaTrack",
   slug: "pharmatrack-mobile",
-  version: "1.0.0",
+  // 1.1.0 — R2 added native modules (reanimated, worklets, gesture-handler,
+  // expo-haptics), so 1.0.0 installs must not receive R2 OTA bundles.
+  version: "1.1.0",
   scheme: "pharmatrack",
   // EAS Update (OTA JS/asset pushes without a full APK re-download) — exact
   // keys given by `eas update:configure` for this project, not hand-typed.
@@ -21,7 +23,9 @@ const config: ExpoConfig = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  orientation: "portrait",
+  // R2: "default" lets tablets run the POS split view in landscape; phone
+  // layouts are designed portrait-first and still work rotated.
+  orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
   ios: {

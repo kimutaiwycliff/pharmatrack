@@ -3,6 +3,8 @@ import * as Crypto from "expo-crypto"
 import { db } from "../db/database"
 import { sales, saleItems, payments, productBatches, products, shifts, controlledSubstanceLog, receiptCounters, staff, branches } from "../db/schema"
 import type { CartItem } from "../store/cart"
+import { lineTotals, toCartLineInput } from "../features/pos/logic/cart"
+import { effectiveUnitPriceCents } from "../lib/sync/core/payload"
 
 // ADR-014 — Offline Edition real sale ledger. Unlike lib/sync/sales.ts
 // (queueSale/buildSalePayload — the ONLINE app's "queue now, POST /api/sales
@@ -86,9 +88,9 @@ export async function commitLocalSale(args: CommitSaleArgs): Promise<CommitSaleR
   const controlledLines: { saleItemId: string; quantity: number; batchNumber: string | null }[] = []
 
   for (const item of args.items) {
-    const lineGrossCents = item.unitPrice * item.quantity
-    const lineDiscountCents = Math.round((lineGrossCents * item.discountPercent) / 100)
-    const lineTotalCents = lineGrossCents - lineDiscountCents
+    // Same line maths as the online commit (packs priced by the pack, R2).
+    const { gross: lineGrossCents, discount: lineDiscountCents, net: lineTotalCents } = lineTotals(item)
+    const unitPriceCents = Math.round(effectiveUnitPriceCents(toCartLineInput(item)))
     subtotalCents += lineGrossCents
     discountAmountCents += lineDiscountCents
 
@@ -110,7 +112,7 @@ export async function commitLocalSale(args: CommitSaleArgs): Promise<CommitSaleR
         batchId: batch.id,
         productName: item.productName,
         quantity: take,
-        unitPriceCents: item.unitPrice,
+        unitPriceCents,
         discountPercent: item.discountPercent,
         lineTotalCents: Math.round(lineTotalCents * takeFraction),
         baseUnit: item.baseUnit,

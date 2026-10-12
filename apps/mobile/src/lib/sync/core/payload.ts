@@ -69,16 +69,28 @@ export type PushItemPayload = ShiftOpenPayload | ShiftClosePayload | SalePayload
 
 // ── Sale builder ────────────────────────────────────────────────────────────
 
-/** One cart line, in integer cents per BASE unit. */
+/** A line sold by pack (strip, box…) instead of by the base unit. */
+export interface SellUnitInput {
+  packSizeId: string
+  /** Base units in one pack. */
+  unitCount: number
+  /** Price of one whole pack, integer cents. */
+  packPriceCents: number
+}
+
+/** One cart line. `quantity` is always in BASE units (packs × unitCount for a pack line). */
 export interface CartLineInput {
   productId: string
   productName: string
   productStrength: string | null
   baseUnit: string
   quantity: number
+  /** List price per base unit, integer cents (used when sellUnit is null). */
   unitPriceCents: number
   discountPercent: number
   isControlled: boolean
+  /** R2: set when the cashier sells whole packs — priced by the pack. */
+  sellUnit?: SellUnitInput | null
 }
 
 export type PaymentInput =
@@ -103,11 +115,24 @@ export class SalePayloadError extends Error {}
 
 const toKes = (cents: number) => Math.round(cents) / 100
 
-/** Line maths shared with the cart: discount rounds half-up per line (applyDiscount). */
-export function lineCents(line: Pick<CartLineInput, "quantity" | "unitPriceCents" | "discountPercent">) {
-  const gross = line.unitPriceCents * line.quantity
+type LineMath = Pick<CartLineInput, "quantity" | "unitPriceCents" | "discountPercent" | "sellUnit">
+
+/**
+ * Line maths shared with the cart: discount rounds half-up per line
+ * (applyDiscount). A pack line is priced as whole packs × pack price, so a
+ * strip of 10 at KES 55 is 55.00, not 10 × the rounded per-tablet price.
+ */
+export function lineCents(line: LineMath) {
+  const gross = line.sellUnit
+    ? Math.round(line.quantity / line.sellUnit.unitCount) * line.sellUnit.packPriceCents
+    : line.unitPriceCents * line.quantity
   const discount = Math.round((gross * line.discountPercent) / 100)
   return { gross, discount, net: gross - discount }
+}
+
+/** Effective price charged per BASE unit before the line discount (may be fractional cents for packs). */
+export function effectiveUnitPriceCents(line: Pick<CartLineInput, "unitPriceCents" | "sellUnit">): number {
+  return line.sellUnit ? line.sellUnit.packPriceCents / line.sellUnit.unitCount : line.unitPriceCents
 }
 
 export function saleTotalCents(lines: CartLineInput[]): number {
@@ -120,6 +145,12 @@ export function buildSalePayload(a: BuildSaleArgs): SalePayload {
     if (!Number.isInteger(l.quantity) || l.quantity <= 0) throw new SalePayloadError(`Bad quantity for ${l.productName}`)
     if (!Number.isInteger(l.unitPriceCents) || l.unitPriceCents < 0) throw new SalePayloadError(`Bad price for ${l.productName}`)
     if (l.discountPercent < 0 || l.discountPercent > 100) throw new SalePayloadError(`Bad discount for ${l.productName}`)
+    if (l.sellUnit) {
+      const u = l.sellUnit
+      if (!u.packSizeId || !Number.isInteger(u.unitCount) || u.unitCount < 1) throw new SalePayloadError(`Bad pack size for ${l.productName}`)
+      if (!Number.isInteger(u.packPriceCents) || u.packPriceCents < 0) throw new SalePayloadError(`Bad pack price for ${l.productName}`)
+      if (l.quantity % u.unitCount !== 0) throw new SalePayloadError(`${l.productName}: quantity must be whole packs`)
+    }
   }
   const totalCents = saleTotalCents(a.lines)
 
@@ -131,12 +162,13 @@ export function buildSalePayload(a: BuildSaleArgs): SalePayload {
     quantity: l.quantity,
     // Per-base-unit price charged before the line discount; the discount is
     // carried separately in discount_percent and already netted in line_total
-    // (the server compares unit_price to the list price to flag mismatches).
-    unit_price: toKes(l.unitPriceCents),
+    // (the server compares unit_price to the list price — or to pack price ÷
+    // unit_count for a pack line — to flag mismatches, within 0.01).
+    unit_price: toKes(effectiveUnitPriceCents(l)),
     discount_percent: l.discountPercent,
     line_total: toKes(lineCents(l).net),
     is_controlled: l.isControlled,
-    sell_unit: null,
+    sell_unit: l.sellUnit ? { pack_size_id: l.sellUnit.packSizeId, unit_count: l.sellUnit.unitCount } : null,
   }))
 
   const common = {
