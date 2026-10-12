@@ -55,11 +55,3 @@ export function verifyWebhookSignature(rawBody: string, signature: string | null
     return false
   }
 }
-
-/** Add one billing interval to a date. */
-export function addInterval(from: Date, interval: string): Date {
-  const d = new Date(from)
-  if (interval === "annual") d.setFullYear(d.getFullYear() + 1)
-  else d.setMonth(d.getMonth() + 1)
-  return d
-}

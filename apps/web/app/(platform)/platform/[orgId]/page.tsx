@@ -9,13 +9,19 @@ import { ArrowLeft, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PaymentPeriodDialog } from "@/components/platform/PaymentPeriodDialog"
+import { daysLeft, endOfNairobiDay, nairobiDay } from "@/lib/billing/period"
 
 interface Plan { id: string; code: string; name: string; price_kes: number; interval: string }
 interface Sub {
-  id: string; status: string; plan_id: string | null
-  trial_ends_at: string | null; current_period_end: string | null
+  id: string; status: string; effective_status: string; plan_id: string | null
+  trial_ends_at: string | null; current_period_end: string | null; updated_at: string
+  plan: { name: string; price_kes: number; interval: string } | null
 }
-interface Payment { id: string; amount_kes: number; method: string | null; reference: string | null; period_end: string | null; created_at: string; status: string }
+interface Payment {
+  id: string; amount_kes: number; method: string | null; reference: string | null
+  period_start: string | null; period_end: string | null; created_at: string; confirmed_at: string | null; status: string
+}
 interface TenantDetail {
   tenant: { id: string; name: string; email: string | null; phone: string | null; created_at: string; subscriptions: Sub[] }
   branch_count: number; staff_count: number; plans: Plan[]; payments: Payment[]
@@ -23,7 +29,10 @@ interface TenantDetail {
 }
 
 const selectCls = "w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
-const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : "")
+// Nairobi calendar day — iso.slice(0,10) showed the UTC day, one day early for
+// period ends stored as end-of-day EAT.
+const dateOnly = (iso: string | null) => (iso ? nairobiDay(new Date(iso)) : "")
+const shortDay = (ymd: string) => endOfNairobiDay(ymd).toLocaleDateString("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", year: "numeric" })
 const daysUntil = (iso: string) => {
   const d = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000)
   return d <= 0 ? "today" : `in ${d} day${d === 1 ? "" : "s"}`
@@ -54,25 +63,25 @@ export default function TenantDetailPage() {
   const [planId, setPlanId] = useState<string>("")
   const [periodEnd, setPeriodEnd] = useState<string>("")
   const [trialEnds, setTrialEnds] = useState<string>("")
-  const [synced, setSynced] = useState(false)
-  if (sub && !synced) {
-    setSynced(true)
+  // Re-sync whenever the server row changes (keyed on updated_at). Syncing
+  // only once left Status / Paid-until stale after a payment was confirmed, so
+  // a later Save silently wrote the OLD period end back.
+  const [syncedAt, setSyncedAt] = useState<string | null>(null)
+  if (sub && sub.updated_at !== syncedAt) {
+    setSyncedAt(sub.updated_at)
     setStatus(sub.status)
     setPlanId(sub.plan_id ?? "")
     setPeriodEnd(dateOnly(sub.current_period_end))
     setTrialEnds(dateOnly(sub.trial_ends_at))
   }
 
-  // Payment form
-  const [amount, setAmount] = useState("")
-  const [method, setMethod] = useState("mpesa")
-  const [reference, setReference] = useState("")
-  const [payPeriodEnd, setPayPeriodEnd] = useState("")
-  const [paying, setPaying] = useState(false)
-
-  // Pending claim confirm/reject
-  const [claimPeriodEnd, setClaimPeriodEnd] = useState<Record<string, string>>({})
+  // Confirm-claim / record-payment dialog
+  const [dialog, setDialog] = useState<null | { mode: "record" } | { mode: "confirm"; claim: Payment }>(null)
   const [actingOn, setActingOn] = useState<string | null>(null)
+  async function refresh() {
+    await qc.invalidateQueries({ queryKey: ["tenant", orgId] })
+    await qc.invalidateQueries({ queryKey: ["tenants"] })
+  }
 
   async function saveSubscription() {
     setSaving(true)
@@ -83,8 +92,8 @@ export default function TenantDetailPage() {
         body: JSON.stringify({
           status,
           plan_id: planId || null,
-          current_period_end: periodEnd ? new Date(periodEnd).toISOString() : null,
-          trial_ends_at: trialEnds ? new Date(trialEnds).toISOString() : null,
+          current_period_end: periodEnd ? endOfNairobiDay(periodEnd).toISOString() : null,
+          trial_ends_at: trialEnds ? endOfNairobiDay(trialEnds).toISOString() : null,
         }),
       })
       const json = (await res.json()) as { error?: string }
@@ -96,37 +105,17 @@ export default function TenantDetailPage() {
     finally { setSaving(false) }
   }
 
-  async function logPayment() {
-    const amt = parseFloat(amount)
-    if (isNaN(amt) || amt <= 0) { toast.error("Enter a valid amount"); return }
-    setPaying(true)
-    try {
-      const res = await fetch(`/api/platform/tenants/${orgId}/payments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount_kes: amt, method, reference: reference || undefined, period_end: payPeriodEnd || undefined, activate: true }),
-      })
-      const json = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Failed")
-      toast.success("Payment recorded")
-      setAmount(""); setReference(""); setPayPeriodEnd("")
-      await qc.invalidateQueries({ queryKey: ["tenant", orgId] })
-      await qc.invalidateQueries({ queryKey: ["tenants"] })
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Error") }
-    finally { setPaying(false) }
-  }
-
-  async function resolveClaim(paymentId: string, action: "confirm" | "reject") {
+  async function rejectClaim(paymentId: string) {
     setActingOn(paymentId)
     try {
       const res = await fetch(`/api/platform/tenants/${orgId}/payments/${paymentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, period_end: claimPeriodEnd[paymentId] || undefined }),
+        body: JSON.stringify({ action: "reject" }),
       })
-      const json = (await res.json()) as { error?: string }
+      const json = (await res.json()) as { error?: string; owner_notified?: boolean }
       if (!res.ok) throw new Error(json.error ?? "Failed")
-      toast.success(action === "confirm" ? "Payment confirmed" : "Payment rejected")
+      toast.success("Payment rejected", { description: json.owner_notified ? "The owner was emailed to resubmit." : undefined })
       await qc.invalidateQueries({ queryKey: ["tenant", orgId] })
       await qc.invalidateQueries({ queryKey: ["tenants"] })
     } catch (err) { toast.error(err instanceof Error ? err.message : "Error") }
@@ -199,7 +188,10 @@ export default function TenantDetailPage() {
 
       {/* Subscription */}
       <section className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-text-secondary)] mb-4">Subscription</h2>
+        <div className="flex flex-wrap items-start justify-between gap-2 mb-4">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-text-secondary)]">Subscription</h2>
+          {sub && <SubscriptionSummary sub={sub} />}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-sm font-medium">Status</Label>
@@ -236,20 +228,12 @@ export default function TenantDetailPage() {
       </section>
 
       {/* Record payment */}
-      <section className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-text-secondary)] mb-4">Record payment</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <div><Label className="text-sm font-medium">Amount (KES)</Label><Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1.5 h-10" /></div>
-          <div><Label className="text-sm font-medium">Method</Label>
-            <select value={method} onChange={(e) => setMethod(e.target.value)} className={`mt-1.5 ${selectCls}`}>
-              {["mpesa", "bank", "cash", "card", "other"].map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div><Label className="text-sm font-medium">Reference</Label><Input value={reference} onChange={(e) => setReference(e.target.value)} className="mt-1.5 h-10" /></div>
-          <div><Label className="text-sm font-medium">Covers until</Label><Input type="date" value={payPeriodEnd} onChange={(e) => setPayPeriodEnd(e.target.value)} className="mt-1.5 h-10" /></div>
+      <section className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-text-secondary)]">Record payment</h2>
+          <p className="text-xs text-[var(--pt-text-tertiary)] mt-1">Paid outside the app? Record it — the period is worked out for you and the owner is emailed.</p>
         </div>
-        <p className="text-xs text-[var(--pt-text-tertiary)] mt-2">Recording a payment with a &quot;covers until&quot; date activates the subscription and extends paid-until.</p>
-        <Button onClick={logPayment} disabled={paying} size="sm" className="mt-3 gap-1.5">{paying && <Loader2 size={13} className="animate-spin" />} Record payment</Button>
+        <Button size="sm" onClick={() => setDialog({ mode: "record" })}>Record payment…</Button>
       </section>
 
       {/* Payment history */}
@@ -275,20 +259,18 @@ export default function TenantDetailPage() {
                   </div>
                   <span className="text-xs text-[var(--pt-text-tertiary)]">{new Date(p.created_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}</span>
                 </div>
+                {p.status === "confirmed" && p.period_end && (
+                  <p className="text-xs text-[var(--pt-text-secondary)] mt-1">
+                    Covers {p.period_start ? `${shortDay(p.period_start)} → ` : "to "}{shortDay(p.period_end)}
+                  </p>
+                )}
                 {p.status === "pending" && (
                   <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <Input
-                      type="date"
-                      value={claimPeriodEnd[p.id] ?? ""}
-                      onChange={(e) => setClaimPeriodEnd((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                      className="h-9 w-auto"
-                      placeholder="Covers until"
-                    />
-                    <Button size="sm" onClick={() => resolveClaim(p.id, "confirm")} disabled={actingOn === p.id} className="gap-1.5">
-                      {actingOn === p.id && <Loader2 size={13} className="animate-spin" />} Confirm{claimPeriodEnd[p.id] ? " & activate" : ""}
+                    <Button size="sm" onClick={() => setDialog({ mode: "confirm", claim: p })} disabled={actingOn === p.id}>
+                      Review &amp; confirm…
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => resolveClaim(p.id, "reject")} disabled={actingOn === p.id} className="text-[var(--pt-red)] border-[var(--pt-red)]">
-                      Reject
+                    <Button size="sm" variant="outline" onClick={() => rejectClaim(p.id)} disabled={actingOn === p.id} className="gap-1.5 text-[var(--pt-red)] border-[var(--pt-red)]">
+                      {actingOn === p.id && <Loader2 size={13} className="animate-spin" />} Reject
                     </Button>
                   </div>
                 )}
@@ -360,6 +342,38 @@ export default function TenantDetailPage() {
           </div>
         )}
       </section>
+      {dialog && (
+        dialog.mode === "confirm"
+          ? <PaymentPeriodDialog mode="confirm" claim={dialog.claim} orgId={orgId} sub={sub} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void refresh() }} />
+          : <PaymentPeriodDialog mode="record" orgId={orgId} sub={sub} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void refresh() }} />
+      )}
+    </div>
+  )
+}
+
+const STATUS_STYLE: Record<string, string> = {
+  active: "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]",
+  trialing: "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  past_due: "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  suspended: "bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300",
+  cancelled: "bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300",
+}
+
+/** What the tenant is actually experiencing right now (effective status). */
+function SubscriptionSummary({ sub }: { sub: Sub }) {
+  const s = sub.effective_status ?? sub.status
+  const until = s === "trialing" ? sub.trial_ends_at : sub.current_period_end
+  const left = until ? daysLeft(until) : null
+  return (
+    <div className="text-right">
+      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${STATUS_STYLE[s] ?? ""}`}>{s.replace("_", " ")}</span>
+      {until && (
+        <p className="text-xs text-[var(--pt-text-secondary)] mt-1">
+          {left! >= 0 ? (s === "trialing" ? "Trial ends " : "Next renewal ") : "Lapsed "}
+          <span className="font-semibold">{shortDay(nairobiDay(new Date(until)))}</span>
+          {left! >= 0 ? ` (${left} day${left === 1 ? "" : "s"})` : ""}
+        </p>
+      )}
     </div>
   )
 }

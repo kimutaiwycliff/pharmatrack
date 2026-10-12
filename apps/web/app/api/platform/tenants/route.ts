@@ -6,6 +6,7 @@ import { dbAdmin, organization, branch, subscription, plan, member } from "@phar
 import { isPlatformAdmin } from "@/lib/auth/helpers"
 import { auth } from "@/lib/auth/server"
 import { provisionTenant } from "@/lib/provisioning"
+import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 
 // Operator console: list tenants + provision a new one. Operator-only; all
 // queries via dbAdmin (cross-tenant, bypasses RLS).
@@ -36,7 +37,7 @@ export async function GET() {
       id: o.id,
       name: o.name,
       created_at: o.createdAt,
-      subscription: s ? { id: s.id, status: s.status, trial_ends_at: s.trial_ends_at, current_period_end: s.current_period_end, plan_id: s.plan_id } : null,
+      subscription: s ? { id: s.id, status: effectiveSubscriptionStatus(s), trial_ends_at: s.trial_ends_at, current_period_end: s.current_period_end, plan_id: s.plan_id } : null,
       plan_name: s?.plan_id ? planName.get(s.plan_id) ?? null : null,
       branch_count: bMap.get(o.id) ?? 0,
       staff_count: sMap.get(o.id) ?? 0,

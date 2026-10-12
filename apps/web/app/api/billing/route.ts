@@ -4,6 +4,7 @@ import { withTenant, subscription, plan, subscription_payment } from "@pharmatra
 import { getApiContext } from "@/lib/api-auth"
 import { paystackConfigured } from "@/lib/billing/paystack"
 import { platformContact } from "@/lib/platform-contact"
+import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 
 // Owner-facing billing summary: their subscription + plan + recent payments.
 // Must keep working while locked out — it's what PaymentClaimBox reads on the
@@ -24,7 +25,12 @@ export async function GET() {
 
     return NextResponse.json({
       subscription: sub
-        ? { ...sub.row, plan: sub.plan_name ? { name: sub.plan_name, price_kes: Number(sub.plan_price), interval: sub.plan_interval } : null }
+        ? {
+            ...sub.row,
+            // The status access gating actually uses (a lapsed "active" period
+            // reads as past_due/suspended here too, not "active").
+            effective_status: effectiveSubscriptionStatus(sub.row),
+            plan: sub.plan_name ? { name: sub.plan_name, price_kes: Number(sub.plan_price), interval: sub.plan_interval } : null }
         : null,
       payments: payments.map((p) => ({ ...p, amount_kes: Number(p.amount_kes) })),
       paystackEnabled: paystackConfigured(),

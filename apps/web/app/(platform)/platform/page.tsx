@@ -21,7 +21,7 @@ function StatusBadge({ status }: { status: SubscriptionStatus | null }) {
 }
 
 function fmtDate(iso: string | null) {
-  return iso ? new Date(iso).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" }) : "—"
+  return iso ? new Date(iso).toLocaleDateString("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", year: "numeric" }) : "—"
 }
 
 export default function PlatformTenantsPage() {
@@ -106,7 +106,7 @@ export default function PlatformTenantsPage() {
                 <th className="px-5 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">Pharmacy</th>
                 <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden sm:table-cell">Plan</th>
                 <th className="px-4 py-3 text-center text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden md:table-cell">Paid until</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden md:table-cell">Next renewal</th>
                 <th className="px-4 py-3 text-center text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden lg:table-cell">Branches</th>
                 <th className="px-4 py-3 text-center text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden lg:table-cell">Staff</th>
               </tr>
@@ -120,7 +120,9 @@ export default function PlatformTenantsPage() {
                   </td>
                   <td className="px-4 py-3.5 text-[var(--pt-text-secondary)] hidden sm:table-cell">{t.plan_name ?? "—"}</td>
                   <td className="px-4 py-3.5 text-center"><StatusBadge status={t.subscription?.status ?? null} /></td>
-                  <td className="px-4 py-3.5 text-[var(--pt-text-secondary)] hidden md:table-cell">{fmtDate(t.subscription?.current_period_end ?? null)}</td>
+                  <td className="px-4 py-3.5 text-[var(--pt-text-secondary)] hidden md:table-cell">
+                    {fmtDate((t.subscription?.status === "trialing" ? t.subscription?.trial_ends_at : t.subscription?.current_period_end) ?? null)}
+                  </td>
                   <td className="px-4 py-3.5 text-center tabular-nums hidden lg:table-cell">{t.branch_count}</td>
                   <td className="px-4 py-3.5 text-center tabular-nums hidden lg:table-cell">{t.staff_count}</td>
                 </tr>

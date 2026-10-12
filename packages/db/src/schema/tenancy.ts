@@ -80,6 +80,8 @@ export const subscription_payment = pgTable("subscription_payment", {
   // 'rejected' = operator could not verify the claim.
   status: text("status").notNull().default("confirmed"),
   claimed_by: text("claimed_by").references(() => user.id),
+  // Migration 028.
+  confirmed_at: timestamp("confirmed_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

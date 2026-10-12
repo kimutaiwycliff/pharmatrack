@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { and, asc, desc, eq, sql } from "drizzle-orm"
-import { organization, org_settings, subscription, plan, branch, staff_profile, subscription_payment, tenant_deletion } from "@pharmatrack/db"
+import { asc, desc, eq, sql } from "drizzle-orm"
+import { organization, org_settings, subscription, plan, branch, staff_profile, subscription_payment, tenant_deletion, audit_log } from "@pharmatrack/db"
 import { zUuid } from "@/lib/api/validation"
 import { getPlatformContext } from "@/lib/platform"
 import { purgeTenant } from "@/lib/platform/purge"
+import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 
 type OrgSettings = { email?: string; phone?: string; address?: string; registration_number?: string }
 
@@ -30,7 +31,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   ])
 
   const subscriptions = sub
-    ? [{ ...sub.row, plan: sub.plan_name ? { name: sub.plan_name, price_kes: Number(sub.plan_price), interval: sub.plan_interval } : null }]
+    ? [{
+        ...sub.row,
+        // What access gating actually uses (lapsed "active" → past_due/suspended).
+        effective_status: effectiveSubscriptionStatus(sub.row),
+        plan: sub.plan_name ? { name: sub.plan_name, price_kes: Number(sub.plan_price), interval: sub.plan_interval } : null,
+      }]
     : []
 
   const [del] = await db.select().from(tenant_deletion).where(eq(tenant_deletion.organization_id, orgId)).limit(1)
@@ -69,6 +75,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     updated_at: new Date(),
   }).where(eq(subscription.organization_id, orgId)).returning()
 
+  await ctx.db.insert(audit_log).values({
+    organization_id: orgId, actor_id: ctx.user.id, action: "subscription.update",
+    entity: "subscription", entity_id: updated?.id ?? null, diff: d,
+  })
   return NextResponse.json({ subscription: updated })
 }
 

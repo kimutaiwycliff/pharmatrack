@@ -1,21 +1,23 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Loader2, CreditCard, Smartphone, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { daysLeft } from "@/lib/billing/period"
 
 interface Plan { name: string; price_kes: number; interval: string }
 interface Sub {
   status: string
+  effective_status?: string
   current_period_end: string | null
   trial_ends_at: string | null
   plan: Plan | null
 }
-interface Payment { id: string; amount_kes: number; method: string | null; reference: string | null; created_at: string; status: string }
+interface Payment { id: string; amount_kes: number; method: string | null; reference: string | null; created_at: string; status: string; period_end: string | null }
 interface BillingData { subscription: Sub | null; payments: Payment[]; paystackEnabled: boolean; paymentNumber: string | null }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -31,7 +33,9 @@ const PAYMENT_STATUS_STYLES: Record<string, string> = {
   rejected: "bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/30",
 }
 
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" }) : "—")
+const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", year: "numeric" }) : "—")
+// payment.period_end is a calendar day (YYYY-MM-DD) — format it as such.
+const fmtDay = (ymd: string) => new Date(`${ymd}T12:00:00+03:00`).toLocaleDateString("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", year: "numeric" })
 
 export function BillingPanel() {
   const qc = useQueryClient()
@@ -45,7 +49,27 @@ export function BillingPanel() {
       if (!res.ok) throw new Error("Failed to load billing")
       return res.json() as Promise<BillingData>
     },
+    // While a claim awaits the operator, check every 15s so the confirmation
+    // (and the new renewal date) shows up without a reload.
+    refetchInterval: (q) => (q.state.data?.payments.some((p) => p.status === "pending") ? 15_000 : false),
   })
+
+  // Announce the moment a pending claim is resolved.
+  const prevPending = useRef<string | null>(null)
+  const pendingId = data?.payments.find((p) => p.status === "pending")?.id ?? null
+  useEffect(() => {
+    const was = prevPending.current
+    prevPending.current = pendingId
+    if (!was || pendingId === was || !data) return
+    const resolved = data.payments.find((p) => p.id === was)
+    if (resolved?.status === "confirmed") {
+      toast.success("Payment confirmed — thank you!", {
+        description: data.subscription?.current_period_end ? `Active until ${fmt(data.subscription.current_period_end)}.` : undefined,
+      })
+    } else if (resolved?.status === "rejected") {
+      toast.error("We couldn't verify that payment", { description: "Check the M-Pesa code and submit it again." })
+    }
+  }, [pendingId, data])
 
   async function pay() {
     setPaying(true)
@@ -86,7 +110,9 @@ export function BillingPanel() {
   }
 
   const sub = data.subscription
-  const status = sub?.status ?? "none"
+  const status = sub?.effective_status ?? sub?.status ?? "none"
+  const renewal = status === "trialing" ? sub?.trial_ends_at ?? null : sub?.current_period_end ?? null
+  const left = renewal ? daysLeft(renewal) : null
   const pendingClaim = data.payments.find((p) => p.status === "pending")
 
   return (
@@ -101,13 +127,17 @@ export function BillingPanel() {
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-[var(--pt-text-tertiary)]">Paid until</p>
-            <p className="font-medium tabular-nums">{fmt(sub?.current_period_end ?? null)}</p>
+            <p className="text-[11px] uppercase tracking-wide text-[var(--pt-text-tertiary)]">
+              {status === "trialing" ? "Trial ends" : status === "active" ? "Active until" : "Expired on"}
+            </p>
+            <p className="font-medium tabular-nums">{fmt(renewal)}</p>
           </div>
-          {sub?.trial_ends_at && (
+          {left != null && left >= 0 && (
             <div>
-              <p className="text-[11px] uppercase tracking-wide text-[var(--pt-text-tertiary)]">Trial ends</p>
-              <p className="font-medium tabular-nums">{fmt(sub.trial_ends_at)}</p>
+              <p className="text-[11px] uppercase tracking-wide text-[var(--pt-text-tertiary)]">Next renewal</p>
+              <p className={`font-medium tabular-nums ${left <= 7 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                {left === 0 ? "Today" : `In ${left} day${left === 1 ? "" : "s"}`}
+              </p>
             </div>
           )}
         </div>
@@ -133,7 +163,7 @@ export function BillingPanel() {
                 <p className="font-medium">Payment awaiting confirmation</p>
                 <p className="text-[var(--pt-text-secondary)] text-xs mt-0.5">
                   KES {Number(pendingClaim.amount_kes).toLocaleString()} · ref {pendingClaim.reference} · sent {fmt(pendingClaim.created_at)}.
-                  We&apos;ll activate your subscription once it&apos;s verified.
+                  We&apos;ll activate your subscription once it&apos;s verified — this page updates by itself.
                 </p>
               </div>
             </div>
@@ -172,6 +202,9 @@ export function BillingPanel() {
               <div>
                 <span className="font-semibold tabular-nums">KES {Number(p.amount_kes).toLocaleString()}</span>
                 <span className="text-[var(--pt-text-tertiary)] ml-2 text-xs">{p.method ?? "—"}{p.reference ? ` · ${p.reference}` : ""}</span>
+                {p.status === "confirmed" && p.period_end && (
+                  <span className="block sm:inline sm:ml-2 text-xs text-[var(--pt-text-secondary)]">covers to {fmtDay(p.period_end)}</span>
+                )}
                 {PAYMENT_STATUS_STYLES[p.status] && (
                   <span className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${PAYMENT_STATUS_STYLES[p.status]}`}>{p.status}</span>
                 )}
