@@ -109,6 +109,49 @@ describe("buildSalePayload", () => {
   })
 })
 
+describe("pack sales (sell_unit)", () => {
+  const strip = { packSizeId: "33333333-3333-4333-8333-333333333333", unitCount: 10, packPriceCents: 5500 }
+
+  it("sends sell_unit, base-unit quantity and the per-base-unit price", () => {
+    const p = buildSalePayload(args({
+      lines: [line({ quantity: 20, unitPriceCents: 600, sellUnit: strip })],
+      payment: { method: "cash", tenderedCents: 20000 },
+    }))
+    expect(p.items[0]).toMatchObject({
+      quantity: 20,
+      unit_price: 5.5,
+      line_total: 110,
+      sell_unit: { pack_size_id: strip.packSizeId, unit_count: 10 },
+    })
+    expect(p.total_amount).toBe(110)
+    expect(p.change_given).toBe(90)
+  })
+
+  it("prices whole packs, not rounded unit prices", () => {
+    // KES 100 for 3 → 33.333… per unit; two packs must still be exactly 200.
+    const three = { packSizeId: "p3", unitCount: 3, packPriceCents: 10000 }
+    const p = buildSalePayload(args({
+      lines: [line({ quantity: 6, sellUnit: three })],
+      payment: { method: "cash", tenderedCents: 20000 },
+    }))
+    expect(p.items[0]!.line_total).toBe(200)
+    expect(p.items[0]!.unit_price).toBe(33.33)
+  })
+
+  it("applies the line discount to the pack total", () => {
+    const p = buildSalePayload(args({
+      lines: [line({ quantity: 10, discountPercent: 10, sellUnit: strip })],
+      payment: { method: "cash", tenderedCents: 5000 },
+    }))
+    expect(p.items[0]!.line_total).toBe(49.5)
+    expect(p.items[0]!.unit_price).toBe(5.5)
+  })
+
+  it("rejects part packs", () => {
+    expect(() => buildSalePayload(args({ lines: [line({ quantity: 15, sellUnit: strip })], payment: { method: "cash", tenderedCents: 99999 } }))).toThrow(SalePayloadError)
+  })
+})
+
 describe("helpers", () => {
   it("cash collected per payment method", () => {
     expect(cashCollectedCents({ method: "cash", tenderedCents: 900 }, 500)).toBe(500)
