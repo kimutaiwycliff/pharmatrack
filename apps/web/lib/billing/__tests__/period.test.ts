@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { addMonthsToDay, coverageFor, endOfNairobiDay, nairobiDay, periodsForAmount } from "../period"
+import { addDaysToDay, addMonthsToDay, coverageFor, endOfNairobiDay, nairobiDay, periodsForAmount, trialEndsAt } from "../period"
 
 describe("addMonthsToDay", () => {
   it("adds months and rolls the year", () => {
@@ -41,5 +41,31 @@ describe("periodsForAmount", () => {
     expect(periodsForAmount(4000, 4500)).toBe(1)
     expect(periodsForAmount(100, 4500)).toBe(1)
     expect(periodsForAmount(5000, null)).toBe(1)
+  })
+})
+
+describe("addDaysToDay", () => {
+  it("adds days across month and year ends", () => {
+    expect(addDaysToDay("2026-10-12", 14)).toBe("2026-10-26")
+    expect(addDaysToDay("2026-10-25", 14)).toBe("2026-11-08")
+    expect(addDaysToDay("2026-12-25", 14)).toBe("2027-01-08")
+  })
+  it("handles leap years and negative offsets", () => {
+    expect(addDaysToDay("2028-02-28", 1)).toBe("2028-02-29")
+    expect(addDaysToDay("2027-02-28", 1)).toBe("2027-03-01")
+    expect(addDaysToDay("2026-03-01", -1)).toBe("2026-02-28")
+    expect(addDaysToDay("2026-10-12", 0)).toBe("2026-10-12")
+  })
+})
+
+describe("trialEndsAt", () => {
+  it("ends at 23:59:59.999 EAT, 14 Nairobi days later", () => {
+    // 22:30 UTC on 11 Oct is already 12 Oct (01:30) in Nairobi.
+    const end = trialEndsAt(14, new Date("2026-10-11T22:30:00Z"))
+    expect(end.toISOString()).toBe("2026-10-26T20:59:59.999Z")
+  })
+  it("uses the Nairobi day, not the UTC day", () => {
+    const end = trialEndsAt(14, new Date("2026-10-12T10:00:00Z"))
+    expect(nairobiDay(end)).toBe("2026-10-26")
   })
 })

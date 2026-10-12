@@ -32,6 +32,22 @@ export function addMonthsToDay(ymd: string, months: number): string {
   return `${ty}-${String(tm + 1).padStart(2, "0")}-${String(td).padStart(2, "0")}`
 }
 
+/** Add whole days to a calendar day (negative to go back). Pure date-only
+ *  arithmetic in UTC, so there is no DST / timezone drift. */
+export function addDaysToDay(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number) as [number, number, number]
+  const t = new Date(Date.UTC(y, m - 1, d + Math.trunc(days)))
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`
+}
+
+/** When a trial of `days` started at `from` ends: the END of the Nairobi
+ *  calendar day `days` days after today (Nairobi) — the same convention the
+ *  operator console uses when editing trial_ends_at, so a "14-day trial"
+ *  started any time on 12 Oct runs until 23:59:59 EAT on 26 Oct. */
+export function trialEndsAt(days: number, from: Date = new Date()): Date {
+  return endOfNairobiDay(addDaysToDay(nairobiDay(from), days))
+}
+
 export function monthsPerInterval(interval: string | null | undefined): number {
   return interval === "annual" ? 12 : 1
 }

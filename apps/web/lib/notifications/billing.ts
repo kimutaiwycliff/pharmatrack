@@ -143,3 +143,58 @@ export async function notifyPaymentOutcome(
     return { status: "failed", error: err instanceof Error ? err.message : "email error" }
   }
 }
+
+// ── Trial extension outcome emails (operator approved / declined a request) ──
+
+export function trialExtensionApprovedEmail(ctx: { orgName: string; ownerName: string; days: number; endsAt: Date; appUrl: string }): { subject: string; html: string } {
+  const until = formatWhen(ctx.endsAt)
+  return {
+    subject: `Your PharmaTrack trial is on — free until ${until}`,
+    html: `
+    <div style="font-family:system-ui,sans-serif;max-width:480px;color:#111827">
+      <h2 style="margin:0 0 12px">Good news — your trial request was approved</h2>
+      <p>Hi ${esc(ctx.ownerName)},</p>
+      <p><strong>${esc(ctx.orgName)}</strong> now has a <strong>${ctx.days}-day free trial</strong> of PharmaTrack, running until <strong>${until}</strong>.</p>
+      <p style="margin:24px 0">
+        <a href="${ctx.appUrl}" style="background:#15803d;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">Open PharmaTrack</a>
+      </p>
+      <p style="color:#6b7280">We'll remind you before the trial ends.</p>
+    </div>`,
+  }
+}
+
+export function trialExtensionDeclinedEmail(ctx: { orgName: string; ownerName: string; billingUrl: string }): { subject: string; html: string } {
+  return {
+    subject: "About your PharmaTrack trial request",
+    html: `
+    <div style="font-family:system-ui,sans-serif;max-width:480px;color:#111827">
+      <h2 style="margin:0 0 12px">We couldn't add another trial this time</h2>
+      <p>Hi ${esc(ctx.ownerName)},</p>
+      <p>Thanks for your interest in PharmaTrack. We weren't able to approve another free trial for <strong>${esc(ctx.orgName)}</strong>, as a trial has already been used with these details.</p>
+      <p>You can start your subscription at any time from your billing page — and if you think this is a mistake, just reply to this email.</p>
+      <p style="margin:24px 0">
+        <a href="${ctx.billingUrl}" style="background:#15803d;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">Subscribe</a>
+      </p>
+    </div>`,
+  }
+}
+
+/** Best-effort: never fails the operator action if email is down. */
+export async function notifyTrialExtensionOutcome(
+  organizationId: string,
+  outcome: { kind: "approved"; days: number; endsAt: Date } | { kind: "declined" },
+): Promise<SendResult> {
+  try {
+    const owner = await ownerContact(organizationId)
+    if (!owner) return { status: "skipped", error: "No owner email" }
+    const [org] = await dbAdmin().select({ name: organization.name }).from(organization).where(eq(organization.id, organizationId)).limit(1)
+    const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "").replace(/\/$/, "")
+    const common = { orgName: org?.name ?? "your pharmacy", ownerName: owner.name || "there" }
+    const { subject, html } = outcome.kind === "approved"
+      ? trialExtensionApprovedEmail({ ...common, days: outcome.days, endsAt: outcome.endsAt, appUrl: `${base}/home` })
+      : trialExtensionDeclinedEmail({ ...common, billingUrl: `${base}/home` })
+    return await sendEmail(owner.email, subject, html)
+  } catch (e) {
+    return { status: "failed", error: e instanceof Error ? e.message : String(e) }
+  }
+}

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { daysLeft } from "@/lib/billing/period"
+import { TrialExtensionBox } from "@/components/billing/TrialExtensionBox"
 
 interface Plan { name: string; price_kes: number; interval: string }
 interface Sub {
@@ -191,6 +192,9 @@ export function BillingPanel() {
           )}
         </div>
       )}
+
+      {/* Only renders when the pharmacy has no trial and hasn't paid. */}
+      <TrialExtensionBox />
 
       <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
         <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-text-secondary)] px-5 pt-5 pb-3">Payments</h2>

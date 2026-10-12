@@ -58,3 +58,21 @@ export async function verifySignupOtp(email: string, code: string): Promise<bool
   if (e && e.exp > Date.now() && e.code === code) { mem.delete(k); return true }
   return false
 }
+
+/** True if `code` matches the stored OTP for `email`, WITHOUT consuming it.
+ *  Used when signup needs to ask the person a question (e.g. "you've already
+ *  had a trial — continue without one?") before actually creating the account;
+ *  the final step still calls verifySignupOtp() to consume the code. Callers
+ *  must be rate-limited exactly like verifySignupOtp (the /api/signup limits). */
+export async function peekSignupOtp(email: string, code: string): Promise<boolean> {
+  const k = key(email)
+  const r = redis()
+  if (r) {
+    try {
+      const stored = await r.get(k)
+      if (stored) return stored === code
+    } catch { /* fall through to memory */ }
+  }
+  const e = mem.get(k)
+  return !!(e && e.exp > Date.now() && e.code === code)
+}

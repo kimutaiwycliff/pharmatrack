@@ -115,8 +115,19 @@ export default function PlatformTenantsPage() {
               {tenants.map((t) => (
                 <tr key={t.id} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-[var(--pt-muted)]/60 transition-colors">
                   <td className="px-5 py-3.5">
-                    <Link href={`/platform/${t.id}`} className="font-semibold hover:text-[var(--pt-green-600)]">{t.name}</Link>
-                    <p className="text-[11px] text-[var(--pt-text-tertiary)]">{t.email ?? "—"}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Link href={`/platform/${t.id}`} className="font-semibold hover:text-[var(--pt-green-600)]">{t.name}</Link>
+                      {t.repeat_trial && (
+                        <span title="Another trial used the same email, Google account or PPB registration number" className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30">Repeat trial</span>
+                      )}
+                      {!t.repeat_trial && t.shared_ip && (
+                        <span title="Signed up from the same network (IP) as another pharmacy — could be a shared connection" className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-[var(--pt-muted)] text-[var(--pt-text-secondary)] border-[var(--pt-border)]">Suspected duplicate</span>
+                      )}
+                      {!!t.pending_trial_requests && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">Trial request</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[var(--pt-text-tertiary)]">{t.owner_email ?? t.email ?? "—"}</p>
                   </td>
                   <td className="px-4 py-3.5 text-[var(--pt-text-secondary)] hidden sm:table-cell">{t.plan_name ?? "—"}</td>
                   <td className="px-4 py-3.5 text-center"><StatusBadge status={t.subscription?.status ?? null} /></td>

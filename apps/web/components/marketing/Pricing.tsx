@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Check, Sparkles } from "lucide-react"
-import { launchOfferActive, LAUNCH_TRIAL_DAYS, LAUNCH_OFFER_ENDS_AT } from "@/lib/launch-offer"
+import { launchOfferActive, LAUNCH_TRIAL_DAYS, LAUNCH_OFFER_ENDS_AT, trialDaysForSignup } from "@/lib/launch-offer"
 import { PLAN_MATRIX, PLAN_ORDER, FEATURE_LABELS, type PlanCode, type Feature } from "@pharmatrack/core"
 
 // Feature bullets are DERIVED from PLAN_MATRIX (packages/core/entitlements.ts)
@@ -66,7 +66,7 @@ export function Pricing() {
           Pay for a system that pays for itself.
         </h2>
         <p className="mt-3 text-[var(--pt-text-secondary)] text-lg">
-          {launchOfferActive() ? `${LAUNCH_TRIAL_DAYS}-day free trial` : "14-day free trial"} on every plan. No card required. Save 20% paying annually.
+          {trialDaysForSignup()}-day free trial on every plan. No card required. Save 20% paying annually.
         </p>
         {launchOfferActive() && (
           <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--pt-green-50)] text-[var(--pt-green-600)] border border-[var(--pt-green-100)] px-3 py-1 text-xs font-semibold">

@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/theme/ThemeProvider"
 import { ThemedToaster } from "@/components/theme/ThemedToaster"
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister"
+import { STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 import "./globals.css"
 
 const inter = Inter({
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
     template: "%s · PharmaTrack",
   },
   description:
-    "PharmaTrack is an offline-capable pharmacy POS, inventory, M-Pesa and PPB-compliance platform built for Kenyan pharmacies. Sell in minutes, keep selling offline, run multiple branches. 30-day free trial.",
+    `PharmaTrack is an offline-capable pharmacy POS, inventory, M-Pesa and PPB-compliance platform built for Kenyan pharmacies. Sell in minutes, keep selling offline, run multiple branches. ${STANDARD_TRIAL_DAYS}-day free trial.`,
   applicationName: "PharmaTrack",
   keywords: [
     "pharmacy POS Kenya", "pharmacy software Kenya", "pharmacy management system",
@@ -69,7 +70,7 @@ export const metadata: Metadata = {
     siteName: "PharmaTrack",
     title: "PharmaTrack — Pharmacy POS & Inventory Software for Kenya",
     description:
-      "Offline-capable pharmacy POS, inventory, M-Pesa and PPB compliance — built for Kenyan pharmacies. Start a 30-day free trial.",
+      `Offline-capable pharmacy POS, inventory, M-Pesa and PPB compliance — built for Kenyan pharmacies. Start a ${STANDARD_TRIAL_DAYS}-day free trial.`,
     url: SITE_URL,
     locale: "en_KE",
   },

@@ -4,10 +4,19 @@ import { createSignupOtp } from "@/lib/email-otp"
 import { sendEmail } from "@/lib/notifications/email"
 import { rateLimit, clientIp } from "@/lib/rate-limit"
 import { verifyTurnstile } from "@/lib/turnstile"
+import { DISPOSABLE_EMAIL_MESSAGE, isDisposableEmail } from "@/lib/trials/disposable-domains"
+import { blockingTrials, findPriorTrial, userExistsWithEmail } from "@/lib/trials/eligibility"
 
 // Step 1 of self-serve signup: email a verification code. Rate-limited per IP and
-// per email to prevent code-spam. Always returns ok (never reveals whether an
-// address exists) — the code only matters at the /api/signup step.
+// per email to prevent code-spam, and Turnstile-gated.
+//
+// Friendly early answers (behind the captcha + rate limits):
+//  * disposable inbox            → 400, ask for a permanent address
+//  * login already exists        → 409 "sign in instead" (code: account_exists)
+//  * a trial was already used    → still send the code (they may want to
+//    continue without a trial, i.e. subscribe) but flag `priorTrial: true` so the
+//    form can say so up front. The pharmacy name / dates are only revealed by
+//    /api/signup AFTER the code proves the person owns the inbox.
 
 const schema = z.object({ email: z.string().trim().email("Enter a valid email") })
 
@@ -35,8 +44,20 @@ export async function POST(request: NextRequest) {
   }
   const email = parsed.data.email
 
+  if (isDisposableEmail(email)) {
+    return NextResponse.json({ error: DISPOSABLE_EMAIL_MESSAGE, code: "disposable_email" }, { status: 400 })
+  }
+
   const emailLimit = await rateLimit(`otp:email:${email.toLowerCase()}`, 4, 3600)
   if (!emailLimit.ok) return tooMany(emailLimit.retryAfter)
+
+  if (await userExistsWithEmail(email)) {
+    return NextResponse.json(
+      { error: "An account with this email already exists — sign in instead.", code: "account_exists" },
+      { status: 409 },
+    )
+  }
+  const priorTrial = blockingTrials(await findPriorTrial({ email })).length > 0
 
   const code = await createSignupOtp(email)
   await sendEmail(
@@ -48,5 +69,5 @@ export async function POST(request: NextRequest) {
      <p style="color:#6b7280">It expires in 10 minutes. If you didn't request this, you can ignore this email.</p>`,
   )
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, priorTrial })
 }

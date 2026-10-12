@@ -450,6 +450,14 @@ export interface TenantSummary {
   plan_name: string | null
   branch_count: number
   staff_count: number
+  /** Owner's login email (member role=owner). */
+  owner_email?: string | null
+  /** Another trial shares this tenant's email / Google account / PPB reg. no. */
+  repeat_trial?: boolean
+  /** Only the signup network (IP) matches another trial — informational. */
+  shared_ip?: boolean
+  /** Pending trial extension requests awaiting the operator. */
+  pending_trial_requests?: number
 }
 
 // Shift summary for the shift report screen

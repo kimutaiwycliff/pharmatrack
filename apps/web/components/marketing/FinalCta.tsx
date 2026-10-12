@@ -1,11 +1,11 @@
 import Link from "next/link"
 import { ArrowRight, MessageCircle } from "lucide-react"
-import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
+import { trialDaysForSignup } from "@/lib/launch-offer"
 
 const WHATSAPP_GREETING = encodeURIComponent("Hi! I'm interested in PharmaTrack for my pharmacy — can you tell me more?")
 
 export function FinalCta() {
-  const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
+  const trialDays = trialDaysForSignup()
   return (
     <section id="demo" className="relative overflow-hidden mk-mesh mk-grain">
       <div className="absolute inset-0 mk-crosses pointer-events-none" />

@@ -20,6 +20,9 @@ const admin = dbAdmin()
 async function cleanup() {
   // Children/refs first; orgs cascade most, but be explicit for re-runs.
   for (const orgId of [T1, T2]) {
+    // trial_grant has no FK to organization (survives purge) — delete explicitly.
+    await admin.delete(s.trial_grant).where(eq(s.trial_grant.organization_id, orgId))
+    await admin.delete(s.trial_extension_request).where(eq(s.trial_extension_request.organization_id, orgId))
     await admin.delete(s.sync_issue).where(eq(s.sync_issue.organization_id, orgId))
     await admin.delete(s.device).where(eq(s.device.organization_id, orgId))
     await admin.delete(s.purchase_order).where(eq(s.purchase_order.organization_id, orgId))
@@ -45,6 +48,10 @@ async function seed(orgId: string, tag: string) {
   await admin.insert(s.sync_tombstone).values({ organization_id: orgId, entity: "product", entity_id: `gone-${tag}` })
   await admin.insert(s.customer).values({ organization_id: orgId, full_name: `${tag}-customer` })
   await admin.insert(s.sale).values({ organization_id: orgId, branch_id: b.id, payment_method: "cash", total_amount: "5.00" })
+  // Org B's request is already decided, so a pending insert for B can only be
+  // stopped by RLS (not by the one-pending-per-org unique index).
+  await admin.insert(s.trial_extension_request).values({ organization_id: orgId, message: `${tag}-please`, status: tag === "B" ? "declined" : "pending" })
+  await admin.insert(s.trial_grant).values({ organization_id: orgId, email_canonical: `owner-${tag.toLowerCase()}@rls.test`, source: "signup", trial_days: 14, granted: true })
 }
 
 async function run() {
@@ -56,6 +63,7 @@ async function run() {
     ["branch", s.branch], ["product", s.product], ["customer", s.customer], ["sale", s.sale],
     ["role_permission", s.role_permission], ["purchase_order", s.purchase_order],
     ["device", s.device], ["sync_issue", s.sync_issue], ["sync_tombstone", s.sync_tombstone],
+    ["trial_extension_request", s.trial_extension_request],
   ]
 
   // Each org sees only its own rows on each table.
@@ -95,6 +103,34 @@ async function run() {
     const visible = await withTenant({ organizationId: T1, role: "pharmacist", branchId: "00000000-0000-0000-0000-000000000001", branchLocked: true },
       (db: any) => db.select().from(s.purchase_order))
     visible.length === 0 ? ok("purchase_order: branch-locked session sees no other branch's POs") : bad(`purchase_order branch lock leaked ${visible.length}`)
+  }
+
+  // trial_grant is operator-only: no tenant session may read ANY row (incl. its own).
+  {
+    const visible = await withTenant({ organizationId: T1, role: "owner" }, (db: any) => db.select().from(s.trial_grant))
+    const total = (await admin.select().from(s.trial_grant)).length
+    visible.length === 0 && total >= 2
+      ? ok(`trial_grant: tenant session sees 0 of ${total} rows (operator-only)`)
+      : bad(`trial_grant: tenant session sees ${visible.length} rows (total ${total})`)
+    try {
+      await withTenant({ organizationId: T1, role: "owner" }, (db: any) => db.insert(s.trial_grant).values({ organization_id: T1, email_canonical: "sneaky@rls.test", source: "signup" }))
+      bad("trial_grant: tenant insert succeeded (should be blocked)")
+    } catch {
+      ok("trial_grant: tenant insert blocked")
+    }
+  }
+
+  // trial_extension_request: tenants can't decide their own request or file one for another org.
+  {
+    const updated = await withTenant({ organizationId: T1, role: "owner" }, (db: any) =>
+      db.update(s.trial_extension_request).set({ status: "approved" }).where(eq(s.trial_extension_request.organization_id, T1)).returning())
+    updated.length === 0 ? ok("trial_extension_request: tenant cannot approve its own request") : bad(`trial_extension_request: tenant updated ${updated.length} row(s)`)
+    try {
+      await withTenant({ organizationId: T1, role: "owner" }, (db: any) => db.insert(s.trial_extension_request).values({ organization_id: T2, message: "sneaky" }))
+      bad("trial_extension_request: cross-tenant insert succeeded (should be blocked)")
+    } catch {
+      ok("trial_extension_request: cross-tenant insert blocked")
+    }
   }
 
   // Deny-by-default: no org set → nothing visible.
