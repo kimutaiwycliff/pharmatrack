@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
-import { dbAdmin, subscription, subscription_payment, plan } from "@pharmatrack/db"
-import { verifyWebhookSignature, addInterval } from "@/lib/billing/paystack"
+import { dbAdmin, subscription_payment, type DrizzleDB } from "@pharmatrack/db"
+import { verifyWebhookSignature } from "@/lib/billing/paystack"
+import { extendSubscription } from "@/lib/billing/extend"
 
 export const dynamic = "force-dynamic"
 
@@ -38,19 +39,14 @@ export async function POST(request: NextRequest) {
   const [existing] = await db.select({ id: subscription_payment.id }).from(subscription_payment).where(eq(subscription_payment.reference, reference)).limit(1)
   if (existing) return NextResponse.json({ ok: true, duplicate: true })
 
-  const [sub] = await db.select({ current_period_end: subscription.current_period_end, interval: plan.interval })
-    .from(subscription).leftJoin(plan, eq(plan.id, subscription.plan_id)).where(eq(subscription.organization_id, orgId)).limit(1)
-  const interval = sub?.interval ?? "monthly"
-  const now = new Date()
-  const base = sub?.current_period_end && new Date(sub.current_period_end) > now ? new Date(sub.current_period_end) : now
-  const newEnd = addInterval(base, interval)
-
-  await db.update(subscription).set({ status: "active", current_period_end: newEnd, provider: "paystack", updated_at: now })
-    .where(eq(subscription.organization_id, orgId))
-
-  await db.insert(subscription_payment).values({
-    organization_id: orgId, amount_kes: String(amountKes), method: "paystack", reference,
-    period_start: base.toISOString().slice(0, 10), period_end: newEnd.toISOString().slice(0, 10),
+  // One period per successful charge, stacked on any remaining time (shared
+  // with the operator console so both extend paid-until identically).
+  await db.transaction(async (tx) => {
+    const ext = await extendSubscription(tx as unknown as DrizzleDB, { organizationId: orgId, paidAt: new Date(), periods: 1, provider: "paystack" })
+    await tx.insert(subscription_payment).values({
+      organization_id: orgId, amount_kes: String(amountKes), method: "paystack", reference,
+      period_start: ext.start, period_end: ext.end, confirmed_at: new Date(),
+    })
   })
 
   return NextResponse.json({ ok: true })
