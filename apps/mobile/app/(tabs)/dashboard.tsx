@@ -78,7 +78,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false)
   // Bumped by retry/pull-to-refresh to re-run the effect below without
   // exposing the fetch function itself as a captured effect dependency
-  // (mirrors src/lib/sync/useSyncEngine.ts's nested-function-inside-the-effect
+  // (mirrors the old useSyncEngine hook's nested-function-inside-the-effect
   // shape, which keeps setState calls local to the effect body).
   const [reloadToken, setReloadToken] = useState(0)
 

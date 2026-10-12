@@ -6,6 +6,8 @@ import { useTheme } from "../src/theme/useTheme"
 import { env } from "../src/lib/env"
 import { isFirstRun, getCurrentStaffId } from "../src/lib/local-auth"
 import { getStoredLicense } from "../src/lib/license"
+import { useSyncStore } from "../src/store/sync"
+import { useStaffStore } from "../src/store/staff"
 
 function Loading() {
   const theme = useTheme()
@@ -51,10 +53,18 @@ function OfflineIndex() {
   return <Redirect href={href} />
 }
 
+// R1: a signed-in session goes through "Checking everything" first. A
+// registered phone can also sell with no session at all (offline roster PIN
+// switching), so it skips the login screen.
 function OnlineIndex() {
   const { data, isPending } = useSession()
-  if (isPending) return <Loading />
-  return <Redirect href={data?.session ? "/pos" : "/login"} />
+  const ready = useSyncStore((s) => s.ready)
+  const device = useSyncStore((s) => s.device)
+  const current = useStaffStore((s) => s.current)
+  if (isPending || !ready) return <Loading />
+  if (data?.session) return <Redirect href="/checking" />
+  if (device) return <Redirect href={current ? "/checking" : "/switch-user"} />
+  return <Redirect href="/login" />
 }
 
 export default function Index() {

@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { toast } from "../lib/toast"
+import { env } from "../lib/env"
 import { applyDiscount, sumCents, toCents, type Cents } from "@pharmatrack/core"
 import type { ProductRow } from "../db/schema"
 
@@ -26,6 +27,12 @@ export interface CartItem {
 
 interface CartState {
   items: CartItem[]
+  // "stock": stockOnHand is the branch's cached stock (Offline Edition).
+  // "device": it's this phone's sellable allowance (R1 online build), so the
+  // limit message says what the cashier can actually do about it.
+  limitScope: "stock" | "device"
+  // Raise/lower one line's cap (e.g. after an allowance top-up).
+  setStockLimit: (productId: string, limit: number) => void
   addProduct: (product: ProductRow) => void
   incrementQty: (productId: string, delta: number) => void
   removeItem: (productId: string) => void
@@ -48,15 +55,24 @@ function lineDiscount(item: CartItem): Cents {
   return lineSubtotal - applyDiscount(lineSubtotal, item.discountPercent)
 }
 
+function limitMessage(scope: CartState["limitScope"], name: string, available: number): string {
+  if (scope === "device") return available > 0 ? `Only ${available} left on this device` : `${name}: none left on this device`
+  return available > 0 ? `Only ${available} of ${name} in stock` : `${name} is out of stock`
+}
+
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
+  limitScope: env.EXPO_PUBLIC_OFFLINE_MODE ? "stock" : "device",
+  setStockLimit(productId, limit) {
+    set((state) => ({ items: state.items.map((i) => (i.productId === productId ? { ...i, stockOnHand: limit } : i)) }))
+  },
   addProduct(product) {
     set((state) => {
       const stock = product.stockOnHand
       const existing = state.items.find((i) => i.productId === product.productId)
       if (existing) {
         if (existing.quantity + 1 > stock) {
-          toast.error(stock > 0 ? `Only ${stock} of ${product.name} in stock` : `${product.name} is out of stock`)
+          toast.error(limitMessage(state.limitScope, product.name, stock))
           return state
         }
         return {
@@ -68,7 +84,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         }
       }
       if (stock <= 0) {
-        toast.error(`${product.name} is out of stock`)
+        toast.error(limitMessage(state.limitScope, product.name, 0))
         return state
       }
       const newItem: CartItem = {
@@ -93,9 +109,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           if (i.productId !== productId) return i
           const target = i.quantity + delta
           if (delta > 0 && target > i.stockOnHand) {
-            toast.error(
-              i.stockOnHand > 0 ? `Only ${i.stockOnHand} of ${i.productName} in stock` : `${i.productName} is out of stock`,
-            )
+            toast.error(limitMessage(state.limitScope, i.productName, i.stockOnHand))
             return i
           }
           return { ...i, quantity: target }

@@ -7,6 +7,7 @@ import { confirmSignOut } from "../../src/lib/auth-client"
 import { listDeviceUsers } from "../../src/lib/device-users"
 import { env } from "../../src/lib/env"
 import { useSessionStore } from "../../src/store/session"
+import { useSyncStore } from "../../src/store/sync"
 import { useTheme } from "../../src/theme/useTheme"
 import type { Theme } from "../../src/theme/tokens"
 import { Card, EmptyState, Screen } from "../../src/components"
@@ -52,6 +53,9 @@ export default function More() {
   const styles = createStyles(theme)
   const { role, planCode } = useSessionStore()
   const [hasDeviceUsers, setHasDeviceUsers] = useState(false)
+  // R1: a registered phone switches staff from its synced roster (offline PIN).
+  const deviceRegistered = useSyncStore((s) => !!s.device)
+  const canSwitch = hasDeviceUsers || deviceRegistered
 
   useEffect(() => {
     listDeviceUsers().then((users) => setHasDeviceUsers(users.length > 0))
@@ -89,9 +93,18 @@ export default function More() {
         )}
 
         <Card style={styles.listCard}>
-          {hasDeviceUsers ? (
-            <Pressable onPress={() => router.push("/login")}>
+          {env.EXPO_PUBLIC_OFFLINE_MODE ? null : (
+            <Pressable onPress={() => router.push("/sync")}>
               <View style={styles.row}>
+                <Ionicons name="sync-outline" size={22} color={theme.text} />
+                <Text style={styles.rowLabel}>Sync</Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
+              </View>
+            </Pressable>
+          )}
+          {canSwitch ? (
+            <Pressable onPress={() => router.push(deviceRegistered ? "/switch-user" : "/login")}>
+              <View style={[styles.row, !env.EXPO_PUBLIC_OFFLINE_MODE && styles.rowBorder]}>
                 <Ionicons name="swap-horizontal-outline" size={22} color={theme.text} />
                 <Text style={styles.rowLabel}>Switch user</Text>
                 <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
@@ -99,7 +112,7 @@ export default function More() {
             </Pressable>
           ) : null}
           <Pressable onPress={confirmSignOut}>
-            <View style={[styles.row, hasDeviceUsers && styles.rowBorder]}>
+            <View style={[styles.row, (canSwitch || !env.EXPO_PUBLIC_OFFLINE_MODE) && styles.rowBorder]}>
               <Ionicons name="log-out-outline" size={22} color={theme.red} />
               <Text style={[styles.rowLabel, { color: theme.red }]}>Log out</Text>
             </View>

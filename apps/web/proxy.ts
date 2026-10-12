@@ -25,6 +25,7 @@ const PROTECTED_PAGE_PREFIXES = [
 const PUBLIC_API_PREFIXES = [
   "/api/auth", "/api/health", "/api/webhooks", "/api/mpesa", "/api/cron", "/api/setup", "/api/signup", "/api/contact",
   "/api/desktop", // installer downloads + updater manifest - anonymous marketing-site visitors need these
+  "/api/sync", // registered devices authenticate with their own device token (lib/sync/device-auth.ts), not a session cookie
 ]
 
 const underPrefix = (pathname: string, prefix: string) =>

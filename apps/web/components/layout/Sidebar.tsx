@@ -15,6 +15,7 @@ import {
   CalendarClock,
   ClipboardList,
   ClipboardCheck,
+  RefreshCwOff,
   BarChart3,
   Settings,
   LogOut,
@@ -49,6 +50,7 @@ const NAV: NavItem[] = [
   { label: "Staff", href: "/staff", icon: Users, permission: ["staff.manage"] },
   { label: "Shifts", href: "/shifts", icon: Clock, permission: ["shifts.view_all"] },
   { label: "Sales", href: "/sales", icon: Receipt },
+  { label: "Sync issues", href: "/sync-issues", icon: RefreshCwOff, permission: ["devices.manage"] },
   { label: "Reports", href: "/reports", icon: BarChart3, permission: ["reports.view"], feature: "reports" },
   { label: "Settings", href: "/settings", icon: Settings },
 ]

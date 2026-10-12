@@ -82,6 +82,8 @@ export const CAPABILITIES = {
   "reports.view": { group: "Reports & insights", label: "View reports", description: "Open sales, inventory, financial and controlled-substance reports and export CSVs.", defaults: OM },
 
   // ── Staff & administration ─────────────────────────────────────────────────
+  "devices.manage": { group: "Staff & administration", label: "Manage selling devices", description: "Register phones/tablets for offline selling, revoke them, adjust their stock share, and resolve sync issues.", defaults: OM },
+  "sync.override": { group: "Shifts", label: "Unlock a device after a missed sync", description: "Use your PIN to let a device keep selling until noon when it couldn't sync before midnight.", defaults: OM },
   "branches.all": { group: "Staff & administration", label: "Work across all branches", description: "Switch between branches and see every branch's data. Without this, staff are locked to their assigned branch.", defaults: OM },
   "staff.manage": { group: "Staff & administration", label: "Manage staff", description: "View staff, invite, change roles and branches, set PINs, suspend.", defaults: OM },
   "branches.manage": { group: "Staff & administration", label: "Edit branches", description: "Rename branches and change their details.", defaults: OM },
