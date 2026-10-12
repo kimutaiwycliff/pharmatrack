@@ -1,10 +1,12 @@
 import { useState } from "react"
-import { StyleSheet, Text, TextInput } from "react-native"
+import { StyleSheet } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { space } from "../theme/tokens"
 import { Button } from "./Button"
 import { Card } from "./Card"
+import { Text } from "./Text"
+import { TextField } from "./TextField"
 
 interface PinEntryProps {
   title: string
@@ -20,12 +22,12 @@ interface PinEntryProps {
 // spinner while it runs rather than looking frozen.
 export function PinEntry({ title, subtitle, submitLabel = "Continue", onSubmit, onCancel }: PinEntryProps) {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const [pin, setPin] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   async function submit() {
+    if (pending) return
     if (pin.length < 4) {
       setError("Enter the 4-digit PIN")
       return
@@ -45,10 +47,13 @@ export function PinEntry({ title, subtitle, submitLabel = "Continue", onSubmit, 
 
   return (
     <Card style={styles.card}>
-      <Text style={styles.title}>{title}</Text>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-      <TextInput
-        style={styles.input}
+      <Text variant="headline" accessibilityRole="header">
+        {title}
+      </Text>
+      {subtitle ? <Text tone="secondary">{subtitle}</Text> : null}
+      <TextField
+        label="PIN"
+        hideLabel
         value={pin}
         onChangeText={(v) => setPin(v.replace(/\D/g, "").slice(0, 8))}
         keyboardType="number-pad"
@@ -56,39 +61,23 @@ export function PinEntry({ title, subtitle, submitLabel = "Continue", onSubmit, 
         autoFocus
         maxLength={8}
         placeholder="PIN"
-        placeholderTextColor={theme.textTertiary}
+        returnKeyType="go"
         onSubmitEditing={submit}
-        accessibilityLabel="PIN"
+        error={error}
+        inputStyle={styles.input}
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button
         title={pending ? "Checking…" : submitLabel}
         onPress={submit}
         loading={pending}
-        icon={<Ionicons name="lock-open-outline" size={18} color="#fff" />}
+        leadingIcon={<Ionicons name="lock-open-outline" size={18} color={theme.onAccent} />}
       />
       {onCancel ? <Button title="Back" variant="secondary" onPress={onCancel} disabled={pending} /> : null}
     </Card>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    card: { gap: 10 },
-    title: { fontSize: 17, fontWeight: "700", color: theme.text },
-    subtitle: { fontSize: 14, color: theme.textSecondary },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 10,
-      minHeight: 56,
-      paddingHorizontal: 14,
-      fontSize: 24,
-      letterSpacing: 8,
-      textAlign: "center",
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-    error: { color: theme.red, textAlign: "center" },
-  })
-}
+const styles = StyleSheet.create({
+  card: { gap: space.md },
+  input: { minHeight: 56, fontSize: 24, letterSpacing: 8, textAlign: "center" },
+})

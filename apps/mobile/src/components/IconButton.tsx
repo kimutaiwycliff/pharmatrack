@@ -28,7 +28,7 @@ export function IconButton({
   const theme = useTheme()
   const bg =
     variant === "filled" ? theme.greenCta : variant === "danger" ? theme.red50 : variant === "tonal" || selected ? theme.mutedStrong : "transparent"
-  const fg = color ?? (variant === "filled" ? "#fff" : variant === "danger" ? theme.red : theme.text)
+  const fg = color ?? (variant === "filled" ? theme.onAccent : variant === "danger" ? theme.red : theme.text)
   return (
     <Pressable
       onPress={onPress}

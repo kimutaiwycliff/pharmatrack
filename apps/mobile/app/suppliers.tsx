@@ -1,19 +1,27 @@
-import { useEffect, useState } from "react"
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native"
+import { useRef, useState } from "react"
+import { RefreshControl, StyleSheet, View, type TextInput } from "react-native"
+import { FlashList } from "@shopify/flash-list"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { apiFetch } from "../src/lib/api-fetch"
+import { apiJson, errorMessage } from "../src/lib/api"
 import { env } from "../src/lib/env"
+import { toast } from "../src/lib/toast"
 import { listLocalSuppliers, createLocalSupplier, updateLocalSupplier } from "../src/repo/catalog"
-import { useSessionStore } from "../src/store/session"
+import { useCan } from "../src/hooks/useCan"
+import { useQuery } from "../src/hooks/useQuery"
 import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Card, EmptyState, Screen, ScreenHeader } from "../src/components"
+import { space } from "../src/theme/tokens"
+import {
+  Button, EmptyState, ErrorState, IconButton, ListRow, Screen, ScreenHeader, Sheet, SkeletonList, Text, TextField,
+} from "../src/components"
 
-// Mirrors apps/web/lib/suppliers/serialize.ts's serializeSupplier() output
-// exactly (verified against that file plus apps/web/app/api/suppliers/route.ts
-// directly, not from memory). The underlying `supplier` table dropped
-// `address`/`is_active` columns — the API always synthesizes address: null and
-// is_active: true regardless of what's sent, so neither field is editable here.
+// Mirrors apps/web/lib/suppliers/serialize.ts's serializeSupplier() output and
+// apps/web/app/api/suppliers/route.ts (GET list, POST create) +
+// apps/web/app/api/suppliers/[id]/route.ts (PATCH). The supplier table dropped
+// address/is_active, so only name/phone/email are editable. Gates match the
+// API: creating needs suppliers.manage, stock.receive or products.create
+// (suppliers are often added while receiving stock); editing needs
+// suppliers.manage. There's no DELETE route. The Offline Edition uses the
+// local SQLite repo instead.
 interface Supplier {
   id: string
   name: string
@@ -21,417 +29,217 @@ interface Supplier {
   email: string | null
 }
 
-interface SuppliersResponse {
-  suppliers: Supplier[]
-}
+type FormState = { kind: "create" } | { kind: "edit"; supplier: Supplier } | null
 
-// Mirrors apps/web/app/api/suppliers/route.ts's WRITE_ROLES (create — open to
-// pharmacists, since suppliers are often added inline while receiving stock)
-// and apps/web/app/api/suppliers/[id]/route.ts's WRITE_ROLES (edit —
-// management-only). There's no DELETE route for suppliers at all.
-const CREATE_ROLES = ["owner", "manager", "pharmacist"]
-const EDIT_ROLES = ["owner", "manager"]
+async function fetchSuppliers(): Promise<Supplier[]> {
+  if (env.EXPO_PUBLIC_OFFLINE_MODE) return listLocalSuppliers()
+  const json = await apiJson<{ suppliers: Supplier[] }>("/api/suppliers")
+  return json.suppliers
+}
 
 export default function Suppliers() {
   const theme = useTheme()
-  const styles = createStyles(theme)
-  const { role } = useSessionStore()
-  // Computed before the access gate further down so it can double as an
-  // effect guard (Hooks must run unconditionally on every render — the
-  // gate's `if` can't sit above the useState/useEffect calls below).
-  const hasAccess = role == null || ["owner", "manager", "pharmacist"].includes(role)
+  const can = useCan()
+  const canManage = can("suppliers.manage")
+  const canView = can("products.view") || canManage
+  const canCreate = canManage || can("stock.receive") || can("products.create")
 
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
-  // Bumped by retry/pull-to-refresh/after a write to re-run the load effect
-  // below (mirrors inventory.tsx/appointments.tsx/categories.tsx's shape).
-  const [reloadToken, setReloadToken] = useState(0)
+  const q = useQuery(canView ? "suppliers" : null, fetchSuppliers)
+  const suppliers = q.data ?? []
 
-  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState<FormState>(null)
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
+  const [nameError, setNameError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const phoneRef = useRef<TextInput>(null)
+  const emailRef = useRef<TextInput>(null)
 
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editName, setEditName] = useState("")
-  const [editPhone, setEditPhone] = useState("")
-  const [editEmail, setEditEmail] = useState("")
-  const [editError, setEditError] = useState<string | null>(null)
-  const [editSubmitting, setEditSubmitting] = useState(false)
-
-  useEffect(() => {
-    if (!hasAccess) return
-    async function load() {
-      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-        try {
-          setSuppliers(await listLocalSuppliers())
-          setLoaded(true)
-          setError(null)
-        } finally {
-          setRefreshing(false)
-        }
-        return
-      }
-      try {
-        const res = await apiFetch("/api/suppliers")
-        if (!res.ok) {
-          setError(`Could not load suppliers (HTTP ${res.status})`)
-          return
-        }
-        const json = (await res.json()) as SuppliersResponse
-        setSuppliers(json.suppliers)
-        setLoaded(true)
-        setError(null)
-      } catch {
-        setError("Could not reach the server. Check your connection and try again.")
-      } finally {
-        setRefreshing(false)
-      }
-    }
-    load()
-  }, [reloadToken, hasAccess])
-
-  // Access gate — must come after every Hook call above (rules-of-hooks:
-  // Hooks can't run conditionally), but before the read/write logic below
-  // that assumes an authorized role.
-  if (role && !hasAccess) {
+  if (!canView) {
     return (
       <Screen>
         <ScreenHeader title="Suppliers" />
         <EmptyState
-          icon={<Ionicons name="lock-closed-outline" size={28} color={theme.textTertiary} />}
-          message="You don't have access to supplier management."
+          icon={<Ionicons name="lock-closed-outline" size={32} color={theme.textTertiary} />}
+          title="No access"
+          message="You don't have access to suppliers. Ask the owner to turn on “Browse products & inventory” for your role."
         />
       </Screen>
     )
   }
 
-  const canCreate = role != null && CREATE_ROLES.includes(role)
-  const canEdit = role != null && EDIT_ROLES.includes(role)
-
-  function retry() {
-    setReloadToken((t) => t + 1)
-  }
-
-  function onRefresh() {
-    setRefreshing(true)
-    setReloadToken((t) => t + 1)
-  }
-
-  function resetForm() {
-    setName("")
-    setPhone("")
-    setEmail("")
+  function openForm(next: Exclude<FormState, null>) {
+    const s = next.kind === "edit" ? next.supplier : null
+    setName(s?.name ?? "")
+    setPhone(s?.phone ?? "")
+    setEmail(s?.email ?? "")
+    setNameError(null)
     setFormError(null)
+    setForm(next)
   }
 
-  async function handleCreate() {
-    setFormError(null)
+  async function submit() {
+    if (!form || submitting) return
     const trimmedName = name.trim()
     if (!trimmedName) {
-      setFormError("Supplier name is required")
+      setNameError("Supplier name is required")
       return
     }
+    setNameError(null)
+    setFormError(null)
     setSubmitting(true)
     try {
-      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-        await createLocalSupplier({ name: trimmedName, phone: phone.trim() || null, email: email.trim() || null })
-      } else {
-        const res = await apiFetch("/api/suppliers", {
-          method: "POST",
-          body: JSON.stringify({
-            name: trimmedName,
-            phone: phone.trim() || undefined,
-            email: email.trim() || undefined,
-          }),
-        })
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        if (!res.ok) {
-          setFormError(body?.error ?? `Could not create supplier (HTTP ${res.status})`)
-          return
+      if (form.kind === "create") {
+        if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+          await createLocalSupplier({ name: trimmedName, phone: phone.trim() || null, email: email.trim() || null })
+        } else {
+          await apiJson("/api/suppliers", {
+            method: "POST",
+            body: { name: trimmedName, phone: phone.trim() || undefined, email: email.trim() || undefined },
+          })
         }
+        toast.success(`Added “${trimmedName}”`)
+      } else {
+        const id = form.supplier.id
+        if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+          await updateLocalSupplier(id, { name: trimmedName, phone: phone.trim() || null, email: email.trim() || null })
+        } else {
+          // "" clears phone/email server-side (see the PATCH handler).
+          await apiJson(`/api/suppliers/${id}`, { method: "PATCH", body: { name: trimmedName, phone: phone.trim(), email: email.trim() } })
+        }
+        toast.success("Supplier saved")
       }
-      setShowForm(false)
-      resetForm()
-      setReloadToken((t) => t + 1)
-    } catch {
-      setFormError("Could not reach the server. Check your connection and try again.")
+      setForm(null)
+      q.refresh()
+    } catch (err) {
+      setFormError(errorMessage(err))
     } finally {
       setSubmitting(false)
     }
   }
 
-  function startEdit(s: Supplier) {
-    setEditingId(s.id)
-    setEditName(s.name)
-    setEditPhone(s.phone ?? "")
-    setEditEmail(s.email ?? "")
-    setEditError(null)
-  }
+  const subtitle = q.data ? `${suppliers.length} supplier${suppliers.length === 1 ? "" : "s"}` : null
 
-  function cancelEdit() {
-    setEditingId(null)
-    setEditError(null)
-  }
-
-  async function saveEdit(id: string) {
-    setEditError(null)
-    const trimmedName = editName.trim()
-    if (!trimmedName) {
-      setEditError("Supplier name is required")
-      return
-    }
-    setEditSubmitting(true)
-    try {
-      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-        await updateLocalSupplier(id, { name: trimmedName, phone: editPhone.trim() || null, email: editEmail.trim() || null })
-      } else {
-        const res = await apiFetch(`/api/suppliers/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            name: trimmedName,
-            phone: editPhone.trim(),
-            email: editEmail.trim(),
-          }),
-        })
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        if (!res.ok) {
-          setEditError(body?.error ?? `Could not save (HTTP ${res.status})`)
-          return
-        }
-      }
-      setEditingId(null)
-      setReloadToken((t) => t + 1)
-    } catch {
-      setEditError("Could not reach the server. Check your connection and try again.")
-    } finally {
-      setEditSubmitting(false)
-    }
-  }
-
-  if (error && !loaded) {
-    return (
-      <Screen style={styles.centered}>
-        <ScreenHeader title="Suppliers" />
-        <Card style={styles.errorCard}>
-          <Text style={styles.error}>{error}</Text>
-          <Button
-            title="Retry"
-            variant="secondary"
-            onPress={retry}
-            icon={<Ionicons name="refresh-outline" size={18} color={theme.text} />}
+  let body
+  if (q.loading) {
+    body = <SkeletonList rows={8} />
+  } else if (q.error && !q.data) {
+    body = <ErrorState message={q.error} onRetry={q.retry} />
+  } else {
+    body = (
+      <FlashList
+        data={suppliers}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} tintColor={theme.green} colors={[theme.green]} />}
+        ListHeaderComponent={q.error ? <ErrorState compact message={q.error} onRetry={q.retry} /> : null}
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item }) => {
+          const contact = [item.phone, item.email].filter(Boolean).join(" · ")
+          return (
+            <ListRow
+              title={item.name}
+              subtitle={contact || "No contact details"}
+              leading={<Ionicons name="business-outline" size={22} color={theme.textSecondary} />}
+              onPress={canManage ? () => openForm({ kind: "edit", supplier: item }) : undefined}
+              accessibilityLabel={`${item.name}${contact ? `, ${contact}` : ""}`}
+              accessibilityHint={canManage ? "Edit supplier" : undefined}
+              trailing={canManage ? <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} /> : null}
+            />
+          )
+        }}
+        ListEmptyComponent={
+          <EmptyState
+            icon={<Ionicons name="business-outline" size={32} color={theme.textTertiary} />}
+            title="No suppliers yet"
+            message="Add the wholesalers you buy from so you can pick them when receiving stock."
+            action={canCreate ? { label: "Add supplier", onPress: () => openForm({ kind: "create" }) } : undefined}
           />
-        </Card>
-      </Screen>
-    )
-  }
-
-  if (!loaded) {
-    return (
-      <Screen style={styles.centered}>
-        <ScreenHeader title="Suppliers" />
-        <Text style={styles.label}>Loading…</Text>
-      </Screen>
+        }
+      />
     )
   }
 
   return (
     <Screen>
-      <FlatList
-        data={suppliers}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.green} />}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <ScreenHeader title="Suppliers" />
-            <View style={styles.titleRow}>
-              <Text style={styles.subtitle}>{suppliers.length} suppliers</Text>
-              {canCreate ? (
-                <Button
-                  title={showForm ? "Close" : "Add"}
-                  onPress={() => setShowForm((v) => !v)}
-                  icon={showForm ? undefined : <Ionicons name="add" size={18} color="#fff" />}
-                  style={styles.addButton}
-                />
-              ) : null}
-            </View>
-
-            {canCreate && showForm ? (
-              <Card style={styles.formCard}>
-                <Text style={styles.formTitle}>New supplier</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Supplier name"
-                  placeholderTextColor={theme.textTertiary}
-                  value={name}
-                  onChangeText={setName}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Phone (optional)"
-                  placeholderTextColor={theme.textTertiary}
-                  keyboardType="phone-pad"
-                  value={phone}
-                  onChangeText={setPhone}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email (optional)"
-                  placeholderTextColor={theme.textTertiary}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={email}
-                  onChangeText={setEmail}
-                />
-
-                {formError ? <Text style={styles.error}>{formError}</Text> : null}
-
-                <View style={styles.formActionsRow}>
-                  <Button
-                    title="Cancel"
-                    variant="secondary"
-                    onPress={() => {
-                      setShowForm(false)
-                      resetForm()
-                    }}
-                    style={styles.formActionButton}
-                  />
-                  <Button title="Save" onPress={handleCreate} loading={submitting} style={styles.formActionButton} />
-                </View>
-              </Card>
-            ) : null}
-
-            {error ? <Text style={styles.inlineError}>{error}</Text> : null}
-          </View>
-        }
-        renderItem={({ item }) =>
-          editingId === item.id ? (
-            <Card style={styles.supplierCard}>
-              <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholder="Supplier name" placeholderTextColor={theme.textTertiary} autoFocus />
-              <TextInput
-                style={styles.input}
-                value={editPhone}
-                onChangeText={setEditPhone}
-                placeholder="Phone"
-                placeholderTextColor={theme.textTertiary}
-                keyboardType="phone-pad"
-              />
-              <TextInput
-                style={styles.input}
-                value={editEmail}
-                onChangeText={setEditEmail}
-                placeholder="Email"
-                placeholderTextColor={theme.textTertiary}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-              {editError ? <Text style={styles.error}>{editError}</Text> : null}
-              <View style={styles.formActionsRow}>
-                <Button title="Cancel" variant="secondary" onPress={cancelEdit} style={styles.formActionButton} />
-                <Button title="Save" onPress={() => saveEdit(item.id)} loading={editSubmitting} style={styles.formActionButton} />
-              </View>
-            </Card>
-          ) : (
-            <SupplierRow supplier={item} canEdit={canEdit} onEdit={() => startEdit(item)} theme={theme} styles={styles} />
-          )
-        }
-        ItemSeparatorComponent={() => <View style={styles.rowGap} />}
-        ListEmptyComponent={
-          <EmptyState
-            icon={<Ionicons name="business-outline" size={28} color={theme.textTertiary} />}
-            message="No suppliers yet"
-          />
+      <ScreenHeader
+        title="Suppliers"
+        subtitle={subtitle}
+        right={
+          canCreate ? (
+            <IconButton icon="add" variant="filled" accessibilityLabel="Add supplier" onPress={() => openForm({ kind: "create" })} />
+          ) : null
         }
       />
+      <View style={styles.flex}>{body}</View>
+
+      <Sheet
+        open={form !== null}
+        onClose={() => setForm(null)}
+        title={form?.kind === "edit" ? "Edit supplier" : "New supplier"}
+        scrollable
+        footer={
+          <View style={styles.footerRow}>
+            <Button title="Cancel" variant="secondary" onPress={() => setForm(null)} disabled={submitting} style={styles.flex} />
+            <Button title="Save" onPress={submit} loading={submitting} style={styles.flex} />
+          </View>
+        }
+      >
+        <TextField
+          inSheet
+          label="Supplier name"
+          placeholder="e.g. Harleys Ltd"
+          value={name}
+          onChangeText={(v) => {
+            setName(v)
+            if (nameError) setNameError(null)
+          }}
+          maxLength={120}
+          autoCapitalize="words"
+          returnKeyType="next"
+          onSubmitEditing={() => phoneRef.current?.focus()}
+          error={nameError}
+        />
+        <TextField
+          inSheet
+          ref={phoneRef}
+          label="Phone (optional)"
+          placeholder="07…"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+          maxLength={40}
+          returnKeyType="next"
+          onSubmitEditing={() => emailRef.current?.focus()}
+        />
+        <TextField
+          inSheet
+          ref={emailRef}
+          label="Email (optional)"
+          placeholder="orders@supplier.co.ke"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={120}
+          returnKeyType="done"
+          onSubmitEditing={submit}
+        />
+        {formError ? (
+          <Text variant="caption" tone="danger" accessibilityLiveRegion="polite">
+            {formError}
+          </Text>
+        ) : null}
+      </Sheet>
     </Screen>
   )
 }
 
-function SupplierRow({
-  supplier,
-  canEdit,
-  onEdit,
-  theme,
-  styles,
-}: {
-  supplier: Supplier
-  canEdit: boolean
-  onEdit: () => void
-  theme: Theme
-  styles: Styles
-}) {
-  return (
-    <Card style={styles.supplierCard}>
-      <View style={styles.supplierRow}>
-        <View style={styles.supplierNameCol}>
-          <Text style={styles.supplierName} numberOfLines={1}>
-            {supplier.name}
-          </Text>
-          {supplier.phone ? (
-            <Text style={styles.supplierMeta} numberOfLines={1}>
-              {supplier.phone}
-            </Text>
-          ) : null}
-          {supplier.email ? (
-            <Text style={styles.supplierMeta} numberOfLines={1}>
-              {supplier.email}
-            </Text>
-          ) : null}
-        </View>
-        {canEdit ? (
-          <Pressable onPress={onEdit} hitSlop={8} style={styles.iconButton}>
-            <Ionicons name="pencil-outline" size={18} color={theme.textSecondary} />
-          </Pressable>
-        ) : null}
-      </View>
-    </Card>
-  )
-}
-
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    centered: { flex: 1, gap: 8 },
-    label: { fontSize: 15, color: theme.text },
-    error: { color: theme.red, fontSize: 13 },
-    errorCard: { gap: 8 },
-    inlineError: { color: theme.red, fontSize: 13 },
-
-    listContent: { paddingBottom: 24 },
-    header: { gap: 10, marginBottom: 4 },
-    titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    subtitle: { fontSize: 13, color: theme.textSecondary },
-    addButton: { paddingVertical: 10, paddingHorizontal: 16 },
-
-    formCard: { gap: 10 },
-    formTitle: { fontSize: 15, fontWeight: "700", color: theme.text },
-    formActionsRow: { flexDirection: "row", gap: 8, marginTop: 4 },
-    formActionButton: { flex: 1 },
-
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      fontSize: 15,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-
-    rowGap: { height: 8 },
-    supplierCard: { gap: 8 },
-    supplierRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
-    supplierNameCol: { flex: 1, gap: 2 },
-    supplierName: { fontSize: 15, fontWeight: "600", color: theme.text },
-    supplierMeta: { fontSize: 13, color: theme.textSecondary },
-    iconButton: { padding: 4 },
-  })
-}
-
-type Styles = ReturnType<typeof createStyles>
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  listContent: { paddingBottom: space.xxl },
+  footerRow: { flexDirection: "row", gap: space.sm },
+})

@@ -1,15 +1,20 @@
-import { Linking, ScrollView, StyleSheet, Text, View } from "react-native"
+import { Linking, StyleSheet, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { Button, PaymentClaimBox, Screen } from "./index"
 import { confirmSignOut } from "../lib/auth-client"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { radius, space } from "../theme/tokens"
+import { Button } from "./Button"
+import { FormScroll } from "./FormScroll"
+import { PaymentClaimBox } from "./PaymentClaimBox"
+import { Screen } from "./Screen"
+import { Text } from "./Text"
 
 // Mirrors apps/web/components/SubscriptionGate.tsx's MESSAGES map and copy
 // verbatim, and the same gating rule used at apps/web/app/(dashboard)/layout.tsx
 // and apps/web/app/(pos)/layout.tsx: block the whole app unless subStatus is
 // "trialing" or "active". Mobile has no server layout to enforce this, so it's
-// applied client-side in app/(tabs)/_layout.tsx around every tab.
+// applied client-side in app/(tabs)/_layout.tsx around every tab. FormScroll
+// (not a plain ScrollView) so the M-Pesa code field stays above the keyboard.
 const MESSAGES: Record<string, string> = {
   past_due: "Your subscription payment is overdue.",
   suspended: "Your subscription has been suspended.",
@@ -30,19 +35,22 @@ interface SubscriptionGateProps {
 
 export function SubscriptionGate({ status, isOwner, contact }: SubscriptionGateProps) {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const hasContact = !!(contact?.whatsappLink || contact?.mailtoLink)
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.card}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="shield-outline" size={26} color={theme.amber} />
+      <FormScroll contentStyle={styles.scrollContent}>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={[styles.iconWrap, { backgroundColor: theme.mutedStrong }]}>
+            <Ionicons name="shield-outline" size={28} color={theme.amber} />
           </View>
-          <Text style={styles.title}>Access paused</Text>
-          <Text style={styles.message}>{MESSAGES[status] ?? MESSAGES.none}</Text>
-          <Text style={styles.instruction}>
+          <Text variant="title" align="center" accessibilityRole="header">
+            Access paused
+          </Text>
+          <Text tone="secondary" align="center" style={styles.message}>
+            {MESSAGES[status] ?? MESSAGES.none}
+          </Text>
+          <Text tone="secondary" align="center" style={styles.instruction}>
             {isOwner
               ? "Pay below, or contact PharmaTrack to restore access for your pharmacy."
               : "Please ask your pharmacy owner to renew the PharmaTrack subscription."}
@@ -52,67 +60,61 @@ export function SubscriptionGate({ status, isOwner, contact }: SubscriptionGateP
 
           {hasContact && (
             <View style={styles.contactRow}>
-              {contact?.whatsappLink && (
+              {contact?.whatsappLink ? (
                 <Button
                   title="WhatsApp us"
                   variant="primary"
                   onPress={() => Linking.openURL(contact.whatsappLink)}
-                  icon={<Ionicons name="logo-whatsapp" size={16} color="#fff" />}
+                  leadingIcon={<Ionicons name="logo-whatsapp" size={18} color={theme.onAccent} />}
                   style={styles.contactButton}
                 />
-              )}
-              {contact?.mailtoLink && (
+              ) : null}
+              {contact?.mailtoLink ? (
                 <Button
                   title="Email us"
                   variant="secondary"
                   onPress={() => Linking.openURL(contact.mailtoLink)}
-                  icon={<Ionicons name="mail-outline" size={16} color={theme.text} />}
+                  leadingIcon={<Ionicons name="mail-outline" size={18} color={theme.text} />}
                   style={styles.contactButton}
                 />
-              )}
+              ) : null}
             </View>
           )}
 
           <Button
-            title="Sign out"
-            variant="secondary"
+            title="Log out"
+            variant="ghost"
             onPress={confirmSignOut}
-            icon={<Ionicons name="log-out-outline" size={16} color={theme.text} />}
+            leadingIcon={<Ionicons name="log-out-outline" size={18} color={theme.text} />}
             style={styles.signOutButton}
           />
         </View>
-      </ScrollView>
+      </FormScroll>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    scrollContent: { flexGrow: 1, alignItems: "center", justifyContent: "center" },
-    card: {
-      width: "100%",
-      maxWidth: 420,
-      backgroundColor: theme.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: theme.border,
-      padding: 24,
-      alignItems: "center",
-    },
-    iconWrap: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
-      backgroundColor: theme.green50,
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 12,
-    },
-    title: { fontSize: 18, fontWeight: "700", color: theme.text },
-    message: { fontSize: 14, color: theme.textSecondary, marginTop: 10, textAlign: "center" },
-    instruction: { fontSize: 14, color: theme.textSecondary, marginTop: 8, textAlign: "center" },
-    contactRow: { flexDirection: "row", gap: 8, marginTop: 20, width: "100%" },
-    contactButton: { flex: 1 },
-    signOutButton: { marginTop: 12, width: "100%" },
-  })
-}
+const styles = StyleSheet.create({
+  scrollContent: { flexGrow: 1, alignItems: "center", justifyContent: "center" },
+  card: {
+    width: "100%",
+    maxWidth: 440,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    padding: space.xl,
+    alignItems: "center",
+  },
+  iconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: space.md,
+  },
+  message: { marginTop: space.sm },
+  instruction: { marginTop: space.sm },
+  contactRow: { flexDirection: "row", gap: space.sm, marginTop: space.lg, width: "100%" },
+  contactButton: { flex: 1 },
+  signOutButton: { marginTop: space.md, width: "100%" },
+})

@@ -34,7 +34,7 @@ export function Button({
   const theme = useTheme()
   const styles = createStyles(theme)
   const isDisabled = disabled || loading
-  const textColor = variant === "secondary" || variant === "ghost" ? theme.text : "#fff"
+  const textColor = variant === "secondary" || variant === "ghost" ? theme.text : theme.onAccent
   const lead = leadingIcon ?? icon
 
   return (

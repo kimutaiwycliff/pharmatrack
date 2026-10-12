@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native"
+import { ActivityIndicator, StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import NetInfo from "@react-native-community/netinfo"
 import Ionicons from "@expo/vector-icons/Ionicons"
@@ -10,8 +10,8 @@ import { outboxCounts } from "../src/lib/sync/outbox"
 import { getRosterMember } from "../src/lib/sync/roster"
 import { adoptSignedInUser } from "../src/lib/sync/staff-session"
 import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Card, Screen } from "../src/components"
+import { space } from "../src/theme/tokens"
+import { Button, Card, Screen, Text } from "../src/components"
 
 // "Checking everything" (R1 rule 9) — after sign-in and on app start, while
 // online: upload what's pending, download changes, then verify the phone is
@@ -33,7 +33,6 @@ function nextRoute(): "/pos" | "/switch-user" {
 
 export default function Checking() {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const progress = useSyncStore((s) => s.progress)
   const [running, setRunning] = useState(false)
   const [final, setFinal] = useState<{ push: StepState; pull: StepState } | null>(null)
@@ -92,31 +91,38 @@ export default function Checking() {
 
   return (
     <Screen style={styles.container}>
-      <Text style={styles.title}>Checking everything</Text>
+      <Text variant="title" align="center" accessibilityRole="header">
+        Checking everything
+      </Text>
       <Card style={styles.card}>
-        <Step theme={theme} state={push} label="Uploading pending sales" detail={push === "running" ? progress?.label : undefined} />
-        <Step theme={theme} state={pull} label="Downloading changes" detail={pull === "running" ? progress?.label : undefined} />
-        <Step theme={theme} state={verify} label="Verifying" />
+        <Step state={push} label="Uploading pending sales" detail={push === "running" ? progress?.label : undefined} />
+        <Step state={pull} label="Downloading changes" detail={pull === "running" ? progress?.label : undefined} />
+        <Step state={verify} label="Verifying" />
         {checks.map((c) => (
-          <View key={c.label} style={styles.check}>
-            <Ionicons name={c.ok ? "checkmark-outline" : "alert-circle-outline"} size={16} color={c.ok ? theme.green : theme.amber} />
-            <Text style={styles.checkText}>{c.label}</Text>
+          <View key={c.label} style={styles.check} accessible accessibilityLabel={`${c.ok ? "OK" : "Needs attention"}: ${c.label}`}>
+            <Ionicons name={c.ok ? "checkmark-outline" : "alert-circle-outline"} size={18} color={c.ok ? theme.green : theme.amber} />
+            <Text style={styles.flex}>{c.label}</Text>
           </View>
         ))}
       </Card>
 
       {finished && result ? (
         <Card style={styles.card}>
-          <Text style={styles.summary}>
+          <Text accessibilityLiveRegion="polite">
             {result.productsUpdated} product{result.productsUpdated === 1 ? "" : "s"} updated, {result.deleted} deleted
             {needsAttention > 0 ? `, ${needsAttention} item${needsAttention === 1 ? "" : "s"} need${needsAttention === 1 ? "s" : ""} attention` : ""}
           </Text>
-          {result.message && !result.ok ? <Text style={styles.error}>{result.message}</Text> : null}
+          {result.message && !result.ok ? <Text tone="danger">{result.message}</Text> : null}
         </Card>
       ) : null}
 
       {finished ? (
-        <Button title="Continue" onPress={() => router.replace(nextRoute())} icon={<Ionicons name="arrow-forward" size={18} color="#fff" />} />
+        <Button
+          title="Continue"
+          size="lg"
+          onPress={() => router.replace(nextRoute())}
+          leadingIcon={<Ionicons name="arrow-forward" size={20} color={theme.onAccent} />}
+        />
       ) : (
         <Button title="Skip for now" variant="secondary" onPress={() => router.replace(nextRoute())} />
       )}
@@ -127,10 +133,12 @@ export default function Checking() {
   )
 }
 
-function Step({ theme, state, label, detail }: { theme: Theme; state: StepState; label: string; detail?: string }) {
-  const styles = createStyles(theme)
+const STEP_STATE_LABEL: Record<StepState, string> = { waiting: "waiting", running: "in progress", done: "done", failed: "needs attention" }
+
+function Step({ state, label, detail }: { state: StepState; label: string; detail?: string }) {
+  const theme = useTheme()
   return (
-    <View style={styles.step}>
+    <View style={styles.step} accessible accessibilityLabel={`${label}, ${STEP_STATE_LABEL[state]}${detail ? `. ${detail}` : ""}`}>
       <View style={styles.stepIcon}>
         {state === "running" ? (
           <ActivityIndicator color={theme.green} />
@@ -142,27 +150,23 @@ function Step({ theme, state, label, detail }: { theme: Theme; state: StepState;
           />
         )}
       </View>
-      <View style={styles.stepText}>
-        <Text style={styles.stepLabel}>{label}</Text>
-        {detail ? <Text style={styles.detail}>{detail}</Text> : null}
+      <View style={styles.flex}>
+        <Text variant="bodyStrong">{label}</Text>
+        {detail ? (
+          <Text variant="caption" tone="secondary">
+            {detail}
+          </Text>
+        ) : null}
       </View>
     </View>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    container: { justifyContent: "center", gap: 12 },
-    title: { fontSize: 22, fontWeight: "700", color: theme.text, textAlign: "center" },
-    card: { gap: 10 },
-    step: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48 },
-    stepIcon: { width: 28, alignItems: "center" },
-    stepText: { flex: 1 },
-    stepLabel: { fontSize: 16, color: theme.text, fontWeight: "600" },
-    detail: { fontSize: 13, color: theme.textSecondary },
-    check: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 40 },
-    checkText: { flex: 1, fontSize: 14, color: theme.text },
-    summary: { fontSize: 15, color: theme.text },
-    error: { fontSize: 14, color: theme.red },
-  })
-}
+const styles = StyleSheet.create({
+  container: { justifyContent: "center", gap: space.md },
+  card: { gap: space.sm },
+  flex: { flex: 1 },
+  step: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: 48 },
+  stepIcon: { width: 28, alignItems: "center" },
+  check: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingLeft: 40 },
+})

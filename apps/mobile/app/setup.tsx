@@ -1,11 +1,10 @@
-import { useState } from "react"
-import { StyleSheet, Text, TextInput } from "react-native"
+import { useRef, useState } from "react"
+import { StyleSheet, View, type TextInput } from "react-native"
 import { router } from "expo-router"
 import { createLocalBranch, createLocalStaff } from "../src/lib/local-auth"
 import { kvSet } from "../src/lib/kv"
-import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Screen } from "../src/components"
+import { space } from "../src/theme/tokens"
+import { Button, FormScroll, Screen, Text, TextField } from "../src/components"
 
 // ADR-014 — Offline Edition first-run setup. Shown by app/index.tsx only
 // when isFirstRun() (no `staff` row exists yet) — replaces the online app's
@@ -13,8 +12,10 @@ import { Button, Screen } from "../src/components"
 // pharmacy's one branch and its owner account directly in local SQLite, with
 // zero network calls, ever.
 export default function Setup() {
-  const theme = useTheme()
-  const styles = createStyles(theme)
+  const ownerRef = useRef<TextInput>(null)
+  const phoneRef = useRef<TextInput>(null)
+  const pinRef = useRef<TextInput>(null)
+  const confirmRef = useRef<TextInput>(null)
   const [pharmacyName, setPharmacyName] = useState("")
   const [ownerName, setOwnerName] = useState("")
   const [phone, setPhone] = useState("")
@@ -24,6 +25,8 @@ export default function Setup() {
   const [pending, setPending] = useState(false)
 
   async function onSubmit() {
+    // Return key on the last field can fire while a submit is in flight.
+    if (pending) return
     setError(null)
     if (!pharmacyName.trim() || !ownerName.trim() || !phone.trim()) {
       setError("Fill in every field")
@@ -57,76 +60,87 @@ export default function Setup() {
   }
 
   return (
-    <Screen style={styles.container}>
-      <Text style={styles.title}>Welcome to PharmaTrack</Text>
-      <Text style={styles.subtitle}>Set up this device once — everything below stays on this phone.</Text>
+    <Screen>
+      <FormScroll contentStyle={styles.content}>
+        <View style={styles.brand}>
+          <Text variant="title" align="center" accessibilityRole="header">
+            Welcome to PharmaTrack
+          </Text>
+          <Text tone="secondary" align="center">
+            Set up this device once — everything below stays on this phone.
+          </Text>
+        </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Pharmacy / branch name"
-        placeholderTextColor={theme.textTertiary}
-        value={pharmacyName}
-        onChangeText={setPharmacyName}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Your full name (owner)"
-        placeholderTextColor={theme.textTertiary}
-        value={ownerName}
-        onChangeText={setOwnerName}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Your phone number"
-        placeholderTextColor={theme.textTertiary}
-        keyboardType="phone-pad"
-        autoCapitalize="none"
-        value={phone}
-        onChangeText={setPhone}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Choose a 4-digit PIN"
-        placeholderTextColor={theme.textTertiary}
-        keyboardType="number-pad"
-        secureTextEntry
-        maxLength={8}
-        value={pin}
-        onChangeText={setPin}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm PIN"
-        placeholderTextColor={theme.textTertiary}
-        keyboardType="number-pad"
-        secureTextEntry
-        maxLength={8}
-        value={confirmPin}
-        onChangeText={setConfirmPin}
-      />
+        <TextField
+          label="Pharmacy / branch name"
+          placeholder="e.g. Afya Chemist, Kitengela"
+          autoCapitalize="words"
+          value={pharmacyName}
+          onChangeText={setPharmacyName}
+          returnKeyType="next"
+          onSubmitEditing={() => ownerRef.current?.focus()}
+        />
+        <TextField
+          ref={ownerRef}
+          label="Your full name (owner)"
+          autoCapitalize="words"
+          autoComplete="name"
+          value={ownerName}
+          onChangeText={setOwnerName}
+          returnKeyType="next"
+          onSubmitEditing={() => phoneRef.current?.focus()}
+        />
+        <TextField
+          ref={phoneRef}
+          label="Your phone number"
+          placeholder="07XX XXX XXX"
+          helper="You'll sign in with this number and your PIN."
+          keyboardType="phone-pad"
+          autoCapitalize="none"
+          autoComplete="tel"
+          value={phone}
+          onChangeText={setPhone}
+          returnKeyType="next"
+          onSubmitEditing={() => pinRef.current?.focus()}
+        />
+        <TextField
+          ref={pinRef}
+          label="Choose a PIN"
+          placeholder="4–8 digits"
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={8}
+          value={pin}
+          onChangeText={setPin}
+          returnKeyType="next"
+          onSubmitEditing={() => confirmRef.current?.focus()}
+        />
+        <TextField
+          ref={confirmRef}
+          label="Confirm PIN"
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={8}
+          value={confirmPin}
+          onChangeText={setConfirmPin}
+          returnKeyType="done"
+          onSubmitEditing={onSubmit}
+        />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <Text tone="danger" align="center" accessibilityLiveRegion="polite">
+            {error}
+          </Text>
+        ) : null}
 
-      <Button title="Finish setup" onPress={onSubmit} loading={pending} style={styles.submitButton} />
+        <Button title="Finish setup" size="lg" onPress={onSubmit} loading={pending} style={styles.submitButton} />
+      </FormScroll>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    container: { justifyContent: "center", padding: 24, gap: 12 },
-    title: { fontSize: 26, fontWeight: "700", textAlign: "center", color: theme.text },
-    subtitle: { fontSize: 14, textAlign: "center", color: theme.textSecondary, marginBottom: 16 },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      padding: 12,
-      fontSize: 16,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-    submitButton: { marginTop: 8 },
-    error: { color: theme.red, textAlign: "center" },
-  })
-}
+const styles = StyleSheet.create({
+  content: { flexGrow: 1, justifyContent: "center", paddingHorizontal: space.sm, paddingVertical: space.xl, gap: space.md },
+  brand: { gap: space.sm, marginBottom: space.md },
+  submitButton: { marginTop: space.sm },
+})
