@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { StyleSheet, Text, TextInput } from "react-native"
+import { StyleSheet } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useSessionStore } from "../store/session"
@@ -8,9 +8,11 @@ import { registerDevice } from "../lib/sync/device"
 import { refreshSyncState } from "../lib/sync/engine"
 import { toast } from "../lib/toast"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { space } from "../theme/tokens"
 import { Button } from "./Button"
 import { Card } from "./Card"
+import { Text } from "./Text"
+import { TextField } from "./TextField"
 
 // R1 rule 1 — selling needs a registered phone. A manager/owner signed in
 // online (devices.manage, from /api/mobile/me) registers it here once; anyone
@@ -18,7 +20,6 @@ import { Card } from "./Card"
 // Also covers a phone whose registration was revoked on the web.
 export function DeviceGate() {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const { permissions, stale } = useSessionStore()
   const { status, online } = useSyncStore()
   const revoked = status === "revoked"
@@ -53,42 +54,56 @@ export function DeviceGate() {
   return (
     <Card style={styles.card}>
       <Ionicons name="phone-portrait-outline" size={44} color={revoked ? theme.red : theme.textSecondary} />
-      <Text style={styles.title}>{revoked ? "This phone was removed" : "Register this phone to sell"}</Text>
+      <Text variant="title" align="center" accessibilityRole="header">
+        {revoked ? "This phone was removed" : "Register this phone to sell"}
+      </Text>
       {canRegister ? (
         <>
-          <Text style={styles.message}>
+          <Text align="center">
             {revoked
               ? "It was removed from the pharmacy's devices. Register it again to keep selling — sales waiting on it will still upload."
               : "Each phone that sells gets its own share of stock, so it can keep selling offline without ever selling more than you have."}
           </Text>
-          <TextInput
-            style={styles.input}
+          <TextField
+            label="Phone name"
             value={name}
-            onChangeText={setName}
-            placeholder="Phone name"
-            placeholderTextColor={theme.textTertiary}
+            onChangeText={(v) => {
+              setName(v)
+              if (error) setError(null)
+            }}
+            placeholder="e.g. Counter phone"
             maxLength={60}
-            accessibilityLabel="Phone name"
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              if (online && !pending) void onRegister()
+            }}
+            error={error}
+            containerStyle={styles.fullWidth}
           />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          {!online ? <Text style={styles.error}>Connect to the internet to register</Text> : null}
+          {!online ? (
+            <Text variant="caption" tone="danger" align="center" accessibilityLiveRegion="polite">
+              Connect to the internet to register
+            </Text>
+          ) : null}
           <Button
             title="Register this device"
             onPress={onRegister}
             loading={pending}
             disabled={!online}
-            icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
+            leadingIcon={<Ionicons name="checkmark-circle-outline" size={18} color={theme.onAccent} />}
             style={styles.fullWidth}
           />
         </>
       ) : (
         <>
-          <Text style={styles.message}>Ask a manager to register this phone</Text>
-          <Text style={styles.meta}>A manager or owner signs in on this phone once, while online, to register it.</Text>
+          <Text align="center">Ask a manager to register this phone</Text>
+          <Text variant="caption" tone="secondary" align="center">
+            A manager or owner signs in on this phone once, while online, to register it.
+          </Text>
           <Button
             title="Sign in as manager"
             onPress={() => router.push("/login")}
-            icon={<Ionicons name="log-in-outline" size={18} color="#fff" />}
+            leadingIcon={<Ionicons name="log-in-outline" size={18} color={theme.onAccent} />}
             style={styles.fullWidth}
           />
         </>
@@ -97,24 +112,7 @@ export function DeviceGate() {
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    card: { gap: 12, alignItems: "center" },
-    fullWidth: { alignSelf: "stretch" },
-    title: { fontSize: 20, fontWeight: "700", color: theme.text, textAlign: "center" },
-    message: { fontSize: 15, color: theme.text, textAlign: "center" },
-    meta: { fontSize: 13, color: theme.textSecondary, textAlign: "center" },
-    error: { fontSize: 13, color: theme.red, textAlign: "center" },
-    input: {
-      alignSelf: "stretch",
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      minHeight: 48,
-      paddingHorizontal: 12,
-      fontSize: 16,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-  })
-}
+const styles = StyleSheet.create({
+  card: { gap: space.md, alignItems: "center" },
+  fullWidth: { alignSelf: "stretch" },
+})

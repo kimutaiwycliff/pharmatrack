@@ -1,7 +1,8 @@
 import type { ReactNode } from "react"
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native"
+import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native"
 import { useTheme } from "../theme/useTheme"
 import { radius, space, TOUCH_TARGET } from "../theme/tokens"
+import { Text } from "./Text"
 
 interface ChipProps {
   label: string
@@ -24,7 +25,7 @@ export function Chip({ label, onPress, selected, icon, tone = "default", disable
   const body = (
     <>
       {icon}
-      <Text style={[styles.label, { color: fg }]} numberOfLines={1}>
+      <Text variant="label" style={{ color: fg }} numberOfLines={1}>
         {label}
       </Text>
     </>
@@ -57,7 +58,6 @@ const styles = StyleSheet.create({
   base: { flexDirection: "row", alignItems: "center", gap: space.xs, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: space.md },
   interactive: { minHeight: TOUCH_TARGET },
   static: { paddingVertical: space.xxs, alignSelf: "flex-start" },
-  label: { fontSize: 14, fontWeight: "600" },
   pressed: { opacity: 0.75 },
   disabled: { opacity: 0.4 },
 })

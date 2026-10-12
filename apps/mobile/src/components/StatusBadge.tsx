@@ -1,6 +1,7 @@
-import { StyleSheet, Text, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { radius, space, type Theme } from "../theme/tokens"
+import { Text } from "./Text"
 
 // Generic status keys (not POS-specific) so later phases can reuse this for
 // Inventory's out-of-stock/low-stock/expiring badges, etc.
@@ -15,8 +16,10 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
   const theme = useTheme()
   const colors = colorsFor(status, theme)
   return (
-    <View style={[styles.badge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-      <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+    <View style={[styles.badge, { backgroundColor: colors.bg, borderColor: colors.border }]} accessible accessibilityRole="text" accessibilityLabel={label}>
+      <Text variant="caption" style={[styles.label, { color: colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   )
 }
@@ -24,9 +27,9 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
 function colorsFor(status: BadgeStatus, theme: Theme) {
   switch (status) {
     case "ok":
-      return { bg: theme.green50, border: theme.green100, text: theme.green }
+      return { bg: theme.green50, border: theme.green100, text: theme.green600 }
     case "warning":
-      return { bg: theme.muted, border: theme.border, text: theme.amber }
+      return { bg: theme.muted, border: theme.amber, text: theme.amber }
     case "danger":
       return { bg: theme.red50, border: theme.red50, text: theme.red }
     case "neutral":
@@ -39,10 +42,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 999,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingVertical: space.xs,
+    paddingHorizontal: space.sm + 2,
   },
-  label: { fontSize: 12, fontWeight: "600" },
+  label: { fontWeight: "600" },
 })

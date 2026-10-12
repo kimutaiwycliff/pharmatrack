@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { ScrollView, StyleSheet } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useSyncStore } from "../store/sync"
 import { syncNow } from "../lib/sync/engine"
@@ -9,10 +9,12 @@ import { lockMessage } from "../lib/sync/core/lock"
 import { nairobiClock } from "../lib/sync/core/format"
 import { toast } from "../lib/toast"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { space } from "../theme/tokens"
 import { Button } from "./Button"
 import { Card } from "./Card"
+import { ListRow } from "./ListRow"
 import { PinEntry } from "./PinEntry"
+import { Text } from "./Text"
 
 // Shown instead of the POS while selling is locked (R1 rules 3 + 4): missed
 // midnight sync, an expired manager unlock, a phone that has never synced, or
@@ -20,7 +22,6 @@ import { PinEntry } from "./PinEntry"
 // deadline (until 12:00) a manager with sync.override can unlock with a PIN.
 export function SellingLock() {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const { lock, status, pendingSales, lastError, online } = useSyncStore()
   const [managers, setManagers] = useState<RosterMember[] | null>(null)
   const [picked, setPicked] = useState<RosterMember | null>(null)
@@ -50,23 +51,33 @@ export function SellingLock() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.wrap}>
+    <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
       <Card style={styles.card}>
         <Ionicons name={lock.reason === "clock_changed" ? "time-outline" : "lock-closed-outline"} size={44} color={theme.red} />
-        <Text style={styles.title}>Selling is locked</Text>
-        <Text style={styles.message}>{lockMessage(lock.reason)}</Text>
+        <Text variant="title" align="center" accessibilityRole="header">
+          Selling is locked
+        </Text>
+        <Text align="center">{lockMessage(lock.reason)}</Text>
         {pendingSales > 0 ? (
-          <Text style={styles.meta}>
+          <Text variant="caption" tone="secondary" align="center">
             {pendingSales} sale{pendingSales === 1 ? "" : "s"} waiting to upload
           </Text>
         ) : null}
-        {!online ? <Text style={styles.meta}>This phone is offline</Text> : null}
-        {lastError ? <Text style={styles.error}>{lastError}</Text> : null}
+        {!online ? (
+          <Text variant="caption" tone="secondary" align="center">
+            This phone is offline
+          </Text>
+        ) : null}
+        {lastError ? (
+          <Text variant="caption" tone="danger" align="center" accessibilityLiveRegion="polite">
+            {lastError}
+          </Text>
+        ) : null}
         <Button
           title={syncing ? "Syncing…" : "Sync now"}
           onPress={onSync}
           loading={syncing}
-          icon={<Ionicons name="sync-outline" size={18} color="#fff" />}
+          leadingIcon={<Ionicons name="sync-outline" size={18} color={theme.onAccent} />}
           style={styles.fullWidth}
         />
         {lock.overrideAvailable && !managers ? (
@@ -74,32 +85,36 @@ export function SellingLock() {
             title="Manager override"
             variant="secondary"
             onPress={startOverride}
-            icon={<Ionicons name="key-outline" size={18} color={theme.text} />}
+            leadingIcon={<Ionicons name="key-outline" size={18} color={theme.text} />}
             style={styles.fullWidth}
           />
         ) : null}
       </Card>
 
       {managers && !picked ? (
-        <Card style={styles.card}>
-          <Text style={styles.subtitle}>
+        <Card style={styles.pickCard}>
+          <Text variant="bodyStrong" style={styles.pickTitle}>
             Unlock until {lock.overrideUntil ? nairobiClock(lock.overrideUntil) : "12:00"} — who is unlocking?
           </Text>
           {managers.length === 0 ? (
-            <Text style={styles.meta}>No one on this phone&apos;s staff list can unlock it. Sync to refresh the list.</Text>
+            <Text variant="caption" tone="secondary" align="center" style={styles.pickTitle}>
+              No one on this phone&apos;s staff list can unlock it. Sync to refresh the list.
+            </Text>
           ) : (
             managers.map((m) => (
-              <Pressable key={m.id} onPress={() => setPicked(m)} style={styles.person} accessibilityRole="button">
-                <Ionicons name="person-circle-outline" size={28} color={theme.text} />
-                <View style={styles.personText}>
-                  <Text style={styles.personName}>{m.name}</Text>
-                  <Text style={styles.meta}>{m.role}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
-              </Pressable>
+              <ListRow
+                key={m.id}
+                title={m.name}
+                subtitle={m.role}
+                onPress={() => setPicked(m)}
+                accessibilityLabel={`${m.name}, ${m.role}`}
+                accessibilityHint="Enter their PIN next"
+                leading={<Ionicons name="person-circle-outline" size={32} color={theme.textSecondary} />}
+                trailing={<Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />}
+              />
             ))
           )}
-          <Button title="Cancel" variant="secondary" onPress={() => setManagers(null)} style={styles.fullWidth} />
+          <Button title="Cancel" variant="secondary" onPress={() => setManagers(null)} style={styles.cancel} />
         </Card>
       ) : null}
 
@@ -116,26 +131,11 @@ export function SellingLock() {
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    wrap: { gap: 12, paddingVertical: 8 },
-    card: { gap: 10, alignItems: "center" },
-    fullWidth: { alignSelf: "stretch" },
-    title: { fontSize: 20, fontWeight: "700", color: theme.text },
-    subtitle: { fontSize: 15, fontWeight: "600", color: theme.text, alignSelf: "stretch" },
-    message: { fontSize: 15, color: theme.text, textAlign: "center" },
-    meta: { fontSize: 13, color: theme.textSecondary, textAlign: "center" },
-    error: { fontSize: 13, color: theme.red, textAlign: "center" },
-    person: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      minHeight: 56,
-      alignSelf: "stretch",
-      borderTopWidth: 1,
-      borderTopColor: theme.border,
-    },
-    personText: { flex: 1 },
-    personName: { fontSize: 16, fontWeight: "600", color: theme.text },
-  })
-}
+const styles = StyleSheet.create({
+  wrap: { gap: space.md, paddingVertical: space.sm },
+  card: { gap: space.sm + 2, alignItems: "center" },
+  fullWidth: { alignSelf: "stretch" },
+  pickCard: { gap: space.xs, paddingHorizontal: 0 },
+  pickTitle: { paddingHorizontal: space.md, paddingBottom: space.xs },
+  cancel: { marginHorizontal: space.md, marginTop: space.sm },
+})

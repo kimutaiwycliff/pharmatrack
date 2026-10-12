@@ -25,7 +25,7 @@ function toneColor(tone: TextTone, theme: Theme): string {
     case "warning":
       return theme.amber
     case "inverse":
-      return "#fff"
+      return theme.onAccent
     default:
       return theme.text
   }

@@ -1,11 +1,12 @@
 import { useState } from "react"
-import { StyleSheet, Text } from "react-native"
+import { StyleSheet, View } from "react-native"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { router } from "expo-router"
 import { File } from "expo-file-system"
 import { verifyLicenseRaw, storeLicenseRaw } from "../src/lib/license"
 import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Screen } from "../src/components"
+import { space } from "../src/theme/tokens"
+import { Button, FormScroll, Screen, Text } from "../src/components"
 
 // ADR-014, Phase 3 — shown by app/index.tsx's OfflineIndex before ANYTHING
 // else (even the first-run /setup wizard) when no valid license is stored,
@@ -15,7 +16,6 @@ import { Button, Screen } from "../src/components"
 // which still re-verify the signature every time, not just once.
 export default function License() {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -41,26 +41,38 @@ export default function License() {
   }
 
   return (
-    <Screen style={styles.container}>
-      <Text style={styles.title}>PharmaTrack Offline Edition</Text>
-      <Text style={styles.subtitle}>
-        This device needs a license file before it can be set up. Your PharmaTrack license file
-        was provided when you purchased Offline Edition — select it below.
-      </Text>
+    <Screen>
+      <FormScroll contentStyle={styles.content}>
+        <View style={styles.brand}>
+          <Ionicons name="document-lock-outline" size={48} color={theme.green} />
+          <Text variant="title" align="center" accessibilityRole="header">
+            PharmaTrack Offline Edition
+          </Text>
+          <Text tone="secondary" align="center">
+            This device needs a license file before it can be set up. Your PharmaTrack license file was provided when you
+            purchased Offline Edition — select it below.
+          </Text>
+        </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <Text tone="danger" align="center" accessibilityLiveRegion="polite">
+            {error}
+          </Text>
+        ) : null}
 
-      <Button title="Select license file" onPress={pickAndVerify} loading={pending} style={styles.button} />
+        <Button
+          title="Select license file"
+          size="lg"
+          onPress={pickAndVerify}
+          loading={pending}
+          leadingIcon={<Ionicons name="folder-open-outline" size={20} color={theme.onAccent} />}
+        />
+      </FormScroll>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    container: { justifyContent: "center", padding: 24, gap: 12 },
-    title: { fontSize: 24, fontWeight: "700", textAlign: "center", color: theme.text },
-    subtitle: { fontSize: 14, textAlign: "center", color: theme.textSecondary, marginBottom: 8 },
-    button: { marginTop: 8 },
-    error: { color: theme.red, textAlign: "center" },
-  })
-}
+const styles = StyleSheet.create({
+  content: { flexGrow: 1, justifyContent: "center", paddingHorizontal: space.sm, paddingVertical: space.xl, gap: space.md },
+  brand: { alignItems: "center", gap: space.sm, marginBottom: space.sm },
+})

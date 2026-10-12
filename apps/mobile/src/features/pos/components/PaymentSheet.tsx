@@ -152,6 +152,7 @@ export function PaymentSheet(p: PaymentSheetProps) {
           </Text>
           <TextField
             label="M-Pesa code (optional)"
+            inSheet
             placeholder="e.g. QJK4XXXXXX"
             autoCapitalize="characters"
             maxLength={10}
@@ -169,7 +170,7 @@ export function PaymentSheet(p: PaymentSheetProps) {
           received" / manual code need no network). */}
       {method === "mpesa" ? (
         rxOk ? (
-          <MpesaFlow amountCents={total} onConfirmed={p.onMpesa} />
+          <MpesaFlow amountCents={total} onConfirmed={p.onMpesa} inSheet />
         ) : (
           <Text tone="warning">Tick “Prescription seen” first.</Text>
         )
@@ -255,7 +256,7 @@ function SplitEntry({ total, rxOk, onConfirmed }: { total: number; rxOk: boolean
       <NumericKeypad value={digits} onChange={setDigits} />
       {cash >= total ? <Text tone="danger">The cash part must be less than the total — use Cash instead.</Text> : null}
       {ready && !rxOk ? <Text tone="warning">Tick “Prescription seen” first.</Text> : null}
-      {ready && rxOk ? <MpesaFlow amountCents={mpesa} onConfirmed={(ref) => onConfirmed(cash, mpesa, ref)} /> : null}
+      {ready && rxOk ? <MpesaFlow amountCents={mpesa} onConfirmed={(ref) => onConfirmed(cash, mpesa, ref)} inSheet /> : null}
     </View>
   )
 }

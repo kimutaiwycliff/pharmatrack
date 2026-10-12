@@ -1,10 +1,11 @@
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { Pressable, StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useSyncStore } from "../store/sync"
 import { nairobiClock } from "../lib/sync/core/format"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { radius, space, TOUCH_TARGET, type Theme } from "../theme/tokens"
+import { Text } from "./Text"
 
 // Persistent, non-blocking sync notices (R1 rules 3 + 5): the 21:00 "sync
 // before midnight" warning, a shift that was closed offline and still has to
@@ -47,11 +48,16 @@ export function SyncBanners() {
         <Pressable
           key={b.key}
           onPress={() => router.push("/sync")}
-          style={[styles.banner, b.tone === "danger" ? styles.danger : styles.warn]}
+          style={({ pressed }) => [styles.banner, b.tone === "danger" ? styles.danger : styles.warn, pressed && styles.pressed]}
           accessibilityRole="button"
+          accessibilityLabel={b.text}
+          accessibilityHint="Opens sync details"
         >
           <Ionicons name={b.icon} size={18} color={b.tone === "danger" ? theme.red : theme.amber} />
-          <Text style={styles.text}>{b.text}</Text>
+          <Text variant="label" style={styles.text}>
+            {b.text}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.textTertiary} />
         </Pressable>
       ))}
     </View>
@@ -60,19 +66,20 @@ export function SyncBanners() {
 
 function createStyles(theme: Theme) {
   return StyleSheet.create({
-    wrap: { gap: 6 },
+    wrap: { gap: space.xs + 2 },
     banner: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      minHeight: 48,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 10,
+      gap: space.sm,
+      minHeight: TOUCH_TARGET,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      borderRadius: radius.md,
       borderWidth: 1,
     },
+    pressed: { opacity: 0.8 },
     warn: { borderColor: theme.amber, backgroundColor: theme.muted },
     danger: { borderColor: theme.red, backgroundColor: theme.red50 },
-    text: { flex: 1, fontSize: 14, fontWeight: "600", color: theme.text },
+    text: { flex: 1 },
   })
 }

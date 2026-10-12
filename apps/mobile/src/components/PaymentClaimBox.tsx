@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react"
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-native"
+import { ActivityIndicator, StyleSheet, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { apiFetch } from "../lib/api-fetch"
+import { toCents, formatKES } from "@pharmatrack/core"
+import { apiJson, errorMessage } from "../lib/api"
 import { toast } from "../lib/toast"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { radius, space } from "../theme/tokens"
 import { Button } from "./Button"
+import { Text } from "./Text"
+import { TextField } from "./TextField"
 
 // Mirrors apps/web/components/billing/PaymentClaimBox.tsx: an owner who is
 // ALREADY locked out by SubscriptionGate still needs a way to self-report a
@@ -13,6 +16,7 @@ import { Button } from "./Button"
 // see app/billing.tsx) is unreachable once the whole app is gated. Reads
 // GET /api/billing, posts to POST /api/billing/claim-payment — same routes
 // web uses, both allowInactiveSubscription so they work while blocked.
+// Renders nothing when the platform has no payment number configured.
 
 interface BillingData {
   subscription: { plan: { price_kes: number } | null } | null
@@ -20,19 +24,25 @@ interface BillingData {
   paymentNumber: string | null
 }
 
-export function PaymentClaimBox() {
+interface PaymentClaimBoxProps {
+  /** "gate" (default) = locked-out copy; "billing" = the Billing screen's. */
+  context?: "gate" | "billing"
+  /** Called after a claim is accepted (e.g. to refresh payment history). */
+  onClaimed?: () => void
+}
+
+export function PaymentClaimBox({ context = "gate", onClaimed }: PaymentClaimBoxProps = {}) {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const [data, setData] = useState<BillingData | null>(null)
   const [loading, setLoading] = useState(true)
   const [reference, setReference] = useState("")
+  const [refError, setRefError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [justSubmitted, setJustSubmitted] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    apiFetch("/api/billing")
-      .then((r) => (r.ok ? (r.json() as Promise<BillingData>) : null))
+    apiJson<BillingData>("/api/billing")
       .then((json) => { if (!cancelled) setData(json) })
       .catch(() => { if (!cancelled) setData(null) })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -40,20 +50,19 @@ export function PaymentClaimBox() {
   }, [])
 
   async function submit() {
-    if (!reference.trim()) { toast.error("Enter the M-Pesa confirmation code"); return }
+    const ref = reference.trim()
+    // Same rule as the route's Zod schema (min 4, max 40).
+    if (ref.length < 4) { setRefError("Enter the M-Pesa confirmation code"); return }
+    setRefError(null)
     setSubmitting(true)
     try {
-      const res = await apiFetch("/api/billing/claim-payment", {
-        method: "POST",
-        body: JSON.stringify({ reference: reference.trim() }),
-      })
-      const json = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? "Could not submit payment")
+      await apiJson("/api/billing/claim-payment", { method: "POST", body: { reference: ref } })
       setJustSubmitted(true)
       setReference("")
       toast.success("Thanks! We'll confirm and activate your subscription shortly.")
+      onClaimed?.()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error")
+      setRefError(errorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -61,9 +70,11 @@ export function PaymentClaimBox() {
 
   if (loading) {
     return (
-      <View style={styles.loadingRow}>
+      <View style={styles.loadingRow} accessibilityRole="progressbar" accessibilityLabel="Loading payment details">
         <ActivityIndicator color={theme.textSecondary} size="small" />
-        <Text style={styles.loadingText}>Loading payment details…</Text>
+        <Text variant="caption" tone="secondary">
+          Loading payment details…
+        </Text>
       </View>
     )
   }
@@ -71,73 +82,67 @@ export function PaymentClaimBox() {
 
   const pending = data.payments.find((p) => p.status === "pending")
   const price = data.subscription?.plan?.price_kes
+  const amount = price ? formatKES(toCents(price)) : "your subscription fee"
 
   return (
-    <View style={styles.box}>
+    <View style={[styles.box, { borderColor: theme.border, backgroundColor: theme.muted }]}>
       <View style={styles.headerRow}>
-        <Ionicons name="phone-portrait-outline" size={14} color={theme.textSecondary} />
-        <Text style={styles.headerText}>Pay via M-Pesa to reactivate</Text>
+        <Ionicons name="phone-portrait-outline" size={16} color={theme.textSecondary} />
+        <Text variant="label" tone="secondary" style={styles.headerText} accessibilityRole="header">
+          {context === "billing" ? "Pay via M-Pesa" : "Pay via M-Pesa to reactivate"}
+        </Text>
       </View>
 
       {pending || justSubmitted ? (
-        <View style={styles.pendingRow}>
-          <Ionicons name="time-outline" size={16} color={theme.amber} />
-          <Text style={styles.pendingText}>
-            {justSubmitted
+        <View style={styles.pendingRow} accessibilityLiveRegion="polite">
+          <Ionicons name="time-outline" size={18} color={theme.amber} />
+          <Text variant="caption" tone="secondary" style={styles.flex}>
+            {justSubmitted && !pending
               ? "Thanks — we'll verify and reactivate your subscription shortly."
               : `Payment awaiting confirmation${pending?.reference ? ` (ref ${pending.reference})` : ""}. We'll reactivate once it's verified.`}
           </Text>
         </View>
       ) : (
         <>
-          <Text style={styles.copy}>
-            Send {price ? `KES ${Number(price).toLocaleString()}` : "your subscription fee"} via M-Pesa to{" "}
-            <Text style={styles.bold}>{data.paymentNumber}</Text>, then enter the confirmation code below.
+          <Text tone="secondary">
+            Send <Text variant="bodyStrong">{amount}</Text> via M-Pesa to{" "}
+            <Text variant="bodyStrong" tabular>
+              {data.paymentNumber}
+            </Text>
+            , then enter the confirmation code below.
           </Text>
-          <TextInput
-            style={styles.input}
+          <TextField
+            label="M-Pesa confirmation code"
             placeholder="e.g. QFT7X2ABCD"
-            placeholderTextColor={theme.textTertiary}
             autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={40}
             value={reference}
-            onChangeText={setReference}
+            onChangeText={(v) => {
+              setReference(v)
+              if (refError) setRefError(null)
+            }}
+            error={refError}
+            returnKeyType="send"
+            onSubmitEditing={submit}
           />
-          <Button title="I've paid" onPress={submit} loading={submitting} icon={<Ionicons name="checkmark-circle-outline" size={16} color="#fff" />} />
+          <Button
+            title="I've paid"
+            onPress={submit}
+            loading={submitting}
+            leadingIcon={<Ionicons name="checkmark-circle-outline" size={18} color={theme.onAccent} />}
+          />
         </>
       )}
     </View>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center", marginTop: 20 },
-    loadingText: { fontSize: 12, color: theme.textSecondary },
-    box: {
-      width: "100%",
-      marginTop: 20,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: theme.border,
-      backgroundColor: theme.muted,
-      padding: 14,
-      gap: 10,
-    },
-    headerRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    headerText: { fontSize: 12, fontWeight: "700", color: theme.textSecondary, textTransform: "uppercase" },
-    copy: { fontSize: 13, color: theme.textSecondary, lineHeight: 19 },
-    bold: { fontWeight: "700", color: theme.text },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      fontSize: 15,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-    pendingRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-    pendingText: { flex: 1, fontSize: 12, color: theme.textSecondary, lineHeight: 17 },
-  })
-}
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: space.sm, justifyContent: "center", marginTop: space.lg, minHeight: 48 },
+  box: { width: "100%", marginTop: space.lg, borderRadius: radius.lg, borderWidth: 1, padding: space.lg, gap: space.md },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  headerText: { textTransform: "uppercase", letterSpacing: 0.5 },
+  pendingRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+})
