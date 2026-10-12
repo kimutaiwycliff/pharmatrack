@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { Pressable, StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useSyncStore } from "../store/sync"
 import { countdown, timeAgo } from "../lib/sync/core/format"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { radius, space, TOUCH_TARGET, type Theme } from "../theme/tokens"
+import { Text } from "./Text"
 
 // Compact sync indicator for the POS header and Shifts tab (R1 rule 10):
 // online/offline dot, "Synced 5 min ago", pending badge and — from 21:00 — a
@@ -43,23 +44,23 @@ export function SyncStatusBar() {
       accessibilityLabel={`Sync status: ${label}. Open sync details`}
     >
       <View style={[styles.dot, { backgroundColor: dotColor }]} />
-      <Text style={styles.label} numberOfLines={1}>
+      <Text variant="caption" style={styles.label} numberOfLines={1}>
         {label}
       </Text>
       {lock.warnDeadline && lock.msToDeadline != null ? (
         <View style={[styles.badge, styles.badgeWarn]}>
           <Ionicons name="alarm-outline" size={12} color={theme.amber} />
-          <Text style={[styles.badgeText, { color: theme.amber }]}>{countdown(lock.msToDeadline)}</Text>
+          <Text variant="caption" style={[styles.badgeText, { color: theme.amber }]}>{countdown(lock.msToDeadline)}</Text>
         </View>
       ) : null}
       {pendingCount > 0 ? (
         <View style={[styles.badge, styles.badgeWarn]}>
-          <Text style={[styles.badgeText, { color: theme.amber }]}>{pendingCount} waiting</Text>
+          <Text variant="caption" style={[styles.badgeText, { color: theme.amber }]}>{pendingCount} waiting</Text>
         </View>
       ) : null}
       {rejectedCount > 0 ? (
         <View style={[styles.badge, styles.badgeDanger]}>
-          <Text style={[styles.badgeText, { color: theme.red }]}>{rejectedCount} need attention</Text>
+          <Text variant="caption" style={[styles.badgeText, { color: theme.red }]}>{rejectedCount} need attention</Text>
         </View>
       ) : null}
       <Ionicons name="chevron-forward" size={14} color={theme.textTertiary} />
@@ -72,10 +73,10 @@ function createStyles(theme: Theme) {
     bar: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      minHeight: 48,
-      paddingHorizontal: 10,
-      borderRadius: 10,
+      gap: space.xs + 2,
+      minHeight: TOUCH_TARGET,
+      paddingHorizontal: space.sm + 2,
+      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: theme.border,
       backgroundColor: theme.surface,
@@ -83,10 +84,10 @@ function createStyles(theme: Theme) {
     },
     pressed: { opacity: 0.8 },
     dot: { width: 10, height: 10, borderRadius: 5 },
-    label: { flexShrink: 1, fontSize: 13, fontWeight: "600", color: theme.text },
-    badge: { flexDirection: "row", alignItems: "center", gap: 3, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1 },
+    label: { flexShrink: 1, fontSize: 13, fontWeight: "600" },
+    badge: { flexDirection: "row", alignItems: "center", gap: 3, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: space.xxs, borderWidth: 1 },
     badgeWarn: { borderColor: theme.amber, backgroundColor: theme.muted },
     badgeDanger: { borderColor: theme.red, backgroundColor: theme.red50 },
-    badgeText: { fontSize: 11, fontWeight: "700" },
+    badgeText: { fontSize: 11, lineHeight: 14, fontWeight: "700" },
   })
 }

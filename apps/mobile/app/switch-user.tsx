@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { StyleSheet } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { listRoster, rosterToStaff, verifyRosterPin, type RosterMember } from "../src/lib/sync/roster"
@@ -8,8 +8,7 @@ import { useStaffStore } from "../src/store/staff"
 import { useSyncStore } from "../src/store/sync"
 import { toast } from "../src/lib/toast"
 import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Card, EmptyState, PinEntry, Screen, ScreenHeader } from "../src/components"
+import { Button, Card, EmptyState, FormScroll, ListRow, PinEntry, Screen, ScreenHeader } from "../src/components"
 
 // Offline staff switching (R1 rule 6): pick yourself from this branch's staff
 // list (downloaded by sync) and enter your PIN — checked on the phone against
@@ -17,7 +16,6 @@ import { Button, Card, EmptyState, PinEntry, Screen, ScreenHeader } from "../src
 // happens as you (cashier_id on sales and shifts).
 export default function SwitchUser() {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const current = useStaffStore((s) => s.current)
   const device = useSyncStore((s) => s.device)
   const [roster] = useState<RosterMember[]>(() => listRoster().filter((m) => m.isActive && m.permissions.includes("pos.sell")))
@@ -35,12 +33,16 @@ export default function SwitchUser() {
 
   return (
     <Screen>
-      <ScreenHeader title="Who's selling?" onBack={() => (router.canGoBack() ? router.back() : router.replace("/login"))} />
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {current ? <Text style={styles.meta}>Currently selling: {current.name}</Text> : null}
+      <ScreenHeader
+        title="Who's selling?"
+        subtitle={current ? `Currently selling: ${current.name}` : null}
+        onBack={() => (router.canGoBack() ? router.back() : router.replace("/login"))}
+      />
+      <FormScroll>
         {!device ? (
           <EmptyState
-            icon={<Ionicons name="phone-portrait-outline" size={28} color={theme.textTertiary} />}
+            icon={<Ionicons name="phone-portrait-outline" size={32} color={theme.textTertiary} />}
+            title="Phone not registered"
             message="This phone isn't registered yet — a manager needs to sign in online first."
           />
         ) : picked ? (
@@ -52,50 +54,43 @@ export default function SwitchUser() {
           />
         ) : roster.length === 0 ? (
           <EmptyState
-            icon={<Ionicons name="people-outline" size={28} color={theme.textTertiary} />}
+            icon={<Ionicons name="people-outline" size={32} color={theme.textTertiary} />}
+            title="No staff list yet"
             message="No staff downloaded yet. Connect and sync once to get the staff list."
           />
         ) : (
           <Card style={styles.listCard}>
-            {roster.map((m, i) => (
-              <Pressable
-                key={m.id}
-                onPress={() => (m.hasPin ? setPicked(m) : toast.error(`${m.name} has no PIN yet — set one in Settings while online`))}
-                style={[styles.row, i > 0 && styles.rowBorder]}
-                accessibilityRole="button"
-              >
-                <Ionicons name="person-circle-outline" size={32} color={m.id === current?.id ? theme.green : theme.text} />
-                <View style={styles.rowText}>
-                  <Text style={styles.name}>{m.name}</Text>
-                  <Text style={styles.meta}>
-                    {m.role}
-                    {m.hasPin ? "" : " · no PIN"}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
-              </Pressable>
-            ))}
+            {roster.map((m, i) => {
+              const isCurrent = m.id === current?.id
+              const meta = `${m.role}${m.hasPin ? "" : " · no PIN"}${isCurrent ? " · selling now" : ""}`
+              return (
+                <ListRow
+                  key={m.id}
+                  title={m.name}
+                  subtitle={meta}
+                  accessibilityLabel={`${m.name}, ${meta}`}
+                  accessibilityHint={m.hasPin ? "Enter your PIN next" : undefined}
+                  onPress={() => (m.hasPin ? setPicked(m) : toast.error(`${m.name} has no PIN yet — set one in Settings while online`))}
+                  leading={<Ionicons name="person-circle-outline" size={36} color={isCurrent ? theme.green : theme.textSecondary} />}
+                  trailing={<Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />}
+                  style={i === roster.length - 1 ? styles.lastRow : null}
+                />
+              )
+            })}
           </Card>
         )}
         <Button
           title="Sign in online instead"
           variant="secondary"
           onPress={() => router.push("/login")}
-          icon={<Ionicons name="log-in-outline" size={18} color={theme.text} />}
+          leadingIcon={<Ionicons name="log-in-outline" size={18} color={theme.text} />}
         />
-      </ScrollView>
+      </FormScroll>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    scroll: { gap: 12, paddingBottom: 24 },
-    listCard: { paddingVertical: 4 },
-    row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60 },
-    rowBorder: { borderTopWidth: 1, borderTopColor: theme.border },
-    rowText: { flex: 1 },
-    name: { fontSize: 16, fontWeight: "600", color: theme.text },
-    meta: { fontSize: 13, color: theme.textSecondary },
-  })
-}
+const styles = StyleSheet.create({
+  listCard: { padding: 0, overflow: "hidden" },
+  lastRow: { borderBottomWidth: 0 },
+})

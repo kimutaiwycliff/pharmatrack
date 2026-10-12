@@ -1,623 +1,291 @@
-import { useEffect, useState } from "react"
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { apiFetch } from "../../src/lib/api-fetch"
+import { FlashList } from "@shopify/flash-list"
+import { router, useFocusEffect } from "expo-router"
+import { useCallback, useMemo, useState, type ReactNode } from "react"
+import { ScrollView, StyleSheet, View } from "react-native"
+import {
+  BranchSwitcher, Button, Chip, EmptyState, ErrorState, IconButton, NeedsInternet, Screen, ScreenHeader, Sheet, SkeletonList, Text,
+  TextField, useIsOnline,
+} from "../../src/components"
+import { AppointmentRow, AppointmentSheet, serviceName } from "../../src/features/clinical/components/AppointmentParts"
+import { fetchAppointments, updateAppointment, type ApptQuery } from "../../src/features/clinical/data"
+import { useDebouncedValue } from "../../src/features/clinical/hooks"
+import {
+  ACTION_STATUS, groupByNairobiDay, RANGES, STATUS_FILTERS, STATUS_LABEL, type AppointmentAction, type AppointmentRange,
+  type AppointmentStatus, type DayListRow, type StatusFilter,
+} from "../../src/features/clinical/logic/appointments"
+import { useClinicalDirty } from "../../src/features/clinical/store"
+import type { Appointment } from "../../src/features/clinical/types"
+import { useCan } from "../../src/hooks/useCan"
+import { useQuery } from "../../src/hooks/useQuery"
+import { errorMessage } from "../../src/lib/api"
+import { formatDay } from "../../src/lib/dates"
 import { env } from "../../src/lib/env"
-import { listLocalAppointments, listLocalAppointmentServices, createLocalAppointment } from "../../src/repo/clinical"
-import { useSessionStore } from "../../src/store/session"
+import { haptics } from "../../src/lib/haptics"
+import { toast } from "../../src/lib/toast"
+import { useBranchScope } from "../../src/store/branchScope"
 import { useTheme } from "../../src/theme/useTheme"
-import type { Theme } from "../../src/theme/tokens"
-import { Button, Card, EmptyState, Screen, StatusBadge } from "../../src/components"
-import type { BadgeStatus } from "../../src/components"
+import { space } from "../../src/theme/tokens"
 
-// Mirrors apps/web/app/api/appointments/route.ts's WRITE_ROLES exactly
-// (verified against that file and apps/web/app/api/appointments/[id]/route.ts
-// directly, not from memory) — the server enforces this same gate on
-// POST/PATCH/DELETE, so the UI hides actions a cashier's request would just
-// get a 403 for. This is the one screen in the mobile app so far that
-// role-gates a feature in the UI, not just via server-side rejection.
-const WRITE_ROLES = ["owner", "manager", "pharmacist"]
+// Appointments tab — mirrors apps/web/app/(dashboard)/appointments/page.tsx:
+// Today / Upcoming / Past ranges, grouped under Nairobi-day headers (Today,
+// Tomorrow, Thu 12 Mar…), web's per-status actions (AppointmentCard.tsx) and
+// the "book the next dose" prompt when a recurring service is completed.
+// Write actions need appointments.manage (the server checks it too). The
+// Offline Edition reads/writes the local SQLite repos (features/clinical/data.ts).
 
-// Mirrors apps/web/lib/appointments/serialize.ts's shapeAppt() output exactly
-// (verified against that file plus packages/db/src/schema/clinical.ts's
-// `appointment` table directly, not from memory): the appointment row spread
-// + a small customer object + assignee. Dates arrive as ISO strings over JSON.
-interface AppointmentCustomer {
-  id: string
-  full_name: string | null
-  phone: string | null
-  email: string | null
-  reminders_opt_in: boolean | null
-}
+const OFFLINE = env.EXPO_PUBLIC_OFFLINE_MODE
 
-interface AppointmentAssignee {
-  id: string
-  full_name: string | null
-}
-
-interface Appointment {
-  id: string
-  branch_id: string | null
-  customer_id: string
-  service: string | null
-  service_label: string | null
-  scheduled_at: string
-  duration_minutes: number
-  status: string
-  assigned_to: string | null
-  notes: string | null
-  customer: AppointmentCustomer | null
-  assignee: AppointmentAssignee | null
-}
-
-interface AppointmentsResponse {
-  appointments: Appointment[]
-}
-
-// Mirrors apps/web/app/api/appointment-services/route.ts's response shape —
-// the tenant's own bookable service catalogue (appointment_service table),
-// not the static fallback list in apps/web/lib/appointments/services.ts.
-// GET is open to any authenticated staff role, so this loads regardless of
-// write access, keeping the read-only view useful too (not currently
-// rendered outside the booking form, but harmless to have available).
-interface AppointmentServiceOption {
-  id: string
-  slug: string
-  label: string
-  recurrence_weeks: number | null
-}
-
-interface AppointmentServicesResponse {
-  services: AppointmentServiceOption[]
-}
-
-// Matches the appointment.status column's known values exactly (see the
-// `status` enum in apps/web/app/api/appointments/[id]/route.ts's updateSchema)
-// plus "all" for the unfiltered view.
-type StatusFilter = "all" | "scheduled" | "confirmed" | "completed" | "cancelled" | "no_show"
-
-const FILTERS: { key: StatusFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "scheduled", label: "Scheduled" },
-  { key: "confirmed", label: "Confirmed" },
-  { key: "completed", label: "Completed" },
-  { key: "cancelled", label: "Cancelled" },
-  { key: "no_show", label: "No-show" },
-]
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
-
-function badgeFor(status: string): { status: BadgeStatus; label: string } {
-  switch (status) {
-    case "confirmed":
-      return { status: "ok", label: "Confirmed" }
-    case "completed":
-      return { status: "ok", label: "Completed" }
-    case "cancelled":
-      return { status: "danger", label: "Cancelled" }
-    case "no_show":
-      return { status: "warning", label: "No-show" }
-    case "scheduled":
-    default:
-      return { status: "neutral", label: "Scheduled" }
-  }
-}
-
-// Devices run exclusively in Kenya (single timezone, no DST — see shifts.tsx/
-// dashboard.tsx), so the device's local clock reads as Africa/Nairobi time.
-function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  const datePart = d.toLocaleDateString([], { day: "2-digit", month: "short" })
-  const timePart = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  return `${datePart}, ${timePart}`
-}
+type Row = DayListRow<Appointment>
 
 export default function Appointments() {
   const theme = useTheme()
-  const styles = createStyles(theme)
-  const { branchId, role } = useSessionStore()
-  const canWrite = role != null && WRITE_ROLES.includes(role)
+  const can = useCan()
+  const canManage = can("appointments.manage")
+  const online = useIsOnline()
+  const reachable = OFFLINE || online
+  const scope = useBranchScope()
 
-  const [query, setQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
-  const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [featureLocked, setFeatureLocked] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  // Bumped by retry/pull-to-refresh to re-run the effect below without
-  // exposing the fetch function itself as a captured effect dependency
-  // (mirrors inventory.tsx/dashboard.tsx's shape, required by this repo's
-  // react-hooks/set-state-in-effect rule).
-  const [reloadToken, setReloadToken] = useState(0)
+  const [range, setRange] = useState<AppointmentRange>("today")
+  const [status, setStatus] = useState<StatusFilter>("all")
+  const [search, setSearch] = useState("")
+  const q = useDebouncedValue(search.trim().length >= 2 ? search.trim() : "", 300)
+  const [selected, setSelected] = useState<Appointment | null>(null)
+  const [busy, setBusy] = useState<AppointmentAction | null>(null)
+  const [nextDose, setNextDose] = useState<{ appt: Appointment; due: string } | null>(null)
 
-  const [services, setServices] = useState<AppointmentServiceOption[]>([])
-  const [showBookingForm, setShowBookingForm] = useState(false)
-  const [customerName, setCustomerName] = useState("")
-  const [customerPhone, setCustomerPhone] = useState("")
-  const [selectedService, setSelectedService] = useState<string | null>(null)
-  const [dateInput, setDateInput] = useState("")
-  const [timeInput, setTimeInput] = useState("")
-  const [notes, setNotes] = useState("")
-  const [formError, setFormError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const params: ApptQuery = { range, status, q, branchId: scope.branchId }
+  const query = useQuery(reachable ? JSON.stringify(params) : null, (key) => fetchAppointments(JSON.parse(key) as ApptQuery))
+  const { refresh } = query
+  const locked = !!query.data && "locked" in query.data
+  const rows = useMemo<Row[]>(
+    () => (query.data && !("locked" in query.data) ? groupByNairobiDay(query.data, { newestFirst: range === "past" }) : []),
+    [query.data, range],
+  )
 
-  useEffect(() => {
-    if (!branchId) return
-    const currentBranchId = branchId
-    async function load() {
-      const from = new Date()
-      from.setHours(0, 0, 0, 0)
-      const to = new Date(from)
-      to.setDate(to.getDate() + 14)
-      const trimmed = query.trim()
-      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-        try {
-          const json = await listLocalAppointments({
-            branchId: currentBranchId, from: from.toISOString(), to: to.toISOString(),
-            status: statusFilter, q: trimmed.length >= 2 ? trimmed : undefined,
-          })
-          setAppointments(json.appointments)
-          setFeatureLocked(false)
-          setLoaded(true)
-          setError(null)
-        } finally {
-          setRefreshing(false)
-        }
-        return
-      }
-      try {
-        const params = new URLSearchParams({
-          branch_id: currentBranchId,
-          from: from.toISOString(),
-          to: to.toISOString(),
-          status: statusFilter,
-        })
-        if (trimmed.length >= 2) params.set("q", trimmed)
-        const res = await apiFetch(`/api/appointments?${params.toString()}`)
-        if (res.status === 403) {
-          const body = await res.json().catch(() => null)
-          if (body?.code === "feature_locked") {
-            setFeatureLocked(true)
-            setError(null)
-            setLoaded(true)
-            return
-          }
-          setError("You don't have permission to view appointments.")
-          setLoaded(true)
-          return
-        }
-        if (!res.ok) {
-          setError(`Could not load appointments (HTTP ${res.status})`)
-          return
-        }
-        const json = (await res.json()) as AppointmentsResponse
-        setAppointments(json.appointments)
-        setFeatureLocked(false)
-        setLoaded(true)
-        setError(null)
-      } catch {
-        setError("Could not reach the server. Check your connection and try again.")
-      } finally {
-        setRefreshing(false)
-      }
-    }
-    load()
-  }, [branchId, statusFilter, query, reloadToken])
+  // Back from the booking form after a save → reload.
+  useFocusEffect(
+    useCallback(() => {
+      if (useClinicalDirty.getState().take("appointments")) refresh()
+    }, [refresh]),
+  )
 
-  // Services power the booking form's picker; only fetched for roles that can
-  // actually book (read is open server-side, but a cashier never sees the form).
-  useEffect(() => {
-    if (!canWrite) return
-    async function loadServices() {
-      try {
-        if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-          setServices((await listLocalAppointmentServices()).services)
-          return
-        }
-        const res = await apiFetch("/api/appointment-services")
-        if (!res.ok) return
-        const json = (await res.json()) as AppointmentServicesResponse
-        setServices(json.services)
-      } catch {
-        // Non-fatal — the booking form still works with no service selected
-        // pre-picked; the picker just renders empty.
-      }
-    }
-    loadServices()
-  }, [canWrite])
+  const book = () => router.push("/appointments/new")
 
-  function retry() {
-    setReloadToken((t) => t + 1)
-  }
-
-  function onRefresh() {
-    setRefreshing(true)
-    setReloadToken((t) => t + 1)
-  }
-
-  function resetForm() {
-    setCustomerName("")
-    setCustomerPhone("")
-    setSelectedService(null)
-    setDateInput("")
-    setTimeInput("")
-    setNotes("")
-    setFormError(null)
-  }
-
-  async function handleSubmitBooking() {
-    setFormError(null)
-    const trimmedName = customerName.trim()
-    if (!trimmedName) {
-      setFormError("Customer name is required")
+  async function act(appt: Appointment, action: AppointmentAction) {
+    if (action === "reschedule") {
+      setSelected(null)
+      router.push({
+        pathname: "/appointments/new",
+        params: {
+          id: appt.id,
+          scheduled_at: appt.scheduled_at,
+          duration: String(appt.duration_minutes),
+          notes: appt.notes ?? "",
+          service_label: serviceName(appt),
+          customer_name: appt.customer?.full_name ?? "Walk-in customer",
+        },
+      })
       return
     }
-    if (!selectedService) {
-      setFormError("Select a service")
-      return
-    }
-    if (!branchId) {
-      setFormError("Session still loading — try again in a moment")
-      return
-    }
-    const trimmedDate = dateInput.trim()
-    const trimmedTime = timeInput.trim()
-    if (!DATE_RE.test(trimmedDate) || !TIME_RE.test(trimmedTime)) {
-      setFormError("Enter date as YYYY-MM-DD and time as HH:MM (24-hour)")
-      return
-    }
-    const scheduled = new Date(`${trimmedDate}T${trimmedTime}:00`)
-    if (Number.isNaN(scheduled.getTime())) {
-      setFormError("Enter a valid date and time")
-      return
-    }
-
-    setSubmitting(true)
+    const next: AppointmentStatus = ACTION_STATUS[action]
+    setBusy(action)
     try {
-      const service = services.find((s) => s.slug === selectedService)
-      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-        await createLocalAppointment({
-          customerName: trimmedName, customerPhone: customerPhone.trim() || null, branchId,
-          service: selectedService, serviceLabel: service?.label, scheduledAt: scheduled.toISOString(),
-          notes: notes.trim() || null,
-        })
-      } else {
-        const res = await apiFetch("/api/appointments", {
-          method: "POST",
-          body: JSON.stringify({
-            customer_name: trimmedName,
-            customer_phone: customerPhone.trim() || undefined,
-            branch_id: branchId,
-            service: selectedService,
-            service_label: service?.label,
-            scheduled_at: scheduled.toISOString(),
-            notes: notes.trim() || undefined,
-          }),
-        })
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null
-          setFormError(body?.error ?? `Could not book appointment (HTTP ${res.status})`)
-          return
-        }
-      }
-      setShowBookingForm(false)
-      resetForm()
-      setReloadToken((t) => t + 1)
-    } catch {
-      setFormError("Could not reach the server. Check your connection and try again.")
+      const res = await updateAppointment(appt.id, { status: next })
+      haptics.success()
+      toast.success(`Marked ${STATUS_LABEL[next].toLowerCase()}`)
+      setSelected(null)
+      // Patch locally; drop rows that no longer match the status filter.
+      query.setData((prev) =>
+        prev && !("locked" in prev)
+          ? prev
+              .map((a) => (a.id === appt.id ? { ...a, status: next, next_due_date: res.nextDue ? res.nextDue.slice(0, 10) : a.next_due_date } : a))
+              .filter((a) => status === "all" || a.status === status)
+          : prev,
+      )
+      if (next === "completed" && res.nextDue) setNextDose({ appt, due: res.nextDue })
+    } catch (err) {
+      haptics.error()
+      toast.error(errorMessage(err))
     } finally {
-      setSubmitting(false)
+      setBusy(null)
     }
   }
 
-  if (error && !loaded) {
+  function bookNextDose() {
+    if (!nextDose) return
+    const { appt, due } = nextDose
+    setNextDose(null)
+    router.push({
+      pathname: "/appointments/new",
+      params: {
+        customer_id: appt.customer?.id ?? "",
+        customer_name: appt.customer?.full_name ?? "",
+        customer_phone: appt.customer?.phone ?? "",
+        customer_email: appt.customer?.email ?? "",
+        service: appt.service ?? "",
+        service_label: appt.service_label ?? "",
+        scheduled_at: due,
+        parent_appointment_id: OFFLINE ? "" : appt.id,
+      },
+    })
+  }
+
+  const filtersActive = status !== "all" || !!search.trim()
+  const clearFilters = () => {
+    setStatus("all")
+    setSearch("")
+  }
+
+  const header = (
+    <ScreenHeader
+      title="Appointments"
+      hideBack
+      subtitle={scope.canSwitch && !OFFLINE ? scope.label : null}
+      right={
+        <>
+          {OFFLINE ? null : <BranchSwitcher />}
+          {canManage && reachable ? <IconButton icon="add" variant="filled" accessibilityLabel="Book appointment" onPress={book} /> : null}
+        </>
+      }
+    />
+  )
+
+  if (!reachable) {
     return (
-      <Screen style={styles.centered}>
-        <Card style={styles.errorCard}>
-          <Text style={styles.error}>{error}</Text>
-          <Button
-            title="Retry"
-            variant="secondary"
-            onPress={retry}
-            icon={<Ionicons name="refresh-outline" size={18} color={theme.text} />}
-          />
-        </Card>
+      <Screen>
+        {header}
+        <NeedsInternet feature="Appointments" />
       </Screen>
     )
   }
 
-  if (!loaded) {
-    return (
-      <Screen style={styles.centered}>
-        <Text style={styles.label}>Loading…</Text>
-      </Screen>
+  let body: ReactNode
+  if (query.loading) body = <SkeletonList rows={6} />
+  else if (query.error && !query.data) body = <ErrorState message={query.error} onRetry={query.retry} />
+  else if (locked)
+    body = (
+      <EmptyState
+        icon={<Ionicons name="lock-closed-outline" size={32} color={theme.textTertiary} />}
+        title="Appointments aren't included in your current plan"
+        message="Ask your account owner to upgrade the subscription to unlock appointment booking and reminders."
+        action={{ label: "Check again", onPress: query.retry }}
+      />
     )
-  }
-
-  if (featureLocked) {
-    return (
-      <Screen style={styles.centered}>
-        <Card style={styles.errorCard}>
-          <Ionicons name="lock-closed-outline" size={28} color={theme.textTertiary} />
-          <Text style={styles.lockedTitle}>Appointments aren&apos;t included in your current plan</Text>
-          <Text style={styles.lockedMessage}>
-            Ask your account owner to upgrade the subscription to unlock appointment booking and reminders.
-          </Text>
-          <Button
-            title="Check again"
-            variant="secondary"
-            onPress={retry}
-            icon={<Ionicons name="refresh-outline" size={18} color={theme.text} />}
-          />
-        </Card>
-      </Screen>
+  else
+    body = (
+      <FlashList
+        data={rows}
+        keyExtractor={(r) => r.key}
+        getItemType={(r) => r.kind}
+        renderItem={({ item }) =>
+          item.kind === "header" ? (
+            <View style={[styles.dayHeader, { backgroundColor: theme.bg }]} accessibilityRole="header">
+              <Text variant="label" tone="secondary">
+                {item.label}
+              </Text>
+              <Text variant="caption" tone="tertiary">
+                {item.count} {item.count === 1 ? "appointment" : "appointments"}
+              </Text>
+            </View>
+          ) : (
+            <AppointmentRow appt={item.item} onPress={() => setSelected(item.item)} />
+          )
+        }
+        refreshing={query.refreshing}
+        onRefresh={query.refresh}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        ListHeaderComponent={query.error ? <ErrorState compact message={query.error} onRetry={query.retry} /> : null}
+        ListEmptyComponent={
+          filtersActive ? (
+            <EmptyState
+              icon={<Ionicons name="search-outline" size={32} color={theme.textTertiary} />}
+              message={`No ${range} appointments match these filters`}
+              action={{ label: "Clear filters", onPress: clearFilters }}
+            />
+          ) : (
+            <EmptyState
+              icon={<Ionicons name="calendar-outline" size={32} color={theme.textTertiary} />}
+              message={`No ${range} appointments`}
+              action={canManage && range !== "past" ? { label: "Book appointment", onPress: book } : undefined}
+            />
+          )
+        }
+      />
     )
-  }
 
   return (
     <Screen>
-      <FlatList
-        data={appointments}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.green} />}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <View style={styles.titleRow}>
-              <Text style={styles.title}>Appointments</Text>
-              {canWrite ? (
-                <Button
-                  title={showBookingForm ? "Close" : "New"}
-                  onPress={() => setShowBookingForm((v) => !v)}
-                  icon={
-                    showBookingForm ? undefined : <Ionicons name="add" size={18} color="#fff" />
-                  }
-                  style={styles.newButton}
-                />
-              ) : null}
-            </View>
-
-            {canWrite && showBookingForm ? (
-              <Card style={styles.formCard}>
-                <Text style={styles.formTitle}>New appointment</Text>
-
-                <TextInput
-                  style={styles.input}
-                  placeholder="Customer name"
-                  placeholderTextColor={theme.textTertiary}
-                  value={customerName}
-                  onChangeText={setCustomerName}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Phone number"
-                  placeholderTextColor={theme.textTertiary}
-                  keyboardType="phone-pad"
-                  value={customerPhone}
-                  onChangeText={setCustomerPhone}
-                />
-
-                <Text style={styles.fieldLabel}>Service</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.filterRow}
-                >
-                  {services.length === 0 ? (
-                    <Text style={styles.emptyServicesText}>No services configured yet</Text>
-                  ) : (
-                    services.map((s) => (
-                      <Pressable
-                        key={s.id}
-                        onPress={() => setSelectedService(s.slug)}
-                        style={[styles.chip, selectedService === s.slug && styles.chipActive]}
-                      >
-                        <Text style={[styles.chipText, selectedService === s.slug && styles.chipTextActive]}>
-                          {s.label}
-                        </Text>
-                      </Pressable>
-                    ))
-                  )}
-                </ScrollView>
-
-                <Text style={styles.fieldLabel}>Date and time</Text>
-                <View style={styles.dateTimeRow}>
-                  <TextInput
-                    style={[styles.input, styles.dateInput]}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={theme.textTertiary}
-                    autoCapitalize="none"
-                    value={dateInput}
-                    onChangeText={setDateInput}
-                  />
-                  <TextInput
-                    style={[styles.input, styles.timeInput]}
-                    placeholder="HH:MM"
-                    placeholderTextColor={theme.textTertiary}
-                    autoCapitalize="none"
-                    value={timeInput}
-                    onChangeText={setTimeInput}
-                  />
-                </View>
-
-                <TextInput
-                  style={styles.input}
-                  placeholder="Notes (optional)"
-                  placeholderTextColor={theme.textTertiary}
-                  value={notes}
-                  onChangeText={setNotes}
-                  multiline
-                />
-
-                {formError ? <Text style={styles.error}>{formError}</Text> : null}
-
-                <View style={styles.formActionsRow}>
-                  <Button
-                    title="Cancel"
-                    variant="secondary"
-                    onPress={() => {
-                      setShowBookingForm(false)
-                      resetForm()
-                    }}
-                    style={styles.formActionButton}
-                  />
-                  <Button title="Book" onPress={handleSubmitBooking} loading={submitting} style={styles.formActionButton} />
-                </View>
-              </Card>
-            ) : null}
-
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by customer name or phone"
-              placeholderTextColor={theme.textTertiary}
-              autoCapitalize="none"
-              value={query}
-              onChangeText={setQuery}
+      {header}
+      <View style={styles.controls}>
+        <TextField
+          label="Search appointments"
+          hideLabel
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Customer name or phone"
+          autoCorrect={false}
+          returnKeyType="search"
+          leading={<Ionicons name="search-outline" size={20} color={theme.textTertiary} />}
+          trailing={
+            search ? <IconButton icon="close-circle" accessibilityLabel="Clear search" color={theme.textTertiary} onPress={() => setSearch("")} /> : null
+          }
+        />
+        <View style={styles.ranges}>
+          {RANGES.map((r) => (
+            <Chip
+              key={r.key}
+              label={r.label}
+              selected={range === r.key}
+              onPress={() => setRange(r.key)}
+              accessibilityLabel={`Show ${r.label.toLowerCase()} appointments`}
+              style={styles.rangeChip}
             />
+          ))}
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {STATUS_FILTERS.map((f) => (
+            <Chip
+              key={f.key}
+              label={f.label}
+              selected={status === f.key}
+              onPress={() => setStatus(f.key)}
+              accessibilityLabel={f.key === "all" ? "Any status" : `Only ${f.label.toLowerCase()}`}
+            />
+          ))}
+        </ScrollView>
+      </View>
+      <View style={styles.flex}>{body}</View>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRow}
-            >
-              {FILTERS.map((f) => (
-                <Pressable
-                  key={f.key}
-                  onPress={() => setStatusFilter(f.key)}
-                  style={[styles.chip, statusFilter === f.key && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, statusFilter === f.key && styles.chipTextActive]}>{f.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+      <AppointmentSheet appt={selected} canManage={canManage} busy={busy} onClose={() => setSelected(null)} onAction={act} />
 
-            {error ? <Text style={styles.inlineError}>{error}</Text> : null}
+      <Sheet open={!!nextDose} onClose={() => setNextDose(null)} title="Book the next dose?">
+        {nextDose ? (
+          <View style={styles.nextDose}>
+            <Text>
+              {serviceName(nextDose.appt)} for {nextDose.appt.customer?.full_name ?? "this customer"} is next due on{" "}
+              <Text variant="bodyStrong">{formatDay(nextDose.due)}</Text>.
+            </Text>
+            <Button
+              title="Book next dose"
+              onPress={bookNextDose}
+              leadingIcon={<Ionicons name="calendar-outline" size={18} color={theme.onAccent} />}
+            />
+            <Button title="Not now" variant="ghost" onPress={() => setNextDose(null)} />
           </View>
-        }
-        renderItem={({ item }) => <AppointmentRow appointment={item} styles={styles} />}
-        ItemSeparatorComponent={() => <View style={styles.rowGap} />}
-        ListEmptyComponent={
-          <EmptyState
-            icon={<Ionicons name="calendar-outline" size={28} color={theme.textTertiary} />}
-            message="No appointments in the next two weeks"
-          />
-        }
-      />
+        ) : null}
+      </Sheet>
     </Screen>
   )
 }
 
-function AppointmentRow({ appointment, styles }: { appointment: Appointment; styles: Styles }) {
-  const badge = badgeFor(appointment.status)
-  const name = appointment.customer?.full_name ?? "Walk-in customer"
-  const phone = appointment.customer?.phone
-  const serviceLabel = appointment.service_label ?? appointment.service ?? "Appointment"
-
-  return (
-    <Card style={styles.apptCard}>
-      <View style={styles.apptHeaderRow}>
-        <View style={styles.apptNameCol}>
-          <Text style={styles.apptName} numberOfLines={1}>
-            {name}
-          </Text>
-          {phone ? (
-            <Text style={styles.apptMeta} numberOfLines={1}>
-              {phone}
-            </Text>
-          ) : null}
-        </View>
-        <StatusBadge status={badge.status} label={badge.label} />
-      </View>
-
-      <View style={styles.apptFooterRow}>
-        <Text style={styles.apptService} numberOfLines={1}>
-          {serviceLabel}
-        </Text>
-        <Text style={styles.apptTime}>{formatDateTime(appointment.scheduled_at)}</Text>
-      </View>
-
-      {appointment.assignee?.full_name ? (
-        <Text style={styles.apptAssignee}>With {appointment.assignee.full_name}</Text>
-      ) : null}
-    </Card>
-  )
-}
-
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
-    label: { fontSize: 15, color: theme.text },
-    error: { color: theme.red },
-    errorCard: { gap: 8 },
-    inlineError: { color: theme.red, fontSize: 13 },
-    lockedTitle: { fontSize: 16, fontWeight: "700", color: theme.text, textAlign: "center" },
-    lockedMessage: { fontSize: 13, color: theme.textSecondary, textAlign: "center" },
-
-    listContent: { paddingBottom: 24 },
-    header: { gap: 10, marginBottom: 12 },
-    titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    title: { fontSize: 20, fontWeight: "700", color: theme.text },
-    newButton: { paddingVertical: 10, paddingHorizontal: 16 },
-
-    formCard: { gap: 10 },
-    formTitle: { fontSize: 15, fontWeight: "700", color: theme.text },
-    fieldLabel: { fontSize: 12, fontWeight: "600", color: theme.textSecondary },
-    emptyServicesText: { fontSize: 13, color: theme.textTertiary, paddingVertical: 8 },
-    dateTimeRow: { flexDirection: "row", gap: 8 },
-    dateInput: { flex: 3 },
-    timeInput: { flex: 2 },
-    formActionsRow: { flexDirection: "row", gap: 8, marginTop: 4 },
-    formActionButton: { flex: 1 },
-
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      fontSize: 15,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-
-    searchInput: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      fontSize: 15,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-
-    filterRow: { gap: 8, paddingVertical: 2 },
-    chip: {
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: theme.border,
-      backgroundColor: theme.muted,
-    },
-    chipActive: { backgroundColor: theme.greenCta, borderColor: theme.greenCta },
-    chipText: { fontSize: 13, fontWeight: "600", color: theme.textSecondary },
-    chipTextActive: { color: "#fff" },
-
-    rowGap: { height: 8 },
-    apptCard: { gap: 8 },
-    apptHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
-    apptNameCol: { flex: 1, gap: 2 },
-    apptName: { fontSize: 15, fontWeight: "600", color: theme.text },
-    apptMeta: { fontSize: 12, color: theme.textSecondary },
-    apptFooterRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
-    apptService: { flex: 1, fontSize: 13, color: theme.textSecondary },
-    apptTime: { fontSize: 13, fontWeight: "600", color: theme.text },
-    apptAssignee: { fontSize: 12, color: theme.textTertiary },
-  })
-}
-
-type Styles = ReturnType<typeof createStyles>
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  controls: { gap: space.sm, marginBottom: space.sm },
+  ranges: { flexDirection: "row", gap: space.sm },
+  rangeChip: { flex: 1, justifyContent: "center" },
+  chips: { gap: space.sm },
+  dayHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", paddingTop: space.lg, paddingBottom: space.xs },
+  nextDose: { gap: space.md },
+})

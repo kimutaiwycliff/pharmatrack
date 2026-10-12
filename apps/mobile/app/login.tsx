@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { useRef, useState } from "react"
+import { StyleSheet, View, type TextInput } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { signInEmail, signInPin } from "../src/lib/auth-client"
@@ -10,14 +10,15 @@ import { findRosterByPhone, rosterToStaff, verifyRosterPin } from "../src/lib/sy
 import { adoptSignedInUser, switchStaff } from "../src/lib/sync/staff-session"
 import { useSyncStore } from "../src/store/sync"
 import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Screen } from "../src/components"
+import { radius, space } from "../src/theme/tokens"
+import { Button, Chip, FormScroll, Screen, Text, TextField } from "../src/components"
 
 type Mode = "email" | "pin"
 
 export default function Login() {
   const theme = useTheme()
-  const styles = createStyles(theme)
+  const pinRef = useRef<TextInput>(null)
+  const passwordRef = useRef<TextInput>(null)
   // ADR-014: the Offline Edition build only ever shows the PIN tab — there
   // is no server for email/password sign-in to reach at all.
   const [mode, setMode] = useState<Mode>("pin")
@@ -29,6 +30,8 @@ export default function Login() {
   const [pending, setPending] = useState(false)
 
   async function onSubmit() {
+    // Return key on the last field can fire while a submit is in flight.
+    if (pending) return
     setError(null)
     setPending(true)
     try {
@@ -89,112 +92,127 @@ export default function Login() {
     }
   }
 
+  const offline = env.EXPO_PUBLIC_OFFLINE_MODE
+  const pinMode = offline || mode === "pin"
+
   return (
-    <Screen style={styles.container}>
-      <Text style={styles.title}>PharmaTrack</Text>
-
-      {env.EXPO_PUBLIC_OFFLINE_MODE ? null : (
-        <View style={styles.tabs}>
-          <Pressable onPress={() => setMode("pin")} style={[styles.tab, mode === "pin" && styles.tabActive]}>
-            <Ionicons name="keypad-outline" size={16} color={mode === "pin" ? "#fff" : theme.textSecondary} />
-            <Text style={mode === "pin" ? styles.tabTextActive : styles.tabText}>Till PIN</Text>
-          </Pressable>
-          <Pressable onPress={() => setMode("email")} style={[styles.tab, mode === "email" && styles.tabActive]}>
-            <Ionicons name="mail-outline" size={16} color={mode === "email" ? "#fff" : theme.textSecondary} />
-            <Text style={mode === "email" ? styles.tabTextActive : styles.tabText}>Email</Text>
-          </Pressable>
+    <Screen>
+      <FormScroll contentStyle={styles.content}>
+        <View style={styles.brand}>
+          <View style={[styles.logo, { backgroundColor: theme.greenCta }]}>
+            <Ionicons name="medkit" size={28} color={theme.onAccent} />
+          </View>
+          <Text variant="display" align="center" accessibilityRole="header">
+            PharmaTrack
+          </Text>
+          <Text tone="secondary" align="center">
+            {pinMode ? "Sign in with your phone number and till PIN" : "Sign in with your email and password"}
+          </Text>
         </View>
-      )}
 
-      {env.EXPO_PUBLIC_OFFLINE_MODE || mode === "pin" ? (
-        <>
-          <TextInput
-            style={styles.input}
-            placeholder="Phone number"
-            placeholderTextColor={theme.textTertiary}
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            value={phone}
-            onChangeText={setPhone}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="4-digit PIN"
-            placeholderTextColor={theme.textTertiary}
-            keyboardType="number-pad"
-            secureTextEntry
-            maxLength={8}
-            value={pin}
-            onChangeText={setPin}
-          />
-        </>
-      ) : (
-        <>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={theme.textTertiary}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={theme.textTertiary}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          <Pressable onPress={() => router.push("/forgot-password")} hitSlop={8}>
-            <Text style={styles.forgotLink}>Forgot password?</Text>
-          </Pressable>
-        </>
-      )}
+        {offline ? null : (
+          <View style={styles.tabs} accessibilityRole="tablist">
+            <Chip
+              label="Till PIN"
+              selected={mode === "pin"}
+              onPress={() => setMode("pin")}
+              icon={<Ionicons name="keypad-outline" size={16} color={mode === "pin" ? theme.green600 : theme.textSecondary} />}
+              accessibilityLabel="Sign in with till PIN"
+              style={styles.tab}
+            />
+            <Chip
+              label="Email"
+              selected={mode === "email"}
+              onPress={() => setMode("email")}
+              icon={<Ionicons name="mail-outline" size={16} color={mode === "email" ? theme.green600 : theme.textSecondary} />}
+              accessibilityLabel="Sign in with email"
+              style={styles.tab}
+            />
+          </View>
+        )}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        {pinMode ? (
+          <>
+            <TextField
+              label="Phone number"
+              placeholder="07XX XXX XXX"
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
+              value={phone}
+              onChangeText={setPhone}
+              returnKeyType="next"
+              onSubmitEditing={() => pinRef.current?.focus()}
+            />
+            <TextField
+              ref={pinRef}
+              label="PIN"
+              placeholder="4-digit PIN"
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={8}
+              value={pin}
+              onChangeText={setPin}
+              returnKeyType="go"
+              onSubmitEditing={onSubmit}
+            />
+          </>
+        ) : (
+          <>
+            <TextField
+              label="Email"
+              placeholder="you@pharmacy.co.ke"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              value={email}
+              onChangeText={setEmail}
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+            />
+            <TextField
+              ref={passwordRef}
+              label="Password"
+              placeholder="Password"
+              secureTextEntry
+              autoComplete="current-password"
+              textContentType="password"
+              value={password}
+              onChangeText={setPassword}
+              returnKeyType="go"
+              onSubmitEditing={onSubmit}
+            />
+            <Button
+              title="Forgot password?"
+              variant="ghost"
+              size="sm"
+              onPress={() => router.push("/forgot-password")}
+              style={styles.forgot}
+            />
+          </>
+        )}
 
-      <Button title="Sign in" onPress={onSubmit} loading={pending} style={styles.submitButton} />
+        {error ? (
+          <Text tone="danger" align="center" accessibilityLiveRegion="polite">
+            {error}
+          </Text>
+        ) : null}
+
+        <Button title="Sign in" size="lg" onPress={onSubmit} loading={pending} style={styles.submitButton} />
+      </FormScroll>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    container: { justifyContent: "center", padding: 24, gap: 12 },
-    title: { fontSize: 28, fontWeight: "700", textAlign: "center", marginBottom: 24, color: theme.text },
-    forgotLink: { fontSize: 13, fontWeight: "600", color: theme.green, textAlign: "right" },
-    tabs: {
-      flexDirection: "row",
-      marginBottom: 12,
-      borderRadius: 8,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: theme.border,
-    },
-    tab: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-      paddingVertical: 10,
-      backgroundColor: theme.muted,
-    },
-    tabActive: { backgroundColor: theme.greenCta },
-    tabText: { color: theme.textSecondary },
-    tabTextActive: { color: "#fff" },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      padding: 12,
-      fontSize: 16,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-    submitButton: { marginTop: 8 },
-    error: { color: theme.red, textAlign: "center" },
-  })
-}
+const styles = StyleSheet.create({
+  content: { flexGrow: 1, justifyContent: "center", paddingHorizontal: space.sm, paddingVertical: space.xl, gap: space.md },
+  brand: { alignItems: "center", gap: space.sm, marginBottom: space.lg },
+  logo: { width: 56, height: 56, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
+  tabs: { flexDirection: "row", gap: space.sm },
+  tab: { flex: 1, justifyContent: "center" },
+  forgot: { alignSelf: "flex-end" },
+  submitButton: { marginTop: space.sm },
+})

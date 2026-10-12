@@ -21,7 +21,7 @@ import { haptics } from "../../src/lib/haptics"
 import { useTheme } from "../../src/theme/useTheme"
 import { space, TABLET_MIN_WIDTH, radius, type Theme } from "../../src/theme/tokens"
 import {
-  Button, Card, Chip, DeviceGate, EmptyState, HardwareScanCatcher, IconButton, Screen, SellingLock, Sheet, StatusBadge, SyncBanners,
+  Button, Card, Chip, DeviceGate, EmptyState, FormScroll, HardwareScanCatcher, IconButton, Screen, SellingLock, Sheet, StatusBadge, SyncBanners,
   SyncStatusBar, Text,
 } from "../../src/components"
 import { addScanned, addToCart, topUpAllowance, useRecentScans } from "../../src/features/pos/actions"
@@ -439,20 +439,22 @@ export default function Pos() {
     <Screen style={styles.container} edges={["top", "left", "right"]}>
       {header}
       {OFFLINE_EDITION ? null : <SyncBanners />}
-      {gate ??
-        (receipt ? (
-          <ReceiptView
-            receipt={receipt.data}
-            queued={receipt.queued}
-            showSyncState={!OFFLINE_EDITION}
-            onNewSale={() => {
-              setReceipt(null)
-              if (tablet) searchRef.current?.focus()
-            }}
-          />
-        ) : (
-          selling
-        ))}
+      {/* R3: gates can hold an input (DeviceGate's phone name) — scroll + lift them above the keyboard. */}
+      {gate ? (
+        <FormScroll>{gate}</FormScroll>
+      ) : receipt ? (
+        <ReceiptView
+          receipt={receipt.data}
+          queued={receipt.queued}
+          showSyncState={!OFFLINE_EDITION}
+          onNewSale={() => {
+            setReceipt(null)
+            if (tablet) searchRef.current?.focus()
+          }}
+        />
+      ) : (
+        selling
+      )}
 
       <Sheet open={cartOpen && !tablet} onClose={() => setCartOpen(false)} title="Cart" snapPoints={["88%"]} scrollable footer={<CartTotals onPay={openPayment} />}>
         <CartLines />

@@ -1,290 +1,234 @@
-import { useEffect, useState } from "react"
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
-import { apiFetch } from "../../src/lib/api-fetch"
+import { router } from "expo-router"
+import { RefreshControl, ScrollView, StyleSheet, View } from "react-native"
+import {
+  BranchSwitcher, EmptyState, ErrorState, ListRow, Money, NeedsInternet, Screen, ScreenHeader, SkeletonBlock, SkeletonCards, Text, useIsOnline,
+} from "../../src/components"
+import { BarChart } from "../../src/features/insights/components/BarChart"
+import { KpiGrid, type Kpi } from "../../src/features/insights/components/KpiGrid"
+import { PaymentSplitBar } from "../../src/features/insights/components/PaymentSplitBar"
+import { Section } from "../../src/features/insights/components/Section"
+import { StockAlerts } from "../../src/features/insights/components/StockAlerts"
+import { fillDailySeries, paymentLabel, paymentSplit, percentLabel, toCents } from "../../src/features/insights/logic/kpis"
+import { shortDayLabel, weekdayLabel } from "../../src/features/insights/logic/labels"
+import { lastNDays } from "../../src/features/insights/logic/ranges"
+import type { DashboardResponse } from "../../src/features/insights/types"
+import { useCan } from "../../src/hooks/useCan"
+import { useQuery } from "../../src/hooks/useQuery"
+import { apiJson, withQuery } from "../../src/lib/api"
+import { dayLabel, formatDay, formatTime, nairobiDayOf, nairobiToday } from "../../src/lib/dates"
 import { env } from "../../src/lib/env"
 import { getLocalDashboard } from "../../src/repo/reports"
+import { useBranchScope } from "../../src/store/branchScope"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
-import type { Theme } from "../../src/theme/tokens"
-import { Button, Card, EmptyState, Screen, StatusBadge } from "../../src/components"
+import { space } from "../../src/theme/tokens"
 
-// Mirrors apps/web/app/api/dashboard/route.ts's response shape exactly
-// (verified against that file directly, not from memory). All money fields
-// are decimal KES (not cents) — same convention as /api/shifts and
-// /api/mobile/me, so formatKES(Math.round(v * 100)) is used throughout.
-interface DashboardResponse {
-  kpis: {
-    todayRevenue: number
-    todayTransactions: number
-    todayAvgBasket: number
-    mpesaRate: number
+// R3 Dashboard (tab root). Mirrors apps/web/app/(dashboard)/dashboard/page.tsx
+// over GET /api/dashboard (apps/web/app/api/dashboard/route.ts): today's KPIs,
+// payment split, stock alerts, 7-day revenue, top products (30 days) and
+// recent sales. Online it follows the shared branch scope (no branch_id = all
+// branches); the Offline Edition reads the same shape from src/repo/reports.ts
+// for the session branch. Gross profit isn't shown: this endpoint doesn't
+// return it (Reports does).
+
+const OFFLINE = env.EXPO_PUBLIC_OFFLINE_MODE
+const LOCAL_PREFIX = "local-dashboard:"
+
+async function loadDashboard(key: string): Promise<DashboardResponse> {
+  if (key.startsWith(LOCAL_PREFIX)) {
+    const local = await getLocalDashboard(key.slice(LOCAL_PREFIX.length))
+    // The local repo reports the M-Pesa share as a 0–1 fraction of sales;
+    // the API (and this screen) use a 0–100 percentage.
+    return { ...local, kpis: { ...local.kpis, mpesaRate: local.kpis.mpesaRate * 100 } }
   }
-  chartData: { date: string; total: number; cash: number; mpesa: number; transactions: number }[]
-  topProducts: { product_id: string; name: string; revenue: number; qty: number }[]
-  recentTransactions: {
-    id: string
-    receipt_number: string
-    total_amount: number
-    payment_method: string
-    customer_name: string | null
-    created_at: string
-  }[]
-  alerts: { outOfStock: number; lowStock: number; expiring: number }
-}
-
-// chartData's `date` is a bare "YYYY-MM-DD" calendar date already grouped by
-// Africa/Nairobi (apps/web's route groups server-side). Parsing it as UTC
-// midnight and formatting with UTC fields keeps it pinned to that day
-// regardless of the device's own timezone offset.
-function formatShortDate(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString([], {
-    day: "2-digit",
-    month: "short",
-    timeZone: "UTC",
-  })
-}
-
-// Devices run exclusively in Kenya (single timezone, no DST — see shifts.tsx),
-// so the device's local clock reads as Africa/Nairobi time for display here.
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-}
-
-function paymentLabel(method: string): string {
-  switch (method) {
-    case "mpesa":
-      return "M-Pesa"
-    case "cash":
-      return "Cash"
-    case "card":
-      return "Card"
-    case "split":
-      return "Split"
-    default:
-      return method
-  }
+  return apiJson<DashboardResponse>(key)
 }
 
 export default function Dashboard() {
   const theme = useTheme()
-  const styles = createStyles(theme)
-  const { branchId } = useSessionStore()
+  const can = useCan()
+  const online = useIsOnline()
+  const scope = useBranchScope()
+  const sessionBranchId = useSessionStore((s) => s.branchId)
+  const allowed = can("dashboard.view")
 
-  const [data, setData] = useState<DashboardResponse | null>(null)
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
-  // Bumped by retry/pull-to-refresh to re-run the effect below without
-  // exposing the fetch function itself as a captured effect dependency
-  // (mirrors the old useSyncEngine hook's nested-function-inside-the-effect
-  // shape, which keeps setState calls local to the effect body).
-  const [reloadToken, setReloadToken] = useState(0)
+  const key = !allowed
+    ? null
+    : OFFLINE
+      ? sessionBranchId
+        ? `${LOCAL_PREFIX}${sessionBranchId}`
+        : null
+      : withQuery("/api/dashboard", { branch_id: scope.branchId })
+  const q = useQuery<DashboardResponse>(key, loadDashboard)
 
-  useEffect(() => {
-    if (!branchId) return
-    async function load() {
-      try {
-        let json: DashboardResponse
-        if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-          json = await getLocalDashboard(branchId!)
-        } else {
-          const res = await apiFetch(`/api/dashboard?branch_id=${branchId}`)
-          if (!res.ok) {
-            setError(`Could not load dashboard (HTTP ${res.status})`)
-            return
-          }
-          json = (await res.json()) as DashboardResponse
-        }
-        setData(json)
-        setLoaded(true)
-      } catch {
-        setError("Could not reach the server. Check your connection and try again.")
-      } finally {
-        setRefreshing(false)
-      }
-    }
-    load()
-  }, [branchId, reloadToken])
+  const header = (
+    <ScreenHeader
+      title="Dashboard"
+      hideBack
+      subtitle={`${OFFLINE ? "This branch" : scope.label} · ${formatDay(nairobiToday())}`}
+      right={OFFLINE ? null : <BranchSwitcher />}
+    />
+  )
 
-  function retry() {
-    setReloadToken((t) => t + 1)
-  }
-
-  function onRefresh() {
-    setRefreshing(true)
-    setReloadToken((t) => t + 1)
-  }
-
-  if (error && !loaded) {
+  if (!allowed) {
     return (
-      <Screen style={styles.centered}>
-        <Card style={styles.errorCard}>
-          <Text style={styles.error}>{error}</Text>
-          <Button
-            title="Retry"
-            variant="secondary"
-            onPress={retry}
-            icon={<Ionicons name="refresh-outline" size={18} color={theme.text} />}
-          />
-        </Card>
+      <Screen>
+        {header}
+        <EmptyState
+          icon={<Ionicons name="lock-closed-outline" size={32} color={theme.textTertiary} />}
+          title="No access"
+          message="Ask the owner or a manager to give you the “View dashboard” permission."
+        />
       </Screen>
     )
   }
 
-  if (!loaded || !data) {
+  if (!OFFLINE && !online && !q.data) {
     return (
-      <Screen style={styles.centered}>
-        <Text style={styles.label}>Loading…</Text>
+      <Screen>
+        {header}
+        <NeedsInternet feature="The dashboard" onRetry={q.retry} />
       </Screen>
     )
   }
 
-  const { kpis, chartData, topProducts, recentTransactions, alerts } = data
-  const maxDayTotal = Math.max(1, ...chartData.map((d) => d.total))
-  const hasAlerts = alerts.outOfStock > 0 || alerts.lowStock > 0 || alerts.expiring > 0
+  if (q.loading) {
+    return (
+      <Screen>
+        {header}
+        <View style={styles.content}>
+          <SkeletonCards count={4} />
+          <SkeletonBlock height={72} />
+          <SkeletonBlock height={180} />
+        </View>
+      </Screen>
+    )
+  }
+
+  if (!q.data) {
+    return (
+      <Screen>
+        {header}
+        <ErrorState message={q.error ?? "Something went wrong."} onRetry={q.retry} title="Couldn't load the dashboard" />
+      </Screen>
+    )
+  }
 
   return (
     <Screen>
+      {header}
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.green} />}
+        refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} tintColor={theme.green} colors={[theme.green]} />}
       >
-        <Text style={styles.title}>Dashboard</Text>
-
-        <View style={styles.kpiGrid}>
-          <Card style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>{"Today's revenue"}</Text>
-            <Text style={styles.kpiValue}>{formatKES(Math.round(kpis.todayRevenue * 100))}</Text>
-          </Card>
-          <Card style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>Transactions</Text>
-            <Text style={styles.kpiValue}>{kpis.todayTransactions}</Text>
-          </Card>
-          <Card style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>Avg basket</Text>
-            <Text style={styles.kpiValue}>{formatKES(Math.round(kpis.todayAvgBasket * 100))}</Text>
-          </Card>
-          <Card style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>M-Pesa share</Text>
-            <Text style={styles.kpiValue}>{kpis.mpesaRate.toFixed(0)}%</Text>
-          </Card>
-        </View>
-
-        {hasAlerts ? (
-          <View style={styles.alertsRow}>
-            {alerts.outOfStock > 0 ? (
-              <StatusBadge status="danger" label={`${alerts.outOfStock} out of stock`} />
-            ) : null}
-            {alerts.lowStock > 0 ? <StatusBadge status="warning" label={`${alerts.lowStock} low stock`} /> : null}
-            {alerts.expiring > 0 ? (
-              <StatusBadge status="warning" label={`${alerts.expiring} expiring soon`} />
-            ) : null}
-          </View>
-        ) : null}
-
-        <Text style={styles.sectionTitle}>Last 7 days</Text>
-        <Card style={styles.trendCard}>
-          {chartData.map((day) => (
-            <View key={day.date} style={styles.trendRow}>
-              <Text style={styles.trendDate}>{formatShortDate(day.date)}</Text>
-              <View style={styles.trendBarTrack}>
-                <View
-                  style={[
-                    styles.trendBarFill,
-                    { width: `${Math.round((day.total / maxDayTotal) * 100)}%`, backgroundColor: theme.green },
-                  ]}
-                />
-              </View>
-              <Text style={styles.trendValue}>{formatKES(Math.round(day.total * 100))}</Text>
-            </View>
-          ))}
-        </Card>
-
-        <Text style={styles.sectionTitle}>Top products (30 days)</Text>
-        <Card style={styles.listCard}>
-          {topProducts.length === 0 ? (
-            <EmptyState
-              icon={<Ionicons name="cube-outline" size={28} color={theme.textTertiary} />}
-              message="No sales in the last 30 days"
-            />
-          ) : (
-            topProducts.map((p, i) => (
-              <View key={p.product_id} style={[styles.productRow, i > 0 && styles.rowBorder]}>
-                <Text style={styles.productName} numberOfLines={1}>
-                  {p.name}
-                </Text>
-                <Text style={styles.productMeta}>{p.qty} sold</Text>
-                <Text style={styles.productRevenue}>{formatKES(Math.round(p.revenue * 100))}</Text>
-              </View>
-            ))
-          )}
-        </Card>
-
-        <Text style={styles.sectionTitle}>Recent transactions</Text>
-        <Card style={styles.listCard}>
-          {recentTransactions.length === 0 ? (
-            <EmptyState
-              icon={<Ionicons name="receipt-outline" size={28} color={theme.textTertiary} />}
-              message="No transactions yet today"
-            />
-          ) : (
-            recentTransactions.map((t, i) => (
-              <View key={t.id} style={[styles.txnRow, i > 0 && styles.rowBorder]}>
-                <View style={styles.txnLeft}>
-                  <Text style={styles.txnReceipt}>{t.receipt_number}</Text>
-                  <Text style={styles.txnMeta}>
-                    {formatTime(t.created_at)} · {paymentLabel(t.payment_method)}
-                  </Text>
-                </View>
-                <Text style={styles.txnAmount}>{formatKES(Math.round(t.total_amount * 100))}</Text>
-              </View>
-            ))
-          )}
-        </Card>
+        {q.error ? <ErrorState compact message={q.error} onRetry={q.retry} /> : null}
+        <DashboardBody data={q.data} canOpenInventory={can("products.view")} canSell={can("pos.sell")} />
       </ScrollView>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
-    scrollContent: { gap: 12, paddingBottom: 24 },
-    title: { fontSize: 20, fontWeight: "700", color: theme.text },
-    sectionTitle: { fontSize: 16, fontWeight: "700", color: theme.text, marginTop: 4 },
-    label: { fontSize: 15, color: theme.text },
-    error: { color: theme.red },
-    errorCard: { gap: 8 },
+function DashboardBody({ data, canOpenInventory, canSell }: { data: DashboardResponse; canOpenInventory: boolean; canSell: boolean }) {
+  const theme = useTheme()
+  const { kpis, alerts, topProducts, recentTransactions } = data
+  const today = nairobiToday()
+  const week = fillDailySeries(data.chartData, lastNDays(7), (date) => ({ date, total: 0, cash: 0, mpesa: 0, transactions: 0 }))
+  const weekTotalCents = week.reduce((sum, d) => sum + toCents(d.total), 0)
 
-    kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    kpiCard: { flexBasis: "47%", flexGrow: 1, gap: 4 },
-    kpiLabel: { fontSize: 12, color: theme.textSecondary },
-    kpiValue: { fontSize: 18, fontWeight: "700", color: theme.text },
+  const kpiItems: Kpi[] = [
+    { key: "revenue", label: "Today's revenue", value: formatKES(toCents(kpis.todayRevenue)) },
+    { key: "count", label: "Transactions", value: String(kpis.todayTransactions) },
+    { key: "avg", label: "Average sale", value: formatKES(toCents(kpis.todayAvgBasket)) },
+    { key: "mpesa", label: "Paid by M-Pesa", value: percentLabel(kpis.mpesaRate), sub: "of today's revenue" },
+  ]
 
-    alertsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  return (
+    <>
+      <KpiGrid items={kpiItems} />
 
-    trendCard: { gap: 8 },
-    trendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    trendDate: { width: 52, fontSize: 12, color: theme.textSecondary },
-    trendBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: theme.muted, overflow: "hidden" },
-    trendBarFill: { height: 8, borderRadius: 4 },
-    trendValue: { width: 92, textAlign: "right", fontSize: 12, color: theme.text },
+      <Section title="Today's payments">
+        <PaymentSplitBar split={paymentSplit(week.find((d) => d.date === today))} />
+      </Section>
 
-    listCard: { paddingVertical: 4 },
-    rowBorder: { borderTopWidth: 1, borderTopColor: theme.border },
+      <Section title="Stock alerts" card={false}>
+        <StockAlerts alerts={alerts} canOpenInventory={canOpenInventory} />
+      </Section>
 
-    productRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
-    productName: { flex: 1, color: theme.text },
-    productMeta: { fontSize: 12, color: theme.textSecondary },
-    productRevenue: { fontWeight: "600", color: theme.text },
+      <Section title="Last 7 days" subtitle={`${formatKES(weekTotalCents)} in total`}>
+        <BarChart
+          highlightKey={today}
+          data={week.map((d) => ({
+            key: d.date,
+            label: weekdayLabel(d.date),
+            a11yLabel: `${dayLabel(d.date)}, ${shortDayLabel(d.date)}, ${d.transactions} sale${d.transactions === 1 ? "" : "s"}`,
+            value: d.total,
+            valueLabel: formatKES(toCents(d.total)),
+          }))}
+        />
+      </Section>
 
-    txnRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
-    txnLeft: { gap: 2 },
-    txnReceipt: { fontWeight: "600", color: theme.text },
-    txnMeta: { fontSize: 12, color: theme.textSecondary },
-    txnAmount: { fontWeight: "600", color: theme.text },
-  })
+      <Section title={OFFLINE ? "Top products today" : "Top products (30 days)"} flush>
+        {topProducts.length === 0 ? (
+          <EmptyState icon={<Ionicons name="cube-outline" size={28} color={theme.textTertiary} />} message="No sales in this period yet." />
+        ) : (
+          topProducts.map((p, i) => (
+            <ListRow
+              key={p.product_id}
+              title={p.name}
+              subtitle={`${p.qty} sold`}
+              accessibilityLabel={`${i + 1}. ${p.name}, ${p.qty} sold, ${formatKES(toCents(p.revenue))}`}
+              leading={
+                <Text variant="label" tone="tertiary" tabular style={styles.rank}>
+                  {i + 1}
+                </Text>
+              }
+              trailing={<Money cents={toCents(p.revenue)} />}
+              style={i === topProducts.length - 1 ? styles.lastRow : null}
+            />
+          ))
+        )}
+      </Section>
+
+      <Section title="Recent sales" flush>
+        {recentTransactions.length === 0 ? (
+          <EmptyState
+            icon={<Ionicons name="receipt-outline" size={28} color={theme.textTertiary} />}
+            message="No sales in the last 7 days."
+            action={canSell ? { label: "Open the till", onPress: () => router.navigate("/pos") } : undefined}
+          />
+        ) : (
+          recentTransactions.map((t, i) => {
+            const when = `${dayLabel(nairobiDayOf(t.created_at))}, ${formatTime(t.created_at)}`
+            return (
+              <ListRow
+                key={t.id}
+                title={t.receipt_number || "Sale"}
+                subtitle={`${when} · ${paymentLabel(t.payment_method)}`}
+                trailing={
+                  <View style={styles.trailing}>
+                    <Money cents={toCents(t.total_amount)} />
+                    <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
+                  </View>
+                }
+                onPress={() => router.push(`/sales/${t.id}`)}
+                accessibilityLabel={`Receipt ${t.receipt_number}, ${when}, ${paymentLabel(t.payment_method)}, ${formatKES(toCents(t.total_amount))}`}
+                accessibilityHint="Opens the sale"
+                style={i === recentTransactions.length - 1 ? styles.lastRow : null}
+              />
+            )
+          })
+        )}
+      </Section>
+    </>
+  )
 }
+
+const styles = StyleSheet.create({
+  content: { gap: space.lg, paddingBottom: space.xl },
+  rank: { width: 20, textAlign: "center" },
+  trailing: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  lastRow: { borderBottomWidth: 0 },
+})

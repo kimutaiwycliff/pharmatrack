@@ -1,57 +1,34 @@
 import { useEffect, useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { ScrollView, StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { hasFeature, type Feature } from "@pharmatrack/core"
 import { confirmSignOut } from "../../src/lib/auth-client"
 import { listDeviceUsers } from "../../src/lib/device-users"
-import { env } from "../../src/lib/env"
+import { visibleMenuItems, type MenuItemDef } from "../../src/lib/nav/visibility"
+import { useNavContext } from "../../src/hooks/useCan"
 import { useSessionStore } from "../../src/store/session"
+import { useStaffStore } from "../../src/store/staff"
 import { useSyncStore } from "../../src/store/sync"
 import { useTheme } from "../../src/theme/useTheme"
-import type { Theme } from "../../src/theme/tokens"
-import { Card, EmptyState, Screen } from "../../src/components"
+import { radius, space } from "../../src/theme/tokens"
+import { ListRow, Screen, ScreenHeader, Text } from "../../src/components"
 
-// Mirrors the role gates enforced server-side for each area (verified against
-// the actual API routes, not from memory): staff and reports are owner/manager
-// only; the catalogue screens (products/categories/suppliers) also allow
-// pharmacist; sales (receipt lookup) is open to every role including cashier,
-// same as web's Sidebar entry for it — a cashier needs to find their own past
-// receipts. This screen only hides menu entries a role can't use — the
-// destination screens re-check on their own writes too, same as web.
-// `feature` mirrors apps/web/components/layout/Sidebar.tsx's per-item plan
-// gate exactly (Products/Suppliers -> "inventory", Reports -> "reports");
-// Staff, Categories, and Sales have no feature entry on web's sidebar either,
-// so they stay role-only here too, rather than inventing a gate web doesn't have.
-interface MenuItem {
-  label: string
-  icon: keyof typeof Ionicons.glyphMap
-  href: "/staff" | "/reports" | "/products" | "/categories" | "/suppliers" | "/sales" | "/billing" | "/settings" | "/catalog-seed" | "/prescriptions" | "/inventory-import"
-  roles: string[]
-  feature?: Feature
-  // ADR-014: not applicable to the Offline Edition build (Billing —
-  // perpetual license, no subscription to manage).
-  hideOffline?: boolean
-}
+type IoniconName = keyof typeof Ionicons.glyphMap
 
-const MENU_ITEMS: MenuItem[] = [
-  { label: "Sales", icon: "receipt-outline", href: "/sales", roles: ["owner", "manager", "pharmacist", "cashier"] },
-  { label: "Staff", icon: "people-outline", href: "/staff", roles: ["owner", "manager"] },
-  { label: "Billing", icon: "card-outline", href: "/billing", roles: ["owner"], hideOffline: true },
-  { label: "Settings", icon: "settings-outline", href: "/settings", roles: ["owner", "manager", "pharmacist", "cashier"] },
-  { label: "Reports", icon: "bar-chart-outline", href: "/reports", roles: ["owner", "manager"], feature: "reports" },
-  { label: "Prescriptions", icon: "document-text-outline", href: "/prescriptions", roles: ["owner", "manager", "pharmacist"], feature: "prescriptions" },
-  { label: "Products", icon: "medkit-outline", href: "/products", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-  { label: "Categories", icon: "folder-outline", href: "/categories", roles: ["owner", "manager", "pharmacist"] },
-  { label: "Suppliers", icon: "business-outline", href: "/suppliers", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-  { label: "Drug catalog", icon: "medical-outline", href: "/catalog-seed", roles: ["owner", "manager"], feature: "inventory" },
-  { label: "Bulk import", icon: "cloud-upload-outline", href: "/inventory-import", roles: ["owner", "manager", "pharmacist"], feature: "inventory" },
-]
+const SECTIONS: MenuItemDef["section"][] = ["Selling", "Stock", "Clinical", "Insights", "Admin"]
 
+const ROLE_LABEL: Record<string, string> = { owner: "Owner", manager: "Manager", pharmacist: "Pharmacist", cashier: "Cashier" }
+
+// R3: everything that isn't a tab, grouped and filtered by capability (see
+// lib/nav/visibility.ts — the same any-of-these-capabilities + plan-feature
+// rule as web's Sidebar). Items a person can't use are hidden, not disabled;
+// the destination screens and the API re-check on their own anyway.
 export default function More() {
   const theme = useTheme()
-  const styles = createStyles(theme)
-  const { role, planCode } = useSessionStore()
+  const nav = useNavContext()
+  const items = visibleMenuItems(nav)
+  const staff = useStaffStore((s) => s.current)
+  const sessionRole = useSessionStore((s) => s.role)
   const [hasDeviceUsers, setHasDeviceUsers] = useState(false)
   // R1: a registered phone switches staff from its synced roster (offline PIN).
   const deviceRegistered = useSyncStore((s) => !!s.device)
@@ -61,75 +38,61 @@ export default function More() {
     listDeviceUsers().then((users) => setHasDeviceUsers(users.length > 0))
   }, [])
 
-  const visibleItems = MENU_ITEMS.filter(
-    (item) =>
-      role &&
-      item.roles.includes(role) &&
-      (!item.feature || hasFeature(planCode, item.feature)) &&
-      !(env.EXPO_PUBLIC_OFFLINE_MODE && item.hideOffline),
-  )
+  const role = staff?.role ?? sessionRole
+  const who = staff?.name ?? null
 
   return (
     <Screen>
-      <Text style={styles.title}>More</Text>
+      <ScreenHeader title="More" hideBack subtitle={who ? `${who}${role ? ` · ${ROLE_LABEL[role] ?? role}` : ""}` : role ? ROLE_LABEL[role] : null} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {visibleItems.length === 0 ? (
-          <EmptyState
-            icon={<Ionicons name="lock-closed-outline" size={28} color={theme.textTertiary} />}
-            message="No admin tools available for your role"
-          />
-        ) : (
-          <Card style={styles.listCard}>
-            {visibleItems.map((item, i) => (
-              <Pressable key={item.href} onPress={() => router.push(item.href)}>
-                <View style={[styles.row, i > 0 && styles.rowBorder]}>
-                  <Ionicons name={item.icon} size={22} color={theme.text} />
-                  <Text style={styles.rowLabel}>{item.label}</Text>
-                  <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
-                </View>
-              </Pressable>
-            ))}
-          </Card>
-        )}
-
-        <Card style={styles.listCard}>
-          {env.EXPO_PUBLIC_OFFLINE_MODE ? null : (
-            <Pressable onPress={() => router.push("/sync")}>
-              <View style={styles.row}>
-                <Ionicons name="sync-outline" size={22} color={theme.text} />
-                <Text style={styles.rowLabel}>Sync</Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
+        {SECTIONS.map((section) => {
+          const rows = items.filter((i) => i.section === section)
+          if (rows.length === 0) return null
+          return (
+            <View key={section} style={styles.section}>
+              <Text variant="label" tone="secondary" accessibilityRole="header" style={styles.sectionTitle}>
+                {section}
+              </Text>
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                {rows.map((item) => (
+                  <ListRow
+                    key={item.href}
+                    title={item.label}
+                    onPress={() => router.push(item.href)}
+                    leading={<Ionicons name={item.icon as IoniconName} size={22} color={theme.text} />}
+                    trailing={<Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />}
+                  />
+                ))}
               </View>
-            </Pressable>
-          )}
-          {canSwitch ? (
-            <Pressable onPress={() => router.push(deviceRegistered ? "/switch-user" : "/login")}>
-              <View style={[styles.row, !env.EXPO_PUBLIC_OFFLINE_MODE && styles.rowBorder]}>
-                <Ionicons name="swap-horizontal-outline" size={22} color={theme.text} />
-                <Text style={styles.rowLabel}>Switch user</Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
-              </View>
-            </Pressable>
-          ) : null}
-          <Pressable onPress={confirmSignOut}>
-            <View style={[styles.row, (canSwitch || !env.EXPO_PUBLIC_OFFLINE_MODE) && styles.rowBorder]}>
-              <Ionicons name="log-out-outline" size={22} color={theme.red} />
-              <Text style={[styles.rowLabel, { color: theme.red }]}>Log out</Text>
             </View>
-          </Pressable>
-        </Card>
+          )
+        })}
+
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          {canSwitch ? (
+            <ListRow
+              title="Switch user"
+              subtitle="Hand the phone to someone else"
+              onPress={() => router.push(deviceRegistered ? "/switch-user" : "/login")}
+              leading={<Ionicons name="swap-horizontal-outline" size={22} color={theme.text} />}
+              trailing={<Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />}
+            />
+          ) : null}
+          <ListRow
+            title="Log out"
+            onPress={confirmSignOut}
+            accessibilityHint="Signs this account out of the app"
+            leading={<Ionicons name="log-out-outline" size={22} color={theme.red} />}
+          />
+        </View>
       </ScrollView>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    title: { fontSize: 20, fontWeight: "700", color: theme.text, marginBottom: 12 },
-    scrollContent: { gap: 12, paddingBottom: 24 },
-    listCard: { paddingVertical: 4 },
-    row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
-    rowBorder: { borderTopWidth: 1, borderTopColor: theme.border },
-    rowLabel: { flex: 1, fontSize: 16, color: theme.text },
-  })
-}
+const styles = StyleSheet.create({
+  scrollContent: { gap: space.lg, paddingBottom: space.xl },
+  section: { gap: space.xs },
+  sectionTitle: { marginLeft: space.xs, textTransform: "uppercase", letterSpacing: 0.5 },
+  card: { borderRadius: radius.lg, borderWidth: 1, overflow: "hidden" },
+})

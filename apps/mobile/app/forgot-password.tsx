@@ -1,11 +1,12 @@
 import { useState } from "react"
-import { StyleSheet, Text, TextInput, View } from "react-native"
+import { StyleSheet, View } from "react-native"
+import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { authClient } from "../src/lib/auth-client"
 import { env } from "../src/lib/env"
 import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Screen, ScreenHeader } from "../src/components"
+import { space } from "../src/theme/tokens"
+import { Button, FormScroll, Screen, ScreenHeader, Text, TextField } from "../src/components"
 
 // Mirrors apps/web/app/(auth)/auth/reset/page.tsx: same authClient.requestPasswordReset
 // call. redirectTo points at the WEB app's /auth/set-password (there's no
@@ -15,7 +16,6 @@ import { Button, Screen, ScreenHeader } from "../src/components"
 // a reset itself.
 export default function ForgotPassword() {
   const theme = useTheme()
-  const styles = createStyles(theme)
   const [email, setEmail] = useState("")
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
@@ -40,53 +40,51 @@ export default function ForgotPassword() {
   }
 
   return (
-    <Screen style={styles.container}>
+    <Screen>
       <ScreenHeader title="Reset password" />
-      {sent ? (
-        <View style={styles.sentBox}>
-          <Ionicons name="mail-outline" size={40} color={theme.green} />
-          <Text style={styles.sentTitle}>Check your email</Text>
-          <Text style={styles.sentText}>
-            If an account exists for {email.trim()}, we&apos;ve sent a link to reset your password. Open it on
-            this phone to set a new password, then come back here to sign in.
-          </Text>
-        </View>
-      ) : (
-        <>
-          <Text style={styles.subtitle}>Enter your account email and we&apos;ll send you a reset link.</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={theme.textTertiary}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button title="Send reset link" onPress={submit} loading={sending} />
-        </>
-      )}
+      <FormScroll>
+        {sent ? (
+          <View style={styles.sentBox} accessibilityLiveRegion="polite">
+            <Ionicons name="mail-outline" size={44} color={theme.green} />
+            <Text variant="headline" align="center">
+              Check your email
+            </Text>
+            <Text tone="secondary" align="center">
+              If an account exists for {email.trim()}, we&apos;ve sent a link to reset your password. Open it on this phone to
+              set a new password, then come back here to sign in.
+            </Text>
+            <Button title="Back to sign in" variant="secondary" onPress={() => router.back()} style={styles.back} />
+          </View>
+        ) : (
+          <>
+            <Text tone="secondary">Enter your account email and we&apos;ll send you a reset link.</Text>
+            <TextField
+              label="Email"
+              placeholder="you@pharmacy.co.ke"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              autoFocus
+              value={email}
+              onChangeText={(v) => {
+                setEmail(v)
+                if (error) setError(null)
+              }}
+              returnKeyType="send"
+              onSubmitEditing={submit}
+              error={error}
+            />
+            <Button title="Send reset link" onPress={submit} loading={sending} />
+          </>
+        )}
+      </FormScroll>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    container: { gap: 12 },
-    subtitle: { fontSize: 14, color: theme.textSecondary },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      padding: 10,
-      fontSize: 15,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-    error: { color: theme.red, fontSize: 13 },
-    sentBox: { alignItems: "center", gap: 10, paddingVertical: 24 },
-    sentTitle: { fontSize: 17, fontWeight: "700", color: theme.text },
-    sentText: { fontSize: 14, color: theme.textSecondary, textAlign: "center", lineHeight: 20 },
-  })
-}
+const styles = StyleSheet.create({
+  sentBox: { alignItems: "center", gap: space.sm, paddingVertical: space.xl },
+  back: { marginTop: space.md, alignSelf: "stretch" },
+})

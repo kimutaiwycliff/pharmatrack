@@ -1,3 +1,4 @@
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet"
 import { forwardRef, useState, type ReactNode } from "react"
 import { StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native"
 import { useTheme } from "../theme/useTheme"
@@ -14,17 +15,22 @@ interface TextFieldProps extends Omit<TextInputProps, "style"> {
   trailing?: ReactNode
   containerStyle?: StyleProp<ViewStyle>
   inputStyle?: TextInputProps["style"]
+  /** Rendered inside a <Sheet>: uses the bottom sheet's own input so the
+   *  sheet rises with the keyboard instead of being covered by it. */
+  inSheet?: boolean
 }
 
 // Labelled input: visible label, helper or error underneath, focus ring, and
 // the label/error wired into the accessibility label so TalkBack reads them.
 export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
-  { label, hideLabel, helper, error, leading, trailing, containerStyle, inputStyle, onFocus, onBlur, ...rest },
+  { label, hideLabel, helper, error, leading, trailing, containerStyle, inputStyle, inSheet, onFocus, onBlur, ...rest },
   ref,
 ) {
   const theme = useTheme()
   const [focused, setFocused] = useState(false)
   const borderColor = error ? theme.red : focused ? theme.green : theme.border
+  // Same props/ref either way; BottomSheetTextInput tells the sheet about focus.
+  const Input = (inSheet ? BottomSheetTextInput : TextInput) as typeof TextInput
   return (
     <View style={[styles.container, containerStyle]}>
       {hideLabel ? null : (
@@ -34,7 +40,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
       )}
       <View style={[styles.field, { borderColor, backgroundColor: theme.surface }, focused && styles.focused]}>
         {leading}
-        <TextInput
+        <Input
           ref={ref}
           placeholderTextColor={theme.textTertiary}
           accessibilityLabel={error ? `${label}, error: ${error}` : label}

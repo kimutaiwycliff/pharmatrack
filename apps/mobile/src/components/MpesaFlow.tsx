@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { StyleSheet, Text, TextInput, View } from "react-native"
+import { StyleSheet, Text, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES, fromCents, type Cents } from "@pharmatrack/core"
 import { sendStkPush } from "../lib/mpesa"
@@ -7,6 +7,7 @@ import { useTheme } from "../theme/useTheme"
 import type { Theme } from "../theme/tokens"
 import { Button } from "./Button"
 import { Card } from "./Card"
+import { TextField } from "./TextField"
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
 const WAIT_SECONDS = 60
@@ -20,6 +21,8 @@ interface MpesaFlowProps {
   // boundary (POST /api/mpesa), never floated in between.
   amountCents: Cents
   onConfirmed: (mpesaReference: string | null) => void
+  /** Rendered inside a <Sheet> (the POS payment sheet) — keeps inputs above the keyboard. */
+  inSheet?: boolean
 }
 
 // Reusable STK-push + manual-confirm flow shared by the pure "M-Pesa" payment
@@ -36,7 +39,7 @@ interface MpesaFlowProps {
 //  - The M-Pesa code is always optional; a non-empty value must match
 //    /^[A-Z0-9]{10}$/i or the confirm action is blocked (verified directly
 //    against apps/web/components/pos/MpesaModal.tsx's `disabled={codeBlocks}`).
-export function MpesaFlow({ amountCents, onConfirmed }: MpesaFlowProps) {
+export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps) {
   const theme = useTheme()
   const styles = createStyles(theme)
 
@@ -89,21 +92,21 @@ export function MpesaFlow({ amountCents, onConfirmed }: MpesaFlowProps) {
 
       {phase === "phone" ? (
         <>
-          <TextInput
-            style={styles.input}
-            placeholder="Customer phone (e.g. 07XXXXXXXX)"
-            placeholderTextColor={theme.textTertiary}
+          <TextField
+            label="Customer phone"
+            inSheet={inSheet}
+            placeholder="e.g. 07XXXXXXXX"
             keyboardType="phone-pad"
             value={phone}
             onChangeText={setPhone}
+            error={error}
           />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
           <Button
             title={sending ? "Sending…" : "Send STK push"}
             onPress={send}
             loading={sending}
             disabled={phone.replace(/\D/g, "").length < 9}
-            icon={<Ionicons name="call-outline" size={18} color="#fff" />}
+            icon={<Ionicons name="call-outline" size={18} color={theme.onAccent} />}
           />
           <Button
             title="Enter code manually instead"
@@ -131,7 +134,7 @@ export function MpesaFlow({ amountCents, onConfirmed }: MpesaFlowProps) {
             <Button
               title="Confirm received"
               onPress={() => onConfirmed(null)}
-              icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
+              icon={<Ionicons name="checkmark-circle-outline" size={18} color={theme.onAccent} />}
             />
           </View>
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -144,21 +147,21 @@ export function MpesaFlow({ amountCents, onConfirmed }: MpesaFlowProps) {
             Use this when the customer paid via Pay Bill or Send Money on their own. The code is
             optional — confirm once you have seen the payment.
           </Text>
-          <TextInput
-            style={styles.input}
-            placeholder="M-Pesa code (optional)"
-            placeholderTextColor={theme.textTertiary}
+          <TextField
+            label="M-Pesa code (optional)"
+            inSheet={inSheet}
+            placeholder="e.g. QK12ABC3DE"
             autoCapitalize="characters"
             maxLength={10}
             value={code}
             onChangeText={(v) => setCode(v.toUpperCase().slice(0, 10))}
+            error={codeBlocks ? "Must be 10 characters — or leave it blank" : null}
           />
-          {codeBlocks ? <Text style={styles.error}>Must be 10 characters — or leave it blank</Text> : null}
           <Button
             title={trimmedCode ? "Confirm payment" : "Confirm — customer paid"}
             onPress={() => onConfirmed(trimmedCode || null)}
             disabled={codeBlocks}
-            icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
+            icon={<Ionicons name="checkmark-circle-outline" size={18} color={theme.onAccent} />}
           />
           <Button
             title="Back"
@@ -178,15 +181,6 @@ function createStyles(theme: Theme) {
     amountRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
     amountLabel: { fontSize: 13, color: theme.textSecondary },
     amountValue: { fontSize: 18, fontWeight: "700", color: theme.text },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 8,
-      padding: 10,
-      fontSize: 15,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
     waitingBox: {
       backgroundColor: theme.green50,
       borderColor: theme.green100,

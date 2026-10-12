@@ -87,6 +87,10 @@ const config: ExpoConfig = {
     // browser-redirect path; harmless to include even though PharmaTrack
     // mobile only uses email/password + PIN login.
     "expo-web-browser",
+    // R3: given by `npx expo install @react-native-community/datetimepicker`
+    // (same dynamic-config caveat as expo-sharing) — native date/time pickers
+    // for receive-stock expiry, appointments and prescriptions.
+    "@react-native-community/datetimepicker",
     [
       "expo-splash-screen",
       {

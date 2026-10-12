@@ -1,40 +1,70 @@
 import { useState } from "react"
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native"
+import { StyleSheet, View } from "react-native"
+import { FlashList } from "@shopify/flash-list"
 import * as DocumentPicker from "expo-document-picker"
 import { File, Paths } from "expo-file-system"
 import * as Sharing from "expo-sharing"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { parseCSV, csvRowsToRecords, toCSV, INVENTORY_IMPORT_HEADERS, INVENTORY_IMPORT_EXAMPLE_ROW } from "@pharmatrack/core"
-import { apiFetch } from "../src/lib/api-fetch"
+import { apiJson, errorMessage } from "../src/lib/api"
 import { env } from "../src/lib/env"
 import { importLocalInventoryRows } from "../src/repo/inventory"
 import { toast } from "../src/lib/toast"
+import { useCan } from "../src/hooks/useCan"
 import { useSessionStore } from "../src/store/session"
 import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Card, Screen, ScreenHeader } from "../src/components"
+import { space } from "../src/theme/tokens"
+import { Button, Card, EmptyState, ListRow, Screen, ScreenHeader, StatusBadge, Text } from "../src/components"
+import {
+  buildImportPreview, issueLabel, missingRequiredColumns, type ImportPreview, type PreviewRow,
+} from "../src/features/catalogue/logic/importPreview"
 
-// Mirrors apps/web/app/api/inventory/import/route.ts's contract exactly: POST
-// { branch_id?, rows: Record<string,unknown>[] } (max 2000 rows), server does
-// all field validation/coercion. Unlike web's BulkImportDialog, this skips the
-// column-mapping-with-manual-override step — a drag-and-drop mapper is a poor
-// fit for a phone screen — and instead expects the CSV headers to already
-// match INVENTORY_IMPORT_HEADERS (the same shared constant web's template
-// download button writes), which the "Get template" button here hands out.
+// Mirrors apps/web/app/api/inventory/import/route.ts's contract: POST
+// { branch_id?, rows: Record<string,unknown>[] } (max 2000 rows, needs
+// stock.receive); the server does all field validation/coercion and returns
+// per-row errors. Unlike web's BulkImportDialog there's no drag-and-drop
+// column mapper (a poor fit for a phone) — headers must match
+// INVENTORY_IMPORT_HEADERS, which "Get template" hands out. The preview only
+// flags rows missing the two required columns; flagged rows are still sent
+// and come back as failed, exactly as before. Offline Edition imports into
+// the local database instead.
 const MAX_ROWS = 2000
 
-interface ImportResult { created: number; stockBatches: number; failed: number; total: number; errors: { row: number; name: string; error: string }[] }
+interface ImportResult {
+  created: number
+  stockBatches: number
+  failed: number
+  total: number
+  errors: { row: number; name: string; error: string }[]
+}
+
+type Item = { kind: "preview"; row: PreviewRow } | { kind: "error"; row: number; name: string; error: string }
 
 export default function InventoryImport() {
   const theme = useTheme()
-  const styles = createStyles(theme)
+  const can = useCan()
   const { branchId } = useSessionStore()
 
   const [fileName, setFileName] = useState<string | null>(null)
   const [rows, setRows] = useState<Record<string, string>[] | null>(null)
+  const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [parseError, setParseError] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
+
+  if (!can("stock.receive")) {
+    return (
+      <Screen>
+        <ScreenHeader title="Bulk import" />
+        <EmptyState
+          icon={<Ionicons name="lock-closed-outline" size={32} color={theme.textTertiary} />}
+          title="No access"
+          message="Bulk import needs the “Receive stock” permission. Ask the owner to turn it on for your role."
+        />
+      </Screen>
+    )
+  }
 
   async function getTemplate() {
     try {
@@ -47,26 +77,43 @@ export default function InventoryImport() {
     }
   }
 
+  function clearFile() {
+    setRows(null)
+    setPreview(null)
+    setFileName(null)
+  }
+
   async function pickFile() {
     setParseError(null)
     setResult(null)
-    setRows(null)
-    const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true })
-    if (picked.canceled || !picked.assets?.[0]) return
-    const asset = picked.assets[0]
+    clearFile()
+    setPicking(true)
     try {
+      const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true })
+      if (picked.canceled || !picked.assets?.[0]) return
+      const asset = picked.assets[0]
       const text = await new File(asset.uri).text()
       const parsedRows = csvRowsToRecords(parseCSV(text))
-      if (parsedRows.length === 0) { setParseError("No data rows found in that file"); return }
-      if (parsedRows.length > MAX_ROWS) { setParseError(`Too many rows (${parsedRows.length}) — max ${MAX_ROWS}`); return }
-      if (!("name" in parsedRows[0]!) || !("selling_price" in parsedRows[0]!)) {
-        setParseError("Missing required columns — use \"Get template\" below to see the expected headers")
+      if (parsedRows.length === 0) {
+        setParseError("No data rows found in that file")
+        return
+      }
+      if (parsedRows.length > MAX_ROWS) {
+        setParseError(`Too many rows (${parsedRows.length.toLocaleString()}) — max ${MAX_ROWS.toLocaleString()}`)
+        return
+      }
+      const missing = missingRequiredColumns(parsedRows[0])
+      if (missing.length > 0) {
+        setParseError(`Missing required column${missing.length === 1 ? "" : "s"}: ${missing.join(", ")} — use “Get template” to see the expected headers`)
         return
       }
       setFileName(asset.name)
       setRows(parsedRows)
+      setPreview(buildImportPreview(parsedRows))
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Could not read that file")
+    } finally {
+      setPicking(false)
     }
   }
 
@@ -74,94 +121,157 @@ export default function InventoryImport() {
     if (!rows) return
     setImporting(true)
     try {
-      let json: ImportResult
-      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-        json = await importLocalInventoryRows(branchId ?? "", rows)
-      } else {
-        const res = await apiFetch("/api/inventory/import", {
-          method: "POST",
-          body: JSON.stringify({ branch_id: branchId ?? undefined, rows }),
-        })
-        const respJson = (await res.json()) as ImportResult & { error?: string }
-        if (!res.ok) throw new Error(respJson.error ?? "Import failed")
-        json = respJson
-      }
+      const json = env.EXPO_PUBLIC_OFFLINE_MODE
+        ? await importLocalInventoryRows(branchId ?? "", rows)
+        : await apiJson<ImportResult>("/api/inventory/import", { method: "POST", body: { branch_id: branchId ?? undefined, rows } })
       setResult(json)
-      setRows(null)
-      setFileName(null)
+      clearFile()
+      if (json.failed === 0) toast.success(`Imported ${json.created} product${json.created === 1 ? "" : "s"}`)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error")
+      toast.error(errorMessage(err))
     } finally {
       setImporting(false)
     }
   }
 
+  const items: Item[] = preview
+    ? preview.rows.map((row) => ({ kind: "preview", row }))
+    : result
+      ? result.errors.map((e) => ({ kind: "error", ...e }))
+      : []
+
+  const header = (
+    <View style={styles.header}>
+      <Card style={styles.card}>
+        <Text variant="headline">Import products from CSV</Text>
+        <Text tone="secondary">
+          Pick a CSV file with a header row matching the template (name and selling_price are required; everything else is
+          optional). Up to {MAX_ROWS.toLocaleString()} rows.
+        </Text>
+        <View style={styles.actionsRow}>
+          <Button
+            title="Get template"
+            variant="secondary"
+            onPress={getTemplate}
+            leadingIcon={<Ionicons name="download-outline" size={18} color={theme.text} />}
+            style={styles.flex}
+          />
+          <Button
+            title={rows ? "Pick another" : "Pick CSV file"}
+            onPress={pickFile}
+            loading={picking}
+            disabled={importing}
+            leadingIcon={<Ionicons name="document-outline" size={18} color={theme.onAccent} />}
+            style={styles.flex}
+          />
+        </View>
+        {parseError ? (
+          <Text variant="caption" tone="danger" accessibilityLiveRegion="polite">
+            {parseError}
+          </Text>
+        ) : null}
+      </Card>
+
+      {preview && rows ? (
+        <View style={styles.sectionHead}>
+          <Text variant="bodyStrong" numberOfLines={1}>
+            {fileName}
+          </Text>
+          <Text variant="caption" tone="secondary">
+            {rows.length.toLocaleString()} row{rows.length === 1 ? "" : "s"}
+            {preview.flagged > 0 ? ` · ${preview.flagged} look incomplete and will be reported as failed` : " · all rows have a name and price"}
+          </Text>
+        </View>
+      ) : null}
+
+      {result ? (
+        <Card style={styles.card}>
+          <View style={styles.resultTitle}>
+            <Ionicons
+              name={result.failed === 0 ? "checkmark-circle" : "alert-circle"}
+              size={22}
+              color={result.failed === 0 ? theme.green : theme.amber}
+            />
+            <Text variant="headline">Import complete</Text>
+          </View>
+          <Text tone="secondary">
+            {result.created} created, {result.stockBatches} opening batch{result.stockBatches === 1 ? "" : "es"} added,{" "}
+            {result.failed} failed (of {result.total} rows).
+          </Text>
+          {result.errors.length > 0 ? (
+            <Text variant="label" tone="secondary">
+              {result.errors.length < result.failed ? `First ${result.errors.length} issues` : `Issue${result.errors.length === 1 ? "" : "s"}`}
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
+    </View>
+  )
+
   return (
     <Screen>
-      <ScreenHeader title="Bulk import" />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <Card style={styles.card}>
-          <Text style={styles.title}>Import products from CSV</Text>
-          <Text style={styles.body}>
-            Pick a CSV file with a header row matching the template columns (name and selling_price are
-            required; everything else is optional). Up to {MAX_ROWS.toLocaleString()} rows.
-          </Text>
-          <View style={styles.actionsRow}>
-            <Button title="Get template" variant="secondary" onPress={getTemplate} icon={<Ionicons name="download-outline" size={16} color={theme.text} />} style={styles.actionButton} />
-            <Button title="Pick CSV file" onPress={pickFile} icon={<Ionicons name="document-outline" size={16} color="#fff" />} style={styles.actionButton} />
-          </View>
-          {parseError && <Text style={styles.error}>{parseError}</Text>}
-        </Card>
-
-        {rows && (
-          <Card style={styles.card}>
-            <Text style={styles.title}>{fileName}</Text>
-            <Text style={styles.body}>{rows.length} row{rows.length === 1 ? "" : "s"} found. First few:</Text>
-            {rows.slice(0, 5).map((r, i) => (
-              <Text key={i} style={styles.previewRow}>• {r.name || "(missing name)"} — {r.selling_price || "(missing price)"}</Text>
-            ))}
-            <Button title={`Import ${rows.length} product${rows.length === 1 ? "" : "s"}`} onPress={submitImport} loading={importing} />
-          </Card>
-        )}
-
-        {importing && (
-          <View style={styles.centered}><ActivityIndicator color={theme.green} /><Text style={styles.body}>Importing…</Text></View>
-        )}
-
-        {result && (
-          <Card style={styles.card}>
-            <Text style={styles.title}>Import complete</Text>
-            <Text style={styles.body}>
-              {result.created} created, {result.stockBatches} opening batch{result.stockBatches === 1 ? "" : "es"} added, {result.failed} failed (of {result.total} rows).
-            </Text>
-            {result.errors.length > 0 && (
-              <View style={styles.errorList}>
-                <Text style={styles.errorListTitle}>First {result.errors.length} issue{result.errors.length === 1 ? "" : "s"}:</Text>
-                {result.errors.map((e, i) => (
-                  <Text key={i} style={styles.errorListItem}>Row {e.row} ({e.name}): {e.error}</Text>
-                ))}
-              </View>
-            )}
-          </Card>
-        )}
-      </ScrollView>
+      <ScreenHeader title="Bulk import" subtitle={env.EXPO_PUBLIC_OFFLINE_MODE ? "Into this device's catalogue" : null} />
+      <View style={styles.flex}>
+        <FlashList
+          data={items}
+          keyExtractor={(item) => (item.kind === "preview" ? `p-${item.row.row}` : `e-${item.row}`)}
+          getItemType={(item) => item.kind}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={header}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) =>
+            item.kind === "preview" ? (
+              <ListRow
+                title={item.row.name || "(missing name)"}
+                subtitle={`Row ${item.row.row} · ${item.row.price ? `KES ${item.row.price}` : "no price"}`}
+                meta={
+                  item.row.issues.length > 0 ? (
+                    <Text variant="caption" tone="danger">
+                      {item.row.issues.map(issueLabel).join(" · ")}
+                    </Text>
+                  ) : null
+                }
+                trailing={
+                  item.row.issues.length > 0 ? <StatusBadge status="warning" label="Check" /> : <StatusBadge status="ok" label="OK" />
+                }
+              />
+            ) : (
+              <ListRow
+                title={`Row ${item.row}${item.name ? ` · ${item.name}` : ""}`}
+                leading={<Ionicons name="alert-circle-outline" size={20} color={theme.red} />}
+                meta={
+                  <Text variant="caption" tone="danger">
+                    {item.error}
+                  </Text>
+                }
+              />
+            )
+          }
+        />
+      </View>
+      {rows ? (
+        <View style={[styles.footer, { borderTopColor: theme.border }]}>
+          <Button
+            title={`Import ${rows.length.toLocaleString()} product${rows.length === 1 ? "" : "s"}`}
+            onPress={submitImport}
+            loading={importing}
+            size="lg"
+            leadingIcon={<Ionicons name="cloud-upload-outline" size={20} color={theme.onAccent} />}
+          />
+        </View>
+      ) : null}
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    scrollContent: { gap: 12, paddingBottom: 24 },
-    card: { gap: 10 },
-    title: { fontSize: 15, fontWeight: "700", color: theme.text },
-    body: { fontSize: 13, color: theme.textSecondary, lineHeight: 19 },
-    actionsRow: { flexDirection: "row", gap: 8 },
-    actionButton: { flex: 1 },
-    error: { color: theme.red, fontSize: 13 },
-    previewRow: { fontSize: 12, color: theme.textSecondary },
-    centered: { alignItems: "center", gap: 8, paddingVertical: 12 },
-    errorList: { gap: 4, marginTop: 4, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 8 },
-    errorListTitle: { fontSize: 12, fontWeight: "700", color: theme.textSecondary },
-    errorListItem: { fontSize: 12, color: theme.red },
-  })
-}
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  listContent: { paddingBottom: space.xxl },
+  header: { gap: space.md, marginBottom: space.sm },
+  card: { gap: space.sm },
+  actionsRow: { flexDirection: "row", gap: space.sm, marginTop: space.xs },
+  sectionHead: { gap: space.xxs },
+  resultTitle: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  footer: { paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth },
+})

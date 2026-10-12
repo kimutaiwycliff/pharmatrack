@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react"
 import { Linking, StyleSheet, View } from "react-native"
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera"
-import { router, Stack } from "expo-router"
+import { router, Stack, useLocalSearchParams } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Button, IconButton, Text } from "../src/components"
 import { addScanned } from "../src/features/pos/actions"
+import { deliverScan } from "../src/lib/scanCapture"
 import { useCartStore } from "../src/store/cart"
 import { useTheme } from "../src/theme/useTheme"
 import { radius, space } from "../src/theme/tokens"
@@ -23,8 +24,11 @@ const FRAME = 260
 // whole basket, then Done. Each hit gets a success haptic + toast with the
 // product name (via addScanned — same cap/top-up rules as the POS); unknown
 // codes get an error haptic. Lookup is GS1-aware, pack barcodes add the pack.
+// R3: `?mode=capture` (lib/scanCapture.ts) reads ONE code and hands it back to
+// the form that asked (receive stock / delivery) instead of touching the cart.
 export default function Scan() {
   const theme = useTheme()
+  const capture = useLocalSearchParams<{ mode?: string }>().mode === "capture"
   const insets = useSafeAreaInsets()
   const [permission, requestPermission] = useCameraPermissions()
   const [torch, setTorch] = useState(false)
@@ -33,6 +37,12 @@ export default function Scan() {
   const busy = useRef(false)
   const items = useCartStore((s) => s.items)
   const totals = cartTotals(items)
+
+  // Capture mode: closing without a read resolves the caller with null.
+  useEffect(() => {
+    if (!capture) return
+    return () => deliverScan(null)
+  }, [capture])
 
   // Ask once on open; after a "don't ask again" only Settings can grant it.
   useEffect(() => {
@@ -45,6 +55,12 @@ export default function Scan() {
     if (!code || busy.current) return
     if (code === last.current.code && now - last.current.at < SAME_CODE_MS) return
     last.current = { code, at: now }
+    if (capture) {
+      busy.current = true
+      deliverScan(code)
+      router.back()
+      return
+    }
     busy.current = true
     try {
       const name = await addScanned(code)
@@ -109,7 +125,7 @@ export default function Scan() {
       <View style={[styles.topBar, { paddingTop: insets.top + space.sm }]}>
         {closeButton}
         <Text variant="headline" style={{ color: theme.onAccent }}>
-          Scan items
+          {capture ? "Scan barcode" : "Scan items"}
         </Text>
         <IconButton
           icon={torch ? "flash" : "flash-off"}
@@ -120,16 +136,25 @@ export default function Scan() {
         />
       </View>
 
-      <View style={[styles.bottom, { paddingBottom: insets.bottom + space.lg }]}>
-        <Text align="center" style={{ color: theme.onAccent }} accessibilityLiveRegion="polite">
-          {lastAdded ? `Added ${lastAdded}` : "Point at a barcode — keep scanning, each item is added"}
-        </Text>
-        <Button
-          title={totals.count > 0 ? `Done · ${totals.count} item${totals.count === 1 ? "" : "s"} · ${formatKES(totals.total)}` : "Done"}
-          size="lg"
-          onPress={() => router.back()}
-        />
-      </View>
+      {capture ? (
+        <View style={[styles.bottom, { paddingBottom: insets.bottom + space.lg }]}>
+          <Text align="center" style={{ color: theme.onAccent }}>
+            Point at the pack&apos;s barcode — GS1 codes fill in the batch and expiry
+          </Text>
+          <Button title="Cancel" variant="secondary" onPress={() => router.back()} />
+        </View>
+      ) : (
+        <View style={[styles.bottom, { paddingBottom: insets.bottom + space.lg }]}>
+          <Text align="center" style={{ color: theme.onAccent }} accessibilityLiveRegion="polite">
+            {lastAdded ? `Added ${lastAdded}` : "Point at a barcode — keep scanning, each item is added"}
+          </Text>
+          <Button
+            title={totals.count > 0 ? `Done · ${totals.count} item${totals.count === 1 ? "" : "s"} · ${formatKES(totals.total)}` : "Done"}
+            size="lg"
+            onPress={() => router.back()}
+          />
+        </View>
+      )}
     </View>
   )
 }

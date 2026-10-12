@@ -2,8 +2,8 @@ import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import * as Print from "expo-print"
 import * as Sharing from "expo-sharing"
-import { useState } from "react"
-import { Linking, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native"
+import { useState, type ReactNode } from "react"
+import { KeyboardAvoidingView, Linking, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native"
 import { Button, Text, TextField } from "../../../components"
 import { toast } from "../../../lib/toast"
 import { useTheme } from "../../../theme/useTheme"
@@ -16,15 +16,24 @@ interface ReceiptViewProps {
   queued: boolean
   /** Offline Edition has no server, so no sync line at all. */
   showSyncState: boolean
-  onNewSale: () => void
+  /** Omitted (Sales history reprint) → no "New sale" button. */
+  onNewSale?: () => void
+  /** R3 Sales history: "reprint" swaps the "Sale complete" hero and the
+   *  give-change box for the receipt number, date and `status`. */
+  mode?: "complete" | "reprint"
+  /** Reprint only: badges / notes under the receipt number (e.g. "Waiting to sync"). */
+  status?: ReactNode
+  /** Prefills the WhatsApp number (the sale's customer phone, if any). */
+  initialPhone?: string | null
 }
 
 // Shown right after a sale commits. "New sale" is the big, obvious action;
 // sharing is optional (WhatsApp text or an 80 mm PDF — no Bluetooth printing).
-export function ReceiptView({ receipt, queued, showSyncState, onNewSale }: ReceiptViewProps) {
+// Sales history reuses it in "reprint" mode so a reprint is identical.
+export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = "complete", status, initialPhone }: ReceiptViewProps) {
   const theme = useTheme()
   const { width } = useWindowDimensions()
-  const [phone, setPhone] = useState("")
+  const [phone, setPhone] = useState(initialPhone ?? "")
   const [phoneError, setPhoneError] = useState<string | null>(null)
   const [sharingPdf, setSharingPdf] = useState(false)
 
@@ -61,7 +70,20 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale }: Recei
   }
 
   return (
+    // R3: the WhatsApp number field sits at the bottom — keep it above the keyboard.
+    <KeyboardAvoidingView style={styles.fill} behavior="padding">
     <ScrollView contentContainerStyle={[styles.scroll, width >= TABLET_MIN_WIDTH && styles.wide]} keyboardShouldPersistTaps="handled">
+      {mode === "reprint" ? (
+        <View style={styles.reprintHero}>
+          <Text variant="title" accessibilityRole="header" tabular>
+            Receipt {receipt.receiptNumber}
+          </Text>
+          <Text variant="caption" tone="secondary">
+            {nairobiDateTime(receipt.soldAtMs)} · {receipt.shopName}
+          </Text>
+          {status}
+        </View>
+      ) : (
       <View style={styles.hero} accessibilityLiveRegion="polite">
         <View style={[styles.tick, { backgroundColor: theme.green50 }]}>
           <Ionicons name="checkmark" size={56} color={theme.green600} />
@@ -78,8 +100,9 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale }: Recei
           </Text>
         ) : null}
       </View>
+      )}
 
-      {receipt.changeCents > 0 ? (
+      {mode === "complete" && receipt.changeCents > 0 ? (
         <View style={[styles.changeBox, { backgroundColor: theme.green50, borderColor: theme.green }]}>
           <Text variant="label" tone="success">
             Give change
@@ -90,12 +113,14 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale }: Recei
         </View>
       ) : null}
 
-      <Button
-        title="New sale"
-        size="lg"
-        onPress={onNewSale}
-        leadingIcon={<Ionicons name="add-circle-outline" size={24} color={theme.onAccent} />}
-      />
+      {onNewSale ? (
+        <Button
+          title="New sale"
+          size="lg"
+          onPress={onNewSale}
+          leadingIcon={<Ionicons name="add-circle-outline" size={24} color={theme.onAccent} />}
+        />
+      ) : null}
 
       <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         {receipt.lines.map((l, i) => (
@@ -154,6 +179,7 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale }: Recei
         </View>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   )
 }
 
@@ -171,10 +197,12 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   scroll: { gap: space.lg, paddingBottom: space.xxl },
   wide: { width: "100%", maxWidth: 560, alignSelf: "center" },
   flex: { flex: 1 },
   hero: { alignItems: "center", gap: space.xs, paddingTop: space.md },
+  reprintHero: { gap: space.xs },
   tick: { width: 96, height: 96, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", marginBottom: space.sm },
   changeBox: { alignItems: "center", borderWidth: 2, borderRadius: radius.lg, paddingVertical: space.md },
   card: { borderWidth: 1, borderRadius: radius.lg, padding: space.lg, gap: space.sm },

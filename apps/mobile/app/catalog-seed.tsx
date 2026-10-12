@@ -1,55 +1,56 @@
-import { useEffect, useState } from "react"
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from "react-native"
-import { apiFetch } from "../src/lib/api-fetch"
+import { useState } from "react"
+import { Alert, RefreshControl, StyleSheet, View } from "react-native"
+import { FlashList } from "@shopify/flash-list"
+import Ionicons from "@expo/vector-icons/Ionicons"
+import { apiJson, errorMessage } from "../src/lib/api"
 import { env } from "../src/lib/env"
 import { getLocalCatalogSeedStatus, seedLocalCatalog, unseedLocalCatalog } from "../src/repo/catalogSeed"
 import { toast } from "../src/lib/toast"
+import { useCan } from "../src/hooks/useCan"
+import { useQuery } from "../src/hooks/useQuery"
 import { useTheme } from "../src/theme/useTheme"
-import type { Theme } from "../src/theme/tokens"
-import { Button, Card, Screen, ScreenHeader } from "../src/components"
+import { radius, space } from "../src/theme/tokens"
+import {
+  Button, Card, EmptyState, ErrorState, ListRow, Screen, ScreenHeader, SkeletonList, StatusBadge, Text,
+} from "../src/components"
+import {
+  isDepartmentDone, seedResultMessage, seedTotals, unseedResultMessage, type Department,
+} from "../src/features/catalogue/logic/catalogSeed"
 
-// Mirrors apps/web/app/api/catalog/seed/route.ts exactly: GET returns the
-// department breakdown (KEML catalog total vs already-seeded per department),
-// POST seeds selected (or all) departments, DELETE unseeds anything never
-// batched or sold. Same "Quick Start" concept as web's onboarding wizard,
-// just without the review-grid step (app/products.tsx already lets an owner
-// tune price/stock afterward — no need to duplicate that editor here).
+// Mirrors apps/web/app/api/catalog/seed/route.ts: GET returns the department
+// breakdown (KEML catalog total vs already-seeded per department), POST seeds
+// selected (or all) departments, DELETE unseeds anything never batched or
+// sold. The whole route needs catalog.seed. Same "Quick Start" idea as web's
+// onboarding wizard without the review grid (Products already lets an owner
+// tune prices afterwards). The Offline Edition uses the local repo instead.
 
-interface Department { category: string; total: number; seeded: number }
+async function fetchDepartments(): Promise<Department[]> {
+  if (env.EXPO_PUBLIC_OFFLINE_MODE) return (await getLocalCatalogSeedStatus()).departments
+  return (await apiJson<{ departments: Department[] }>("/api/catalog/seed")).departments
+}
 
 export default function CatalogSeed() {
   const theme = useTheme()
-  const styles = createStyles(theme)
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [loading, setLoading] = useState(true)
+  const can = useCan()
+  const allowed = can("catalog.seed")
+  const q = useQuery(allowed ? "catalog-seed" : null, fetchDepartments)
+  const departments = q.data ?? []
   const [busyCategory, setBusyCategory] = useState<string | null>(null)
   const [seedingAll, setSeedingAll] = useState(false)
   const [unseeding, setUnseeding] = useState(false)
 
-  async function load() {
-    setLoading(true)
-    try {
-      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-        const json = await getLocalCatalogSeedStatus()
-        setDepartments(json.departments)
-        return
-      }
-      const res = await apiFetch("/api/catalog/seed")
-      if (!res.ok) throw new Error("Failed to load")
-      const json = (await res.json()) as { departments: Department[] }
-      setDepartments(json.departments)
-    } catch {
-      toast.error("Could not load the drug catalog")
-    } finally {
-      setLoading(false)
-    }
+  if (!allowed) {
+    return (
+      <Screen>
+        <ScreenHeader title="Drug catalog" />
+        <EmptyState
+          icon={<Ionicons name="lock-closed-outline" size={32} color={theme.textTertiary} />}
+          title="No access"
+          message="Loading the drug catalog is for owners and managers. Ask the owner to turn on “Load the drug catalog” for your role."
+        />
+      </Screen>
+    )
   }
-
-  useEffect(() => {
-    // load() also runs again after seed/unseed, so it can't be inlined away.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load()
-  }, [])
 
   async function seed(categories?: string[]) {
     if (categories) setBusyCategory(categories[0]!)
@@ -57,19 +58,29 @@ export default function CatalogSeed() {
     try {
       const json = env.EXPO_PUBLIC_OFFLINE_MODE
         ? await seedLocalCatalog(categories)
-        : await (async () => {
-            const res = await apiFetch("/api/catalog/seed", { method: "POST", body: JSON.stringify({ categories }) })
-            const body = (await res.json()) as { seeded: number; updated: number; error?: string }
-            if (!res.ok) throw new Error(body.error ?? "Could not seed")
-            return body
-          })()
-      toast.success(`Added ${json.seeded} product${json.seeded === 1 ? "" : "s"}${json.updated ? `, updated ${json.updated}` : ""}`)
-      await load()
+        : await apiJson<{ seeded: number; updated: number }>("/api/catalog/seed", { method: "POST", body: { categories } })
+      toast.success(seedResultMessage(json.seeded, json.updated))
+      q.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error")
+      toast.error(errorMessage(err))
     } finally {
       if (categories) setBusyCategory(null)
       else setSeedingAll(false)
+    }
+  }
+
+  async function unseed() {
+    setUnseeding(true)
+    try {
+      const json = env.EXPO_PUBLIC_OFFLINE_MODE
+        ? await unseedLocalCatalog()
+        : await apiJson<{ removed: number; kept: number }>("/api/catalog/seed", { method: "DELETE" })
+      toast.success(unseedResultMessage(json.removed, json.kept))
+      q.refresh()
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setUnseeding(false)
     }
   }
 
@@ -79,88 +90,117 @@ export default function CatalogSeed() {
       "Removes catalog-seeded products that have never been received into stock or sold. Anything you've already used stays untouched.",
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove", style: "destructive",
-          onPress: async () => {
-            setUnseeding(true)
-            try {
-              const json = env.EXPO_PUBLIC_OFFLINE_MODE
-                ? await unseedLocalCatalog()
-                : await (async () => {
-                    const res = await apiFetch("/api/catalog/seed", { method: "DELETE" })
-                    if (!res.ok) throw new Error("Could not remove")
-                    return (await res.json()) as { removed: number; kept: number }
-                  })()
-              toast.success(`Removed ${json.removed} product${json.removed === 1 ? "" : "s"}${json.kept ? ` (kept ${json.kept} already in use)` : ""}`)
-              await load()
-            } catch {
-              toast.error("Could not remove seeded products")
-            } finally {
-              setUnseeding(false)
-            }
-          },
-        },
+        { text: "Remove", style: "destructive", onPress: () => void unseed() },
       ],
     )
   }
 
-  const catalogTotal = departments.reduce((n, d) => n + d.total, 0)
-  const seededTotal = departments.reduce((n, d) => n + d.seeded, 0)
+  const totals = seedTotals(departments)
+  const pct = totals.total > 0 ? Math.round((totals.seeded / totals.total) * 100) : 0
+  const anyBusy = seedingAll || unseeding || busyCategory !== null
+
+  const summary = (
+    <Card style={styles.summary}>
+      <Text variant="bodyStrong">
+        {totals.seeded} of {totals.total} KEML products loaded
+      </Text>
+      <View
+        style={[styles.track, { backgroundColor: theme.mutedStrong }]}
+        accessible
+        accessibilityRole="progressbar"
+        accessibilityLabel="Catalog loaded"
+        accessibilityValue={{ min: 0, max: 100, now: pct }}
+      >
+        <View style={[styles.fill, { width: `${pct}%`, backgroundColor: theme.green }]} />
+      </View>
+      <Text variant="caption" tone="secondary">
+        Seeded products start inactive and unpriced — review them in Products before selling.
+      </Text>
+      <View style={styles.summaryActions}>
+        <Button
+          title="Seed all"
+          onPress={() => void seed()}
+          loading={seedingAll}
+          disabled={anyBusy && !seedingAll}
+          style={styles.flex}
+        />
+        <Button
+          title="Remove unused"
+          variant="secondary"
+          onPress={confirmUnseed}
+          loading={unseeding}
+          disabled={anyBusy && !unseeding}
+          style={styles.flex}
+        />
+      </View>
+      {q.error ? <ErrorState compact message={q.error} onRetry={q.retry} /> : null}
+    </Card>
+  )
+
+  let body
+  if (q.loading) {
+    body = <SkeletonList rows={8} />
+  } else if (q.error && !q.data) {
+    body = <ErrorState message={q.error} onRetry={q.retry} />
+  } else {
+    body = (
+      <FlashList
+        data={departments}
+        keyExtractor={(d) => d.category}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} tintColor={theme.green} colors={[theme.green]} />}
+        ListHeaderComponent={summary}
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item }) => {
+          const done = isDepartmentDone(item)
+          return (
+            <ListRow
+              title={item.category}
+              subtitle={`${item.seeded} of ${item.total} loaded`}
+              accessibilityLabel={`${item.category}, ${item.seeded} of ${item.total} loaded`}
+              trailing={
+                done ? (
+                  <StatusBadge status="ok" label="Done" />
+                ) : (
+                  <Button
+                    title="Seed"
+                    size="sm"
+                    variant="secondary"
+                    accessibilityLabel={`Seed ${item.category}`}
+                    loading={busyCategory === item.category}
+                    disabled={anyBusy && busyCategory !== item.category}
+                    onPress={() => void seed([item.category])}
+                  />
+                )
+              }
+            />
+          )
+        }}
+        ListEmptyComponent={
+          <EmptyState
+            icon={<Ionicons name="medical-outline" size={32} color={theme.textTertiary} />}
+            title="Catalog not available"
+            message="The drug catalog has no departments to load right now."
+            action={{ label: "Reload", onPress: q.refresh }}
+          />
+        }
+      />
+    )
+  }
 
   return (
     <Screen>
-      <ScreenHeader title="Drug catalog" />
-      {loading ? (
-        <View style={styles.centered}><ActivityIndicator color={theme.green} /></View>
-      ) : (
-        <>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryText}>{seededTotal} of {catalogTotal} KEML products loaded into your catalogue</Text>
-            <View style={styles.summaryActions}>
-              <Button title="Seed all" onPress={() => seed()} loading={seedingAll} style={styles.summaryButton} />
-              <Button title="Remove unused" variant="secondary" onPress={confirmUnseed} loading={unseeding} style={styles.summaryButton} />
-            </View>
-          </Card>
-
-          <FlatList
-            data={departments}
-            keyExtractor={(d) => d.category}
-            contentContainerStyle={styles.list}
-            renderItem={({ item }) => (
-              <Card style={styles.row}>
-                <View style={styles.rowInfo}>
-                  <Text style={styles.rowLabel}>{item.category}</Text>
-                  <Text style={styles.rowMeta}>{item.seeded} / {item.total} loaded</Text>
-                </View>
-                <Button
-                  title={item.seeded >= item.total ? "Done" : "Seed"}
-                  variant="secondary"
-                  disabled={item.seeded >= item.total}
-                  loading={busyCategory === item.category}
-                  onPress={() => seed([item.category])}
-                  style={styles.rowButton}
-                />
-              </Card>
-            )}
-          />
-        </>
-      )}
+      <ScreenHeader title="Drug catalog" subtitle="Kenya Essential Medicines List" />
+      <View style={styles.flex}>{body}</View>
     </Screen>
   )
 }
 
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    centered: { flex: 1, alignItems: "center", justifyContent: "center" },
-    summaryCard: { gap: 10, marginBottom: 12 },
-    summaryText: { fontSize: 14, fontWeight: "600", color: theme.text },
-    summaryActions: { flexDirection: "row", gap: 8 },
-    summaryButton: { flex: 1 },
-    list: { gap: 8, paddingBottom: 24 },
-    row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-    rowInfo: { flex: 1 },
-    rowLabel: { fontSize: 14, fontWeight: "600", color: theme.text },
-    rowMeta: { fontSize: 12, color: theme.textTertiary, marginTop: 2 },
-    rowButton: { paddingHorizontal: 14, paddingVertical: 8 },
-  })
-}
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  listContent: { paddingBottom: space.xxl },
+  summary: { gap: space.sm, marginBottom: space.md },
+  track: { height: 8, borderRadius: radius.pill, overflow: "hidden" },
+  fill: { height: "100%", borderRadius: radius.pill },
+  summaryActions: { flexDirection: "row", gap: space.sm, marginTop: space.xs },
+})
