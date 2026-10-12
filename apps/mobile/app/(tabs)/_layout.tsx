@@ -79,6 +79,8 @@ function PermissionTabs() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Motion pass: tabs cross-fade instead of cutting.
+        animation: "fade",
         tabBarActiveTintColor: theme.green,
         tabBarInactiveTintColor: theme.textTertiary,
         tabBarStyle: { backgroundColor: theme.surface, borderTopColor: theme.border },

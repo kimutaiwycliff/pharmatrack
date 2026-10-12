@@ -1,7 +1,8 @@
 import type { ReactNode } from "react"
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native"
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native"
 import { useTheme } from "../theme/useTheme"
 import { radius, space, TOUCH_TARGET } from "../theme/tokens"
+import { PressableScale } from "./PressableScale"
 import { Text } from "./Text"
 
 interface ChipProps {
@@ -31,26 +32,19 @@ export function Chip({ label, onPress, selected, icon, tone = "default", disable
     </>
   )
   if (!onPress) {
-    return <Pressable disabled style={[styles.base, styles.static, { borderColor: border, backgroundColor: bg }, style]}>{body}</Pressable>
+    return <View style={[styles.base, styles.static, { borderColor: border, backgroundColor: bg }, style]}>{body}</View>
   }
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ selected: !!selected, disabled: !!disabled }}
-      style={({ pressed }) => [
-        styles.base,
-        styles.interactive,
-        { borderColor: border, backgroundColor: bg },
-        pressed && styles.pressed,
-        disabled && styles.disabled,
-        style,
-      ]}
+      style={[styles.base, styles.interactive, { borderColor: border, backgroundColor: bg }, disabled && styles.disabled, style]}
     >
       {body}
-    </Pressable>
+    </PressableScale>
   )
 }
 
@@ -58,6 +52,5 @@ const styles = StyleSheet.create({
   base: { flexDirection: "row", alignItems: "center", gap: space.xs, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: space.md },
   interactive: { minHeight: TOUCH_TARGET },
   static: { paddingVertical: space.xxs, alignSelf: "flex-start" },
-  pressed: { opacity: 0.75 },
   disabled: { opacity: 0.4 },
 })

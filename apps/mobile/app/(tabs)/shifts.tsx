@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
-import { Alert, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
+import Animated from "react-native-reanimated"
+import { useMotion } from "../../src/lib/motion"
 import { useSessionStore } from "../../src/store/session"
 import { useShiftStore, type ShiftResponse } from "../../src/store/shift"
 import { useStaffStore } from "../../src/store/staff"
@@ -22,6 +24,7 @@ import {
   ErrorState,
   FormScroll,
   NumericKeypad,
+  ProgressBar,
   Screen,
   ScreenHeader,
   SkeletonCards,
@@ -33,6 +36,7 @@ import {
 } from "../../src/components"
 import { Divider, FigureRow, VarianceSummary } from "../../src/features/shifts/components/Figures"
 import { OtherOpenShifts } from "../../src/features/shifts/components/OtherOpenShifts"
+import { confirm as askConfirm } from "../../src/lib/confirm"
 
 // Till session for whoever is selling on this phone. Online build (R1 rule 5):
 // shifts are device-local (lib/sync/shifts.ts via store/shift.ts) and upload as
@@ -49,6 +53,7 @@ type ClosedResult = { shift: ShiftResponse; variance: number | null }
 
 export default function Shifts() {
   const theme = useTheme()
+  const m = useMotion()
   const can = useCan()
   const online = useIsOnline()
   const { branchId } = useSessionStore()
@@ -116,10 +121,15 @@ export default function Shifts() {
     if (digits === "") {
       // The keypad can't type a lone 0, so an empty count is either "the
       // drawer really is empty" or a slip — ask instead of guessing.
-      Alert.alert("Close with KES 0 counted?", "Nothing was entered for the cash in the drawer.", [
-        { text: "Enter amount", style: "cancel" },
-        { text: "Close with KES 0", style: "destructive", onPress: () => void doClockOut() },
-      ])
+      void askConfirm({
+        title: "Close with KES 0 counted?",
+        message: "Nothing was entered for the cash in the drawer.",
+        cancelLabel: "Enter amount",
+        confirmLabel: "Close with KES 0",
+        destructive: true,
+      }).then((ok) => {
+        if (ok) void doClockOut()
+      })
       return
     }
     void doClockOut()
@@ -156,6 +166,7 @@ export default function Shifts() {
     return (
       <Screen>
         <ScreenHeader title="Shift closed" hideBack />
+        <Animated.View key="closed" entering={m.fadeIn} style={styles.flex}>
         <FormScroll
           footer={
             <Button
@@ -172,6 +183,7 @@ export default function Shifts() {
           <ClosedSummary result={result} />
           {OFFLINE_EDITION ? null : <UploadStatus upload={upload} onRetry={() => void runUpload()} />}
         </FormScroll>
+        </Animated.View>
       </Screen>
     )
   }
@@ -235,6 +247,8 @@ export default function Shifts() {
       <Screen>
         {syncHeader}
         <ScreenHeader title={closing ? "End shift" : "Current shift"} hideBack right={closing ? null : historyButton} />
+        {/* Clocking in slides the shift card in; opening the count form fades it in. */}
+        <Animated.View key="active" entering={m.riseIn} style={styles.flex}>
         <FormScroll
           footer={
             closing ? (
@@ -264,15 +278,16 @@ export default function Shifts() {
           </Card>
 
           {closing ? (
-            <>
+            <Animated.View key="closing" entering={m.riseIn} style={styles.stack}>
               {cashEntry("Cash counted in the drawer", "Count every note and coin in the till, including the opening float.")}
               <TextField label="Note (optional)" placeholder="Anything the manager should know" value={notes} onChangeText={setNotes} maxLength={1000} multiline />
               {formErrorText}
-            </>
+            </Animated.View>
           ) : (
             others
           )}
         </FormScroll>
+        </Animated.View>
       </Screen>
     )
   }
@@ -281,6 +296,7 @@ export default function Shifts() {
     <Screen>
       {syncHeader}
       <ScreenHeader title="Clock in" subtitle={currentStaff?.name ?? null} hideBack right={historyButton} />
+      <Animated.View key="clockin" entering={m.fadeIn} style={styles.flex}>
       <FormScroll
         footer={
           <Button
@@ -298,6 +314,7 @@ export default function Shifts() {
         {formErrorText}
         {others}
       </FormScroll>
+      </Animated.View>
     </Screen>
   )
 }
@@ -305,8 +322,10 @@ export default function Shifts() {
 // Float, cash taken, expected vs counted and the variance in words. Expected
 // is derived from what the store returns (counted − variance) so the Offline
 // Edition and the online build show the same maths.
+// Motion: the figures arrive top to bottom and the variance badge pops last.
 function ClosedSummary({ result }: { result: ClosedResult }) {
   const theme = useTheme()
+  const m = useMotion()
   const floatCents = Math.round(result.shift.opening_float * 100)
   const countedCents = result.shift.closing_cash == null ? null : Math.round(result.shift.closing_cash * 100)
   const varianceCents = result.variance == null ? null : Math.round(result.variance * 100)
@@ -324,13 +343,23 @@ function ClosedSummary({ result }: { result: ClosedResult }) {
           ) : null}
         </View>
       </View>
-      <FigureRow label="Opening float" cents={floatCents} />
-      <FigureRow label="Cash sales" cents={expectedCents == null ? null : expectedCents - floatCents} />
+      <Animated.View entering={m.stagger(0, 80)}>
+        <FigureRow label="Opening float" cents={floatCents} />
+      </Animated.View>
+      <Animated.View entering={m.stagger(1, 80)}>
+        <FigureRow label="Cash sales" cents={expectedCents == null ? null : expectedCents - floatCents} />
+      </Animated.View>
       <Divider />
-      <FigureRow label="Expected cash" cents={expectedCents} strong />
-      <FigureRow label="Counted cash" cents={countedCents} strong />
+      <Animated.View entering={m.stagger(2, 80)}>
+        <FigureRow label="Expected cash" cents={expectedCents} strong />
+      </Animated.View>
+      <Animated.View entering={m.stagger(3, 80)}>
+        <FigureRow label="Counted cash" cents={countedCents} strong />
+      </Animated.View>
       <Divider />
-      <VarianceSummary varianceCents={varianceCents} />
+      <Animated.View entering={m.popAt(80 + 4 * 30 + 120)}>
+        <VarianceSummary varianceCents={varianceCents} />
+      </Animated.View>
       {OFFLINE_EDITION ? null : (
         <Text variant="caption" tone="secondary">
           Worked out on this phone. The server confirms it once the shift has synced.
@@ -349,8 +378,11 @@ function UploadStatus({ upload, onRetry }: { upload: "running" | SyncResult | nu
       <Card style={styles.card}>
         <View style={styles.metaRow} accessibilityLiveRegion="polite">
           <Ionicons name="cloud-upload-outline" size={20} color={theme.textSecondary} />
-          <Text tone="secondary">{progress?.label ?? "Uploading the shift and its sales…"}</Text>
+          <Text tone="secondary" style={styles.flex}>
+            {progress?.label ?? "Uploading the shift and its sales…"}
+          </Text>
         </View>
+        <ProgressBar value={progress && progress.total > 0 ? progress.done / progress.total : 0} accessibilityLabel="Upload progress" />
       </Card>
     )
   }
@@ -381,4 +413,5 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   footer: { flexDirection: "row", gap: space.sm },
   flex: { flex: 1 },
+  stack: { gap: space.md },
 })

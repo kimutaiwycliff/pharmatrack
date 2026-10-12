@@ -2,6 +2,8 @@ import { useState } from "react"
 import { StyleSheet } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
+import Animated from "react-native-reanimated"
+import { useMotion } from "../lib/motion"
 import { useSessionStore } from "../store/session"
 import { useSyncStore } from "../store/sync"
 import { registerDevice } from "../lib/sync/device"
@@ -20,8 +22,11 @@ import { TextField } from "./TextField"
 // Also covers a phone whose registration was revoked on the web.
 export function DeviceGate() {
   const theme = useTheme()
-  const { permissions, stale } = useSessionStore()
-  const { status, online } = useSyncStore()
+  const m = useMotion()
+  const permissions = useSessionStore((s) => s.permissions)
+  const stale = useSessionStore((s) => s.stale)
+  const status = useSyncStore((s) => s.status)
+  const online = useSyncStore((s) => s.online)
   const revoked = status === "revoked"
   const canRegister = permissions.includes("devices.manage") && !stale
   const [name, setName] = useState("Counter phone")
@@ -51,7 +56,9 @@ export function DeviceGate() {
     }
   }
 
+  // Stages (register form / ask a manager / removed) fade between each other.
   return (
+    <Animated.View key={`${revoked}-${canRegister}`} entering={m.riseIn} exiting={m.fadeOut}>
     <Card style={styles.card}>
       <Ionicons name="phone-portrait-outline" size={44} color={revoked ? theme.red : theme.textSecondary} />
       <Text variant="title" align="center" accessibilityRole="header">
@@ -109,6 +116,7 @@ export function DeviceGate() {
         </>
       )}
     </Card>
+    </Animated.View>
   )
 }
 

@@ -1,11 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { Alert, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { Button, ListRow, Sheet, StatusBadge, Text } from "../../../components"
 import { formatDay } from "../../../lib/dates"
 import { useTheme } from "../../../theme/useTheme"
 import { radius, space } from "../../../theme/tokens"
 import { rxStatusBadge } from "../logic/prescriptions"
 import type { Prescription } from "../types"
+import { confirm as askConfirm } from "../../../lib/confirm"
 
 // List row + detail sheet for Prescriptions — web's row in
 // app/(dashboard)/prescriptions/page.tsx (patient, status, allergy flag, drugs,
@@ -62,10 +63,15 @@ export function PrescriptionSheet({ rx, canManage, busy, onClose, onStatus }: Pr
 
   function cancel() {
     if (!rx) return
-    Alert.alert("Cancel this prescription?", "It moves out of the active list.", [
-      { text: "Keep it", style: "cancel" },
-      { text: "Cancel prescription", style: "destructive", onPress: () => onStatus(rx, "cancelled") },
-    ])
+    void askConfirm({
+      title: "Cancel this prescription?",
+      message: "It moves out of the active list.",
+      cancelLabel: "Keep it",
+      confirmLabel: "Cancel prescription",
+      destructive: true,
+    }).then((ok) => {
+      if (ok) onStatus(rx, "cancelled")
+    })
   }
 
   const footer =

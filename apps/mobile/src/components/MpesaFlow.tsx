@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react"
-import { StyleSheet, Text, View } from "react-native"
+import { useEffect, useMemo, useState } from "react"
+import { StyleSheet, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
+import Animated, { cancelAnimation, Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated"
 import { formatKES, fromCents, type Cents } from "@pharmatrack/core"
 import { sendStkPush } from "../lib/mpesa"
+import { useMotion } from "../lib/motion"
 import { useTheme } from "../theme/useTheme"
-import type { Theme } from "../theme/tokens"
+import { radius, space, type Theme } from "../theme/tokens"
 import { Button } from "./Button"
 import { Card } from "./Card"
+import { Text } from "./Text"
 import { TextField } from "./TextField"
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
@@ -29,7 +32,8 @@ interface MpesaFlowProps {
 // method and the M-Pesa portion of "Split" — mirrors
 // apps/web/components/pos/MpesaModal.tsx's real behavior:
 //
-//  - "waiting" is a client-side-only 60s countdown (setInterval). Nothing
+//  - "waiting" is a client-side-only 60s countdown (a UI-thread ring + a
+//    tiny once-a-second label; nothing else re-renders). Nothing
 //    server-side ever confirms the STK push — there is no status-polling
 //    endpoint — so the cashier must eventually attest completion themselves
 //    ("Confirm received") or key in the M-Pesa code by hand ("Enter code
@@ -41,23 +45,17 @@ interface MpesaFlowProps {
 //    against apps/web/components/pos/MpesaModal.tsx's `disabled={codeBlocks}`).
 export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps) {
   const theme = useTheme()
-  const styles = createStyles(theme)
+  const m = useMotion()
+  const styles = useMemo(() => createStyles(theme), [theme])
 
   const [phase, setPhase] = useState<Phase>("phone")
   const [returnPhase, setReturnPhase] = useState<"phone" | "waiting">("phone")
   const [phone, setPhone] = useState("")
   const [code, setCode] = useState("")
-  const [timer, setTimer] = useState(WAIT_SECONDS)
+  // Bumped on every (re)send so the countdown restarts.
+  const [sentAt, setSentAt] = useState(0)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // Cosmetic countdown only — reaching 0 does nothing (no auto-fail,
-  // nothing is blocked), same as the web modal.
-  useEffect(() => {
-    if (phase !== "waiting") return
-    const id = setInterval(() => setTimer((t) => Math.max(0, t - 1)), 1000)
-    return () => clearInterval(id)
-  }, [phase])
 
   const amount = Number(fromCents(amountCents))
   const trimmedCode = code.trim()
@@ -73,7 +71,7 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
       setError(result.error ?? "Could not send the M-Pesa prompt. Check the number and try again.")
       return
     }
-    setTimer(WAIT_SECONDS)
+    setSentAt(Date.now())
     setPhase("waiting")
   }
 
@@ -86,12 +84,17 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
   return (
     <Card style={styles.card}>
       <View style={styles.amountRow}>
-        <Text style={styles.amountLabel}>M-Pesa amount</Text>
-        <Text style={styles.amountValue}>{formatKES(amountCents)}</Text>
+        <Text variant="label" tone="secondary">
+          M-Pesa amount
+        </Text>
+        <Text variant="headline" tabular>
+          {formatKES(amountCents)}
+        </Text>
       </View>
 
+      {/* Phases fade into each other. */}
       {phase === "phone" ? (
-        <>
+        <Animated.View key="phone" entering={m.fadeIn} exiting={m.fadeOut} style={styles.phase}>
           <TextField
             label="Customer phone"
             inSheet={inSheet}
@@ -114,14 +117,19 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
             onPress={() => enterManual("phone")}
             icon={<Ionicons name="create-outline" size={18} color={theme.text} />}
           />
-        </>
+        </Animated.View>
       ) : null}
 
       {phase === "waiting" ? (
-        <View style={styles.waitingBox}>
-          <Text style={styles.waitingTitle}>Request sent to {phone}</Text>
-          <Text style={styles.waitingSubtitle}>Ask the customer to enter their M-Pesa PIN</Text>
-          <Text style={styles.timer}>Waiting · 0:{String(timer).padStart(2, "0")} remaining</Text>
+        <Animated.View key="waiting" entering={m.fadeIn} exiting={m.fadeOut} style={styles.waitingBox}>
+          <WaitingIndicator key={`ring-${sentAt}`} seconds={WAIT_SECONDS} />
+          <Text variant="bodyStrong" align="center">
+            Request sent to {phone}
+          </Text>
+          <Text variant="label" tone="secondary" align="center" style={styles.regular}>
+            Ask the customer to enter their M-Pesa PIN
+          </Text>
+          <CountdownLabel key={`label-${sentAt}`} seconds={WAIT_SECONDS} />
           <View style={styles.waitingActions}>
             <Button
               title="Resend"
@@ -137,13 +145,17 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
               icon={<Ionicons name="checkmark-circle-outline" size={18} color={theme.onAccent} />}
             />
           </View>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-        </View>
+          {error ? (
+            <Text variant="label" tone="danger" style={styles.regular}>
+              {error}
+            </Text>
+          ) : null}
+        </Animated.View>
       ) : null}
 
       {phase === "manual" ? (
-        <>
-          <Text style={styles.hint}>
+        <Animated.View key="manual" entering={m.fadeIn} exiting={m.fadeOut} style={styles.phase}>
+          <Text variant="caption" tone="secondary">
             Use this when the customer paid via Pay Bill or Send Money on their own. The code is
             optional — confirm once you have seen the payment.
           </Text>
@@ -169,18 +181,109 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
             onPress={() => setPhase(returnPhase)}
             icon={<Ionicons name="arrow-back-outline" size={18} color={theme.text} />}
           />
-        </>
+        </Animated.View>
       ) : null}
     </Card>
   )
 }
 
+const RING = 76
+const STROKE = 5
+
+/**
+ * Pulsing phone inside a countdown ring. The ring is two half-arcs rotated by
+ * one shared value running 1 → 0 over the wait (pure transforms, no SVG, no
+ * per-second React renders). It conveys time left, so it runs even under
+ * reduced motion; the decorative pulse does not.
+ */
+function WaitingIndicator({ seconds }: { seconds: number }) {
+  const theme = useTheme()
+  const m = useMotion()
+  const left = useSharedValue(1)
+  const pulse = useSharedValue(1)
+
+  useEffect(() => {
+    left.value = 1
+    left.value = withTiming(0, { duration: seconds * 1000, easing: Easing.linear, reduceMotion: ReduceMotion.Never })
+    return () => cancelAnimation(left)
+  }, [seconds, left])
+
+  useEffect(() => {
+    if (m.reduced) {
+      pulse.value = 1
+      return
+    }
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.12, { duration: 600, easing: Easing.inOut(Easing.ease), reduceMotion: ReduceMotion.Never }),
+        withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease), reduceMotion: ReduceMotion.Never }),
+      ),
+      -1,
+    )
+    return () => cancelAnimation(pulse)
+  }, [m.reduced, pulse])
+
+  // Arc covering [a−180°, a] (clockwise from 12 o'clock); each half clips it.
+  const rightHalf = useAnimatedStyle(() => {
+    const a = Math.min(left.value * 360, 180)
+    return { transform: [{ rotate: `${45 - 180 + a}deg` }] }
+  })
+  const leftHalf = useAnimatedStyle(() => {
+    const a = Math.max(left.value * 360, 180)
+    return { transform: [{ rotate: `${45 - 180 + a}deg` }] }
+  })
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }))
+
+  const arc = { borderColor: "transparent", borderTopColor: theme.green, borderRightColor: theme.green }
+  return (
+    <View style={ringStyles.wrap} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={[ringStyles.track, { borderColor: theme.green100 }]} />
+      <View style={[ringStyles.half, ringStyles.halfRight]}>
+        <Animated.View style={[ringStyles.arc, ringStyles.arcInRight, arc, rightHalf]} />
+      </View>
+      <View style={[ringStyles.half, ringStyles.halfLeft]}>
+        <Animated.View style={[ringStyles.arc, ringStyles.arcInLeft, arc, leftHalf]} />
+      </View>
+      <Animated.View style={[ringStyles.icon, { backgroundColor: theme.surface }, iconStyle]}>
+        <Ionicons name="phone-portrait-outline" size={28} color={theme.green600} />
+      </Animated.View>
+    </View>
+  )
+}
+
+/** "Waiting · 0:42 remaining" — the only thing that re-renders each second. */
+function CountdownLabel({ seconds }: { seconds: number }) {
+  const [left, setLeft] = useState(seconds)
+  // Cosmetic countdown only — reaching 0 does nothing (no auto-fail,
+  // nothing is blocked), same as the web modal.
+  useEffect(() => {
+    const id = setInterval(() => setLeft((t) => Math.max(0, t - 1)), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <Text variant="label" tone="success" tabular>
+      Waiting · 0:{String(left).padStart(2, "0")} remaining
+    </Text>
+  )
+}
+
+const ringStyles = StyleSheet.create({
+  wrap: { width: RING, height: RING, alignItems: "center", justifyContent: "center", marginBottom: space.xs },
+  track: { position: "absolute", width: RING, height: RING, borderRadius: RING / 2, borderWidth: STROKE },
+  half: { position: "absolute", top: 0, width: RING / 2, height: RING, overflow: "hidden" },
+  halfRight: { left: RING / 2 },
+  halfLeft: { left: 0 },
+  arc: { position: "absolute", top: 0, width: RING, height: RING, borderRadius: RING / 2, borderWidth: STROKE },
+  arcInRight: { left: -RING / 2 },
+  arcInLeft: { left: 0 },
+  icon: { width: RING - STROKE * 4, height: RING - STROKE * 4, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+})
+
 function createStyles(theme: Theme) {
   return StyleSheet.create({
     card: { gap: 10 },
     amountRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
-    amountLabel: { fontSize: 13, color: theme.textSecondary },
-    amountValue: { fontSize: 18, fontWeight: "700", color: theme.text },
+    phase: { gap: 10 },
     waitingBox: {
       backgroundColor: theme.green50,
       borderColor: theme.green100,
@@ -190,11 +293,7 @@ function createStyles(theme: Theme) {
       gap: 8,
       alignItems: "center",
     },
-    waitingTitle: { fontWeight: "700", color: theme.text, textAlign: "center" },
-    waitingSubtitle: { fontSize: 13, color: theme.textSecondary, textAlign: "center" },
-    timer: { fontWeight: "600", color: theme.green600, fontSize: 13 },
     waitingActions: { gap: 8, width: "100%" },
-    hint: { fontSize: 12, color: theme.textSecondary },
-    error: { color: theme.red, fontSize: 13 },
+    regular: { fontWeight: "400" },
   })
 }

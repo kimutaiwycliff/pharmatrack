@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Alert, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { Button, Chip, Sheet, Text, TextField } from "../../../components"
 import { apiJson, errorMessage } from "../../../lib/api"
 import { env } from "../../../lib/env"
@@ -8,6 +8,7 @@ import { adjustLocalStock } from "../../../repo/inventory"
 import { space } from "../../../theme/tokens"
 import { ADJUST_REASONS, REASON_CONFIG, defaultQuantityText, planAdjustment, type AdjustReason } from "../logic/adjust"
 import type { Batch } from "../logic/types"
+import { confirm as askConfirm } from "../../../lib/confirm"
 
 interface AdjustStockSheetProps {
   /** The batch being adjusted; kept while the sheet animates closed. */
@@ -69,14 +70,13 @@ function AdjustForm({ batch, onClose, onSaved }: { batch: Batch; onClose: () => 
   function confirm() {
     if (!plan.valid) return
     const change = plan.delta > 0 ? `+${plan.delta}` : String(plan.delta)
-    Alert.alert(
-      "Save adjustment?",
-      `Batch ${batch.batch_number}: ${remaining} → ${plan.newRemaining} (${change}) — ${cfg.label}.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Save", onPress: () => void save() },
-      ],
-    )
+    void askConfirm({
+      title: "Save adjustment?",
+      message: `Batch ${batch.batch_number}: ${remaining} → ${plan.newRemaining} (${change}) — ${cfg.label}.`,
+      confirmLabel: "Save",
+    }).then((ok) => {
+      if (ok) void save()
+    })
   }
 
   return (

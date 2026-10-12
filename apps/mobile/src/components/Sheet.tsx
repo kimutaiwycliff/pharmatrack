@@ -1,11 +1,11 @@
 import {
-  BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView, BottomSheetView, type BottomSheetBackdropProps,
+  BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView, BottomSheetView, useBottomSheetSpringConfigs, type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet"
-import { useCallback, useEffect, useRef, type ReactNode } from "react"
-import { StyleSheet, View } from "react-native"
+import { useEffect, useRef, type ReactNode } from "react"
+import { BackHandler, StyleSheet, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useTheme } from "../theme/useTheme"
-import { space } from "../theme/tokens"
+import { motion, space } from "../theme/tokens"
 import { IconButton } from "./IconButton"
 import { Text } from "./Text"
 
@@ -20,26 +20,49 @@ interface SheetProps {
   scrollable?: boolean
   /** Sticky content under the scroll area (e.g. a Pay button). */
   footer?: ReactNode
+  /** Accessibility label when there's no visible title (e.g. a confirm dialog). */
+  accessibilityLabel?: string
+}
+
+/** Same dimming everywhere a sheet or dialog opens. */
+export function renderSheetBackdrop(props: BottomSheetBackdropProps) {
+  return (
+    <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={motion.backdropOpacity} pressBehavior="close" />
+  )
 }
 
 // Controlled wrapper over @gorhom/bottom-sheet's modal: `open` drives
 // present()/dismiss(), a tap on the backdrop or swipe-down calls onClose.
 // Sheets stack ("push"), so a quantity keypad can open over the cart sheet.
 // Keyboard: the sheet rises with it (interactive) and restores on blur.
-export function Sheet({ open, onClose, title, children, snapPoints, scrollable, footer }: SheetProps) {
+// Motion: a critically-damped spring from the motion tokens (no bounce), the
+// shared backdrop, and Android back closes the top-most open sheet first.
+export function Sheet({ open, onClose, title, children, snapPoints, scrollable, footer, accessibilityLabel }: SheetProps) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const ref = useRef<BottomSheetModal>(null)
+  const animationConfigs = useBottomSheetSpringConfigs({ ...motion.spring.sheet, overshootClamping: true })
 
   useEffect(() => {
     if (open) ref.current?.present()
     else ref.current?.dismiss()
   }, [open])
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} pressBehavior="close" />,
-    [],
-  )
+  // Back closes this sheet instead of leaving the screen. Listeners run
+  // newest-first, so stacked sheets close top-down.
+  const closeRef = useRef(onClose)
+  useEffect(() => {
+    closeRef.current = onClose
+  })
+  useEffect(() => {
+    if (!open) return
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeRef.current()
+      return true
+    })
+    return () => sub.remove()
+  }, [open])
+
 
   const header = title ? (
     <View style={styles.header}>
@@ -58,14 +81,15 @@ export function Sheet({ open, onClose, title, children, snapPoints, scrollable, 
       snapPoints={snapPoints}
       enableDynamicSizing={!snapPoints}
       onDismiss={onClose}
-      backdropComponent={renderBackdrop}
+      animationConfigs={animationConfigs}
+      backdropComponent={renderSheetBackdrop}
       stackBehavior="push"
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       backgroundStyle={{ backgroundColor: theme.surface }}
       handleIndicatorStyle={{ backgroundColor: theme.borderStrong }}
-      accessibilityLabel={title}
+      accessibilityLabel={title ?? accessibilityLabel}
     >
       {scrollable ? (
         <>

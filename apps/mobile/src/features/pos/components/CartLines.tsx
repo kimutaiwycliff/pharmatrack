@@ -1,19 +1,21 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { useMemo, useState } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable"
-import { Button, Chip, EmptyState, IconButton, Money, NumericKeypad, QuantityStepper, Sheet, Text } from "../../../components"
+import Animated from "react-native-reanimated"
+import { Button, Chip, EmptyState, IconButton, Money, NumericKeypad, PressableScale, QuantityStepper, Sheet, Text } from "../../../components"
 import { env } from "../../../lib/env"
 import { haptics } from "../../../lib/haptics"
 import { keypadNumber } from "../../../lib/keypad"
+import { useMotion } from "../../../lib/motion"
 import { toast } from "../../../lib/toast"
-import { canGiveDiscount, useCartStore, type CartItem, type CartSellUnit } from "../../../store/cart"
+import { canGiveDiscount, LIMIT_SCOPE, limitMessage, useCartStore, type CartItem, type CartSellUnit } from "../../../store/cart"
 import { useTheme } from "../../../theme/useTheme"
 import { radius, space } from "../../../theme/tokens"
 import { setLineQty, setLineUnit } from "../actions"
 import { listSellUnits } from "../data"
-import { lineCap, lineKey, lineTotals, remainingFor, sellPriceCents, sellQty, sellUnitLabel } from "../logic/cart"
+import { baseQtyInCart, lineCap, lineKey, lineTotals, remainingFor, sellPriceCents, sellQty, sellUnitLabel } from "../logic/cart"
 import { sellByAmount } from "../logic/sellByAmount"
 import { ClinicalBadges } from "./ProductParts"
 
@@ -22,9 +24,43 @@ const LOW_LEFT = 5
 
 type EditMode = "unit" | "amount" | "discount"
 
+/**
+ * Remove a line, with an Undo on the toast that puts it back where it was
+ * (re-checking the stock/allowance cap — Undo can never oversell).
+ */
+export function removeLineWithUndo(line: CartItem) {
+  const cart = useCartStore.getState()
+  const key = lineKey(line)
+  const index = cart.items.findIndex((i) => lineKey(i) === key)
+  if (index < 0) return
+  const snapshot = cart.items[index]!
+  haptics.warning()
+  cart.remove(key)
+  const title = `${line.productName}${line.productStrength ? ` ${line.productStrength}` : ""}`
+  toast.info(`Removed ${title}`, {
+    action: {
+      label: "Undo",
+      onPress: () => {
+        const r = useCartStore.getState().restore(snapshot, index)
+        if (r.ok) {
+          haptics.add()
+          return
+        }
+        if (r.reason === "limit") {
+          haptics.error()
+          const items = useCartStore.getState().items
+          const limit = items.find((i) => i.productId === snapshot.productId)?.stockOnHand ?? snapshot.stockOnHand
+          toast.error(limitMessage(LIMIT_SCOPE, snapshot.productName, Math.max(0, limit - baseQtyInCart(items, snapshot.productId))))
+        }
+      },
+    },
+  })
+}
+
 /** Every cart line, plus the one editor sheet (unit / sell-by-amount / discount) they share. */
 export function CartLines() {
   const theme = useTheme()
+  const m = useMotion()
   const items = useCartStore((s) => s.items)
   const [editor, setEditor] = useState<{ key: string; mode: EditMode } | null>(null)
   const discountAllowed = canGiveDiscount()
@@ -32,18 +68,16 @@ export function CartLines() {
   if (items.length === 0) {
     return <EmptyState icon={<Ionicons name="cart-outline" size={32} color={theme.textTertiary} />} message="Cart is empty — search or scan to add" />
   }
+  // Cart lines are a plain list (not FlashList), so they get layout motion:
+  // a removed line fades out and the rest slide up to close the gap.
 
   const editing = editor ? items.find((i) => lineKey(i) === editor.key) ?? null : null
   return (
     <View style={styles.list}>
       {items.map((line) => (
-        <CartLine
-          key={lineKey(line)}
-          line={line}
-          items={items}
-          discountAllowed={discountAllowed}
-          onEdit={(mode) => setEditor({ key: lineKey(line), mode })}
-        />
+        <Animated.View key={lineKey(line)} entering={m.fadeIn} exiting={m.fadeOut} layout={m.layout}>
+          <CartLine line={line} items={items} discountAllowed={discountAllowed} onEdit={(mode) => setEditor({ key: lineKey(line), mode })} />
+        </Animated.View>
       ))}
       <LineEditor line={editing} mode={editor?.mode ?? null} onClose={() => setEditor(null)} />
     </View>
@@ -59,7 +93,6 @@ interface CartLineProps {
 
 function CartLine({ line, items, discountAllowed, onEdit }: CartLineProps) {
   const theme = useTheme()
-  const remove = useCartStore((s) => s.remove)
   const key = lineKey(line)
   const qty = sellQty(line)
   const unit = sellUnitLabel(line)
@@ -68,10 +101,7 @@ function CartLine({ line, items, discountAllowed, onEdit }: CartLineProps) {
   const packs = useMemo(() => listSellUnits(line.productId), [line.productId])
   const title = `${line.productName}${line.productStrength ? ` ${line.productStrength}` : ""}`
 
-  const removeLine = () => {
-    haptics.warning()
-    remove(key)
-  }
+  const removeLine = () => removeLineWithUndo(line)
 
   return (
     <ReanimatedSwipeable
@@ -194,7 +224,7 @@ function UnitPicker({ line, onDone }: { line: CartItem; onDone: () => void }) {
       {options.map((o) => {
         const selected = (o.unit?.packSizeId ?? null) === current
         return (
-          <Pressable
+          <PressableScale
             key={o.unit?.packSizeId ?? "base"}
             onPress={async () => {
               if (!selected) await setLineUnit(lineKey(line), o.unit)
@@ -215,7 +245,7 @@ function UnitPicker({ line, onDone }: { line: CartItem; onDone: () => void }) {
               </Text>
             </View>
             <Money cents={o.price} />
-          </Pressable>
+          </PressableScale>
         )
       })}
     </View>

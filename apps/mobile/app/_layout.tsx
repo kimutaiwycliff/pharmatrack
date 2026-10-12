@@ -5,7 +5,8 @@ import { StatusBar } from "expo-status-bar"
 import { StyleSheet } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { SafeAreaProvider } from "react-native-safe-area-context"
-import { ToastHost } from "../src/components"
+import { ConfirmHost, ToastHost } from "../src/components"
+import { motion } from "../src/theme/tokens"
 import { useColorSchemeResolved, useTheme } from "../src/theme/useTheme"
 import { initCrashReporting } from "../src/lib/crash-reporting"
 import { SyncRunner } from "../src/lib/sync/SyncRunner"
@@ -25,7 +26,21 @@ function RootLayout() {
         <BottomSheetModalProvider>
           {/* R1: app-wide offline sync engine (inert in the Offline Edition). */}
           <SyncRunner />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }} />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: theme.bg },
+              // Motion pass: native-stack push/pop (UI thread, ≤ 300 ms).
+              animation: "slide_from_right",
+              animationDuration: motion.duration.base + 30,
+            }}
+          >
+            {/* The camera scanner rises over whatever opened it. */}
+            <Stack.Screen name="scan" options={{ presentation: "fullScreenModal", animation: "slide_from_bottom" }} />
+          </Stack>
+          {/* Promise-based confirm dialogs (lib/confirm.ts) — inside the sheet
+              host so a confirm stacks above an already-open sheet. */}
+          <ConfirmHost />
           {/* Follows the in-app light/dark/system choice, not just the OS. */}
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />
         </BottomSheetModalProvider>

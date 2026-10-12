@@ -1,7 +1,9 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { StyleSheet, View, type TextInput } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
+import Animated, { Keyframe } from "react-native-reanimated"
+import { EASE, useMotion } from "../src/lib/motion"
 import { signInEmail, signInPin } from "../src/lib/auth-client"
 import { cacheDeviceUserAfterPinLogin, tryOfflinePinLogin } from "../src/lib/device-users"
 import { verifyLocalPin } from "../src/lib/local-auth"
@@ -11,12 +13,20 @@ import { adoptSignedInUser, switchStaff } from "../src/lib/sync/staff-session"
 import { useSyncStore } from "../src/store/sync"
 import { useTheme } from "../src/theme/useTheme"
 import { radius, space } from "../src/theme/tokens"
-import { Button, Chip, FormScroll, Screen, Text, TextField } from "../src/components"
+import { Button, Chip, FormScroll, Screen, Text, TextField, useShake } from "../src/components"
 
 type Mode = "email" | "pin"
 
+// Logo entrance: a short scale-up + fade (no overshoot). Built once.
+const logoIn = new Keyframe({
+  0: { opacity: 0, transform: [{ scale: 0.8 }] },
+  100: { opacity: 1, transform: [{ scale: 1 }], easing: EASE.emphasized },
+}).duration(300)
+
 export default function Login() {
   const theme = useTheme()
+  const m = useMotion()
+  const { style: shakeStyle, shake } = useShake()
   const pinRef = useRef<TextInput>(null)
   const passwordRef = useRef<TextInput>(null)
   // ADR-014: the Offline Edition build only ever shows the PIN tab — there
@@ -28,6 +38,11 @@ export default function Login() {
   const [pin, setPin] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+
+  // A failed sign-in shakes the form and buzzes (error haptic) once per error.
+  useEffect(() => {
+    if (error) shake()
+  }, [error, shake])
 
   async function onSubmit() {
     // Return key on the last field can fire while a submit is in flight.
@@ -99,15 +114,17 @@ export default function Login() {
     <Screen>
       <FormScroll contentStyle={styles.content}>
         <View style={styles.brand}>
-          <View style={[styles.logo, { backgroundColor: theme.greenCta }]}>
+          <Animated.View entering={m.reduced ? m.fadeIn : logoIn} style={[styles.logo, { backgroundColor: theme.greenCta }]}>
             <Ionicons name="medkit" size={28} color={theme.onAccent} />
-          </View>
-          <Text variant="display" align="center" accessibilityRole="header">
-            PharmaTrack
-          </Text>
-          <Text tone="secondary" align="center">
-            {pinMode ? "Sign in with your phone number and till PIN" : "Sign in with your email and password"}
-          </Text>
+          </Animated.View>
+          <Animated.View entering={m.stagger(0, 120)} style={styles.brandText}>
+            <Text variant="display" align="center" accessibilityRole="header">
+              PharmaTrack
+            </Text>
+            <Text tone="secondary" align="center">
+              {pinMode ? "Sign in with your phone number and till PIN" : "Sign in with your email and password"}
+            </Text>
+          </Animated.View>
         </View>
 
         {offline ? null : (
@@ -131,8 +148,10 @@ export default function Login() {
           </View>
         )}
 
+        {/* PIN ↔ Email forms cross-fade; the whole form shakes on a failed sign-in. */}
+        <Animated.View style={[styles.form, shakeStyle]}>
         {pinMode ? (
-          <>
+          <Animated.View key="pin" entering={m.fadeIn} exiting={m.fadeOut} style={styles.form}>
             <TextField
               label="Phone number"
               placeholder="07XX XXX XXX"
@@ -157,9 +176,9 @@ export default function Login() {
               returnKeyType="go"
               onSubmitEditing={onSubmit}
             />
-          </>
+          </Animated.View>
         ) : (
-          <>
+          <Animated.View key="email" entering={m.fadeIn} exiting={m.fadeOut} style={styles.form}>
             <TextField
               label="Email"
               placeholder="you@pharmacy.co.ke"
@@ -192,14 +211,17 @@ export default function Login() {
               onPress={() => router.push("/forgot-password")}
               style={styles.forgot}
             />
-          </>
+          </Animated.View>
         )}
 
         {error ? (
-          <Text tone="danger" align="center" accessibilityLiveRegion="polite">
-            {error}
-          </Text>
+          <Animated.View entering={m.fadeIn}>
+            <Text tone="danger" align="center" accessibilityLiveRegion="polite">
+              {error}
+            </Text>
+          </Animated.View>
         ) : null}
+        </Animated.View>
 
         <Button title="Sign in" size="lg" onPress={onSubmit} loading={pending} style={styles.submitButton} />
       </FormScroll>
@@ -210,6 +232,8 @@ export default function Login() {
 const styles = StyleSheet.create({
   content: { flexGrow: 1, justifyContent: "center", paddingHorizontal: space.sm, paddingVertical: space.xl, gap: space.md },
   brand: { alignItems: "center", gap: space.sm, marginBottom: space.lg },
+  brandText: { alignItems: "center", gap: space.sm },
+  form: { gap: space.md },
   logo: { width: 56, height: 56, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
   tabs: { flexDirection: "row", gap: space.sm },
   tab: { flex: 1, justifyContent: "center" },

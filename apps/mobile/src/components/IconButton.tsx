@@ -1,8 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import type { ComponentProps } from "react"
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native"
+import { StyleSheet, type StyleProp, type ViewStyle } from "react-native"
 import { useTheme } from "../theme/useTheme"
 import { radius, TOUCH_TARGET } from "../theme/tokens"
+import { PressableScale } from "./PressableScale"
 
 type IconName = ComponentProps<typeof Ionicons>["name"]
 
@@ -30,23 +31,23 @@ export function IconButton({
     variant === "filled" ? theme.greenCta : variant === "danger" ? theme.red50 : variant === "tonal" || selected ? theme.mutedStrong : "transparent"
   const fg = color ?? (variant === "filled" ? theme.onAccent : variant === "danger" ? theme.red : theme.text)
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
+      scaleTo={0.9}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: !!disabled, selected: !!selected }}
       hitSlop={4}
-      style={({ pressed }) => [styles.base, { backgroundColor: bg }, pressed && styles.pressed, disabled && styles.disabled, style]}
+      style={[styles.base, { backgroundColor: bg }, disabled && styles.disabled, style]}
     >
       <Ionicons name={icon} size={size} color={fg} />
-    </Pressable>
+    </PressableScale>
   )
 }
 
 const styles = StyleSheet.create({
   base: { minWidth: TOUCH_TARGET, minHeight: TOUCH_TARGET, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
-  pressed: { opacity: 0.7 },
   disabled: { opacity: 0.4 },
 })

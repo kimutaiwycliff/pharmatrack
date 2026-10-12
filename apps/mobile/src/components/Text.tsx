@@ -12,7 +12,7 @@ interface TextProps extends RNTextProps {
   tabular?: boolean
 }
 
-function toneColor(tone: TextTone, theme: Theme): string {
+export function toneColor(tone: TextTone, theme: Theme): string {
   switch (tone) {
     case "secondary":
       return theme.textSecondary

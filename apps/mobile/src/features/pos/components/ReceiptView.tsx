@@ -2,12 +2,15 @@ import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import * as Print from "expo-print"
 import * as Sharing from "expo-sharing"
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { KeyboardAvoidingView, Linking, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native"
-import { Button, Text, TextField } from "../../../components"
+import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from "react-native-reanimated"
+import { AnimatedNumber, Button, CheckMark, Text, TextField } from "../../../components"
+import { haptics } from "../../../lib/haptics"
+import { useMotion } from "../../../lib/motion"
 import { toast } from "../../../lib/toast"
 import { useTheme } from "../../../theme/useTheme"
-import { radius, space, TABLET_MIN_WIDTH } from "../../../theme/tokens"
+import { motion, radius, space, TABLET_MIN_WIDTH } from "../../../theme/tokens"
 import { nairobiDateTime, receiptHeightPt, receiptHtml, receiptText, RECEIPT_WIDTH_PT, whatsappUrl, type ReceiptData } from "../logic/receipt"
 
 interface ReceiptViewProps {
@@ -27,6 +30,23 @@ interface ReceiptViewProps {
   initialPhone?: string | null
 }
 
+// Sale-complete hero timeline (ms after mount; the POS mounts this only once
+// the sale is committed to SQLite, while the payment sheet slides away).
+// Everything is decorative and non-blocking — "New sale" works immediately —
+// and the whole sequence settles within ~800 ms. Reduced motion: no movement,
+// haptic straight away.
+const HERO = {
+  circle: 80,
+  check: 200,
+  /** Check finishes drawing (110 + 170) — the success haptic lands here. */
+  checkPeak: 200 + 280,
+  title: 280,
+  change: 340,
+  changeCount: 400,
+  lines: 380,
+  maxLineStagger: 6,
+} as const
+
 // Shown right after a sale commits. "New sale" is the big, obvious action;
 // sharing is optional (WhatsApp text or an 80 mm PDF — no Bluetooth printing).
 // Sales history reuses it in "reprint" mode so a reprint is identical.
@@ -36,6 +56,17 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
   const [phone, setPhone] = useState(initialPhone ?? "")
   const [phoneError, setPhoneError] = useState<string | null>(null)
   const [sharingPdf, setSharingPdf] = useState(false)
+  const m = useMotion()
+  const hero = mode === "complete"
+
+  // Success haptic at the moment the check mark completes.
+  useEffect(() => {
+    if (!hero) return
+    const t = setTimeout(() => haptics.success(), m.reduced ? 0 : HERO.checkPeak)
+    return () => clearTimeout(t)
+    // Once per receipt shown.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function shareWhatsApp() {
     const text = receiptText(receipt)
@@ -84,33 +115,39 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
           {status}
         </View>
       ) : (
-      <View style={styles.hero} accessibilityLiveRegion="polite">
-        <View style={[styles.tick, { backgroundColor: theme.green50 }]}>
-          <Ionicons name="checkmark" size={56} color={theme.green600} />
-        </View>
-        <Text variant="title" align="center" accessibilityRole="header">
-          Sale complete
-        </Text>
-        <Text variant="bodyStrong" align="center" tabular>
-          Receipt {receipt.receiptNumber}
-        </Text>
-        {showSyncState ? (
-          <Text variant="caption" tone={queued ? "warning" : "secondary"} align="center">
-            {queued ? "Queued — will sync when back online" : "Saved on this phone — uploading…"}
+      <View style={styles.hero} accessibilityLiveRegion="polite" accessibilityLabel={`Sale complete. Receipt ${receipt.receiptNumber}`}>
+        <SuccessBadge />
+        <Animated.View entering={m.stagger(0, HERO.title)} style={styles.heroText}>
+          <Text variant="title" align="center" accessibilityRole="header">
+            Sale complete
           </Text>
-        ) : null}
+          <Text variant="bodyStrong" align="center" tabular>
+            Receipt {receipt.receiptNumber}
+          </Text>
+          {showSyncState ? (
+            <Text variant="caption" tone={queued ? "warning" : "secondary"} align="center">
+              {queued ? "Queued — will sync when back online" : "Saved on this phone — uploading…"}
+            </Text>
+          ) : null}
+        </Animated.View>
       </View>
       )}
 
       {mode === "complete" && receipt.changeCents > 0 ? (
-        <View style={[styles.changeBox, { backgroundColor: theme.green50, borderColor: theme.green }]}>
+        <Animated.View entering={m.stagger(0, HERO.change)} style={[styles.changeBox, { backgroundColor: theme.green50, borderColor: theme.green }]}>
           <Text variant="label" tone="success">
             Give change
           </Text>
-          <Text variant="display" tone="success" tabular>
-            {formatKES(receipt.changeCents)}
-          </Text>
-        </View>
+          <AnimatedNumber
+            value={receipt.changeCents}
+            format={formatKES}
+            variant="display"
+            tone="success"
+            fromZero
+            delay={HERO.changeCount}
+            accessibilityLabel={`Give change ${formatKES(receipt.changeCents)}`}
+          />
+        </Animated.View>
       ) : null}
 
       {onNewSale ? (
@@ -124,7 +161,11 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
 
       <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         {receipt.lines.map((l, i) => (
-          <View key={i} style={styles.lineRow}>
+          <Animated.View
+            key={i}
+            entering={hero ? m.stagger(Math.min(i, HERO.maxLineStagger), HERO.lines) : undefined}
+            style={styles.lineRow}
+          >
             <View style={styles.flex}>
               <Text variant="body">{l.name}</Text>
               <Text variant="caption" tone="secondary">
@@ -135,7 +176,7 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
             <Text variant="bodyStrong" tabular>
               {formatKES(l.totalCents)}
             </Text>
-          </View>
+          </Animated.View>
         ))}
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         {receipt.discountCents > 0 ? <Row label="Discount" value={`−${formatKES(receipt.discountCents)}`} /> : null}
@@ -183,6 +224,26 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
   )
 }
 
+/** Green circle springs 0.8 → 1 (no overshoot), then the check draws itself in. */
+function SuccessBadge() {
+  const theme = useTheme()
+  const { reduced } = useMotion()
+  const scale = useSharedValue(reduced ? 1 : 0.8)
+  const opacity = useSharedValue(reduced ? 1 : 0)
+  useEffect(() => {
+    if (reduced) return
+    const never = ReduceMotion.Never
+    scale.value = withDelay(HERO.circle, withSpring(1, { ...motion.spring.gentle, reduceMotion: never }))
+    opacity.value = withDelay(HERO.circle, withTiming(1, { duration: motion.duration.fast, reduceMotion: never }))
+  }, [reduced, scale, opacity])
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ scale: scale.value }] }))
+  return (
+    <Animated.View style={[styles.tick, { backgroundColor: theme.green50 }, style]}>
+      <CheckMark size={56} color={theme.green600} delay={HERO.check} />
+    </Animated.View>
+  )
+}
+
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <View style={styles.lineRow}>
@@ -202,6 +263,7 @@ const styles = StyleSheet.create({
   wide: { width: "100%", maxWidth: 560, alignSelf: "center" },
   flex: { flex: 1 },
   hero: { alignItems: "center", gap: space.xs, paddingTop: space.md },
+  heroText: { alignItems: "center", gap: space.xs },
   reprintHero: { gap: space.xs },
   tick: { width: 96, height: 96, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", marginBottom: space.sm },
   changeBox: { alignItems: "center", borderWidth: 2, borderRadius: radius.lg, paddingVertical: space.md },

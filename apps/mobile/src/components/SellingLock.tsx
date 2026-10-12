@@ -1,6 +1,9 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ScrollView, StyleSheet } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
+import Animated from "react-native-reanimated"
+import { useShallow } from "zustand/react/shallow"
+import { useMotion } from "../lib/motion"
 import { useSyncStore } from "../store/sync"
 import { syncNow } from "../lib/sync/engine"
 import { performOverride } from "../lib/sync/override"
@@ -13,6 +16,7 @@ import { space } from "../theme/tokens"
 import { Button } from "./Button"
 import { Card } from "./Card"
 import { ListRow } from "./ListRow"
+import { useShake } from "./Motion"
 import { PinEntry } from "./PinEntry"
 import { Text } from "./Text"
 
@@ -20,11 +24,21 @@ import { Text } from "./Text"
 // midnight sync, an expired manager unlock, a phone that has never synced, or
 // a clock that was wound back. Always offers "Sync now"; after a missed
 // deadline (until 12:00) a manager with sync.override can unlock with a PIN.
+// Motion: the lock icon gives one shake when the screen appears; the manager
+// list and PIN step fade in/out between stages.
 export function SellingLock() {
   const theme = useTheme()
-  const { lock, status, pendingSales, lastError, online } = useSyncStore()
+  const m = useMotion()
+  const { lock, status, pendingSales, lastError, online } = useSyncStore(
+    useShallow((s) => ({ lock: s.lock, status: s.status, pendingSales: s.pendingSales, lastError: s.lastError, online: s.online })),
+  )
   const [managers, setManagers] = useState<RosterMember[] | null>(null)
   const [picked, setPicked] = useState<RosterMember | null>(null)
+  const { style: shakeStyle, shake } = useShake()
+  useEffect(() => {
+    const t = setTimeout(() => shake(false), 180)
+    return () => clearTimeout(t)
+  }, [shake])
 
   if (!lock.reason) return null
   const syncing = status === "syncing"
@@ -53,7 +67,9 @@ export function SellingLock() {
   return (
     <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
       <Card style={styles.card}>
-        <Ionicons name={lock.reason === "clock_changed" ? "time-outline" : "lock-closed-outline"} size={44} color={theme.red} />
+        <Animated.View style={shakeStyle}>
+          <Ionicons name={lock.reason === "clock_changed" ? "time-outline" : "lock-closed-outline"} size={44} color={theme.red} />
+        </Animated.View>
         <Text variant="title" align="center" accessibilityRole="header">
           Selling is locked
         </Text>
@@ -92,6 +108,7 @@ export function SellingLock() {
       </Card>
 
       {managers && !picked ? (
+        <Animated.View key="managers" entering={m.riseIn} exiting={m.fadeOut}>
         <Card style={styles.pickCard}>
           <Text variant="bodyStrong" style={styles.pickTitle}>
             Unlock until {lock.overrideUntil ? nairobiClock(lock.overrideUntil) : "12:00"} — who is unlocking?
@@ -116,16 +133,19 @@ export function SellingLock() {
           )}
           <Button title="Cancel" variant="secondary" onPress={() => setManagers(null)} style={styles.cancel} />
         </Card>
+        </Animated.View>
       ) : null}
 
       {picked ? (
-        <PinEntry
-          title={`${picked.name}'s PIN`}
-          subtitle="Selling unlocks until 12:00 today. This is recorded for the owner."
-          submitLabel="Unlock selling"
-          onSubmit={submitPin}
-          onCancel={() => setPicked(null)}
-        />
+        <Animated.View key="pin" entering={m.riseIn} exiting={m.fadeOut}>
+          <PinEntry
+            title={`${picked.name}'s PIN`}
+            subtitle="Selling unlocks until 12:00 today. This is recorded for the owner."
+            submitLabel="Unlock selling"
+            onSubmit={submitPin}
+            onCancel={() => setPicked(null)}
+          />
+        </Animated.View>
       ) : null}
     </ScrollView>
   )

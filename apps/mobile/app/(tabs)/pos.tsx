@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ScrollView, StyleSheet, View, useWindowDimensions, type TextInput } from "react-native"
+import Animated from "react-native-reanimated"
+import { useShallow } from "zustand/react/shallow"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { FlashList } from "@shopify/flash-list"
@@ -10,7 +12,7 @@ import { refreshSyncState, scheduleSoonSync } from "../../src/lib/sync/engine"
 import type { PaymentInput } from "../../src/lib/sync/core/payload"
 import { useSyncStore } from "../../src/store/sync"
 import { useStaffStore } from "../../src/store/staff"
-import { useCartStore } from "../../src/store/cart"
+import { flushCartPersistence, useCartStore } from "../../src/store/cart"
 import { commitLocalSale } from "../../src/repo/sales"
 import { getCurrentStaff } from "../../src/lib/local-auth"
 import { fetchMpesaAvailability, type MpesaAvailability } from "../../src/lib/mpesa"
@@ -18,6 +20,7 @@ import { useSessionStore } from "../../src/store/session"
 import { useShiftStore } from "../../src/store/shift"
 import { confirmSignOut } from "../../src/lib/auth-client"
 import { haptics } from "../../src/lib/haptics"
+import { useMotion } from "../../src/lib/motion"
 import { useTheme } from "../../src/theme/useTheme"
 import { space, TABLET_MIN_WIDTH, radius, type Theme } from "../../src/theme/tokens"
 import {
@@ -26,14 +29,14 @@ import {
 } from "../../src/components"
 import { addScanned, addToCart, topUpAllowance, useRecentScans } from "../../src/features/pos/actions"
 import { getProduct } from "../../src/features/pos/data"
-import { baseQtyInCart, cartTotals, remainingFor, toCartLineInput } from "../../src/features/pos/logic/cart"
+import { baseQtyInCart, cartTotals, toCartLineInput } from "../../src/features/pos/logic/cart"
 import { buildReceiptData, type ReceiptData, type ReceiptPayment } from "../../src/features/pos/logic/receipt"
 import { usePosSearch, type PosProduct } from "../../src/features/pos/usePosSearch"
 import { SearchBar } from "../../src/features/pos/components/SearchBar"
 import { ProductResultRow, QuickAddTile } from "../../src/features/pos/components/ProductParts"
 import { CartLines } from "../../src/features/pos/components/CartLines"
-import { CartSummaryBar, CartTotals } from "../../src/features/pos/components/CartSummary"
-import { PaymentSheet } from "../../src/features/pos/components/PaymentSheet"
+import { CART_BAR_SPACE, CartSummaryBar, CartTotals } from "../../src/features/pos/components/CartSummary"
+import { PaymentSheet, type PaymentSheetProps } from "../../src/features/pos/components/PaymentSheet"
 import { ReceiptView } from "../../src/features/pos/components/ReceiptView"
 import { PosMenu, type PosMenuAction } from "../../src/features/pos/components/PosMenu"
 
@@ -47,17 +50,23 @@ const CART_PANEL_WIDTH = 400
 // (Offline Edition) exactly as R1 — this file only changed the UI around them.
 export default function Pos() {
   const theme = useTheme()
-  const styles = createStyles(theme)
+  const m = useMotion()
+  const styles = useMemo(() => createStyles(theme), [theme])
   const { width } = useWindowDimensions()
   const tablet = width >= TABLET_MIN_WIDTH
 
   const { branchId, branches, loadMe, loaded, error: sessionError } = useSessionStore()
   const { activeShift, loadActiveShift } = useShiftStore()
   // R1: the app-wide sync engine (mounted in the root layout) owns syncing;
-  // this screen only reads its state.
-  const { online: isOnline, lastSyncAt, device, status: syncStatus, lock } = useSyncStore()
+  // this screen only reads its state — just the fields it renders, so a
+  // progress tick or pending-count change doesn't re-render the whole till.
+  const { isOnline, lastSyncAt, device, syncStatus, locked } = useSyncStore(
+    useShallow((s) => ({ isOnline: s.online, lastSyncAt: s.lastSyncAt, device: s.device, syncStatus: s.status, locked: s.lock.locked })),
+  )
   const currentStaff = useStaffStore((s) => s.current)
-  const items = useCartStore((s) => s.items)
+  // Only whether the cart has lines — rows, tiles, the bar and the payment
+  // sheet subscribe to the details they show themselves.
+  const hasItems = useCartStore((s) => s.items.length > 0)
   const recent = useRecentScans((s) => s.recent)
 
   const [query, setQuery] = useState("")
@@ -103,9 +112,9 @@ export default function Pos() {
     void addScanned(event.raw)
   }, [])
 
-  const add = useCallback((p: PosProduct) => {
-    void addToCart(p)
-  }, [])
+  // Stable for memoised rows/tiles; resolves true when it went in (green flash).
+  const add = useCallback((p: PosProduct) => addToCart(p), [])
+  const renderRow = useRenderRow(add)
 
   function openPayment() {
     setCheckoutError(null)
@@ -126,8 +135,11 @@ export default function Pos() {
       },
       payment,
     )
+    // The sale is already committed to SQLite here (commitDeviceSale is
+    // synchronous; commitLocalSale was awaited) — only now does the reveal
+    // start: the payment sheet slides away while the receipt hero plays
+    // (ReceiptView fires the success haptic as its check mark completes).
     cart.clear()
-    haptics.success()
     setPayOpen(false)
     setCartOpen(false)
     setQuery("")
@@ -151,6 +163,7 @@ export default function Pos() {
       setCheckoutError("Selling is locked — sync first")
       return
     }
+    flushCartPersistence()
     setCommitting(true)
     try {
       const attempt = () =>
@@ -202,6 +215,7 @@ export default function Pos() {
         setCheckoutError("No branch selected")
         return
       }
+      flushCartPersistence()
       setCommitting(true)
       try {
         const staffRow = await getCurrentStaff()
@@ -254,7 +268,7 @@ export default function Pos() {
 
   function onSubmitSearch() {
     // Enter on a single match adds it (keyboard-only cashiers).
-    if (results.length === 1 && results[0]) add(results[0])
+    if (results.length === 1 && results[0]) void add(results[0])
   }
 
   async function addRecent(productId: string) {
@@ -281,10 +295,25 @@ export default function Pos() {
 
   // R1 gates (online build): registered phone → selling not locked → someone
   // chosen to sell → session loaded → an open local shift.
+  const gateKind =
+    !OFFLINE_EDITION && (!device || syncStatus === "revoked")
+      ? "device"
+      : !OFFLINE_EDITION && locked
+        ? "lock"
+        : !OFFLINE_EDITION && !currentStaff
+          ? "staff"
+          : !loaded
+            ? sessionError
+              ? "error"
+              : "loading"
+            : !activeShift
+              ? "shift"
+              : null
+
   const gate =
     !OFFLINE_EDITION && (!device || syncStatus === "revoked") ? (
       <DeviceGate />
-    ) : !OFFLINE_EDITION && lock.locked ? (
+    ) : !OFFLINE_EDITION && locked ? (
       <SellingLock />
     ) : !OFFLINE_EDITION && !currentStaff ? (
       <Card style={styles.gateCard}>
@@ -347,13 +376,7 @@ export default function Pos() {
             </Text>
             <View style={styles.grid}>
               {quickAdd.map((p) => (
-                <QuickAddTile
-                  key={p.productId}
-                  product={p}
-                  width={tileWidth}
-                  left={remainingFor(items, p.productId, p.sellable)}
-                  onPress={() => add(p)}
-                />
+                <QuickAddTile key={p.productId} product={p} width={tileWidth} onAdd={add} />
               ))}
             </View>
           </>
@@ -367,19 +390,19 @@ export default function Pos() {
   const productList = (
     <FlashList
       data={results}
-      keyExtractor={(p) => p.productId}
-      extraData={items}
+      keyExtractor={productKey}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       ListHeaderComponent={quickSection}
-      renderItem={({ item }) => <ProductResultRow product={item} left={remainingFor(items, item.productId, item.sellable)} onPress={() => add(item)} />}
+      renderItem={renderRow}
       ListEmptyComponent={
         <EmptyState
           icon={<Ionicons name="search-outline" size={32} color={theme.textTertiary} />}
           message={query ? `No products match "${query.trim()}"` : "No products on this phone yet — sync first"}
         />
       }
-      contentContainerStyle={styles.listContent}
+      // Phone: the cart bar floats over the list's bottom — leave room for it.
+      contentContainerStyle={!tablet && hasItems ? styles.listContentWithBar : styles.listContent}
     />
   )
 
@@ -395,7 +418,7 @@ export default function Pos() {
   )
 
   const selling = (
-    <>
+    <Animated.View key="selling" entering={m.fadeIn} style={styles.pane}>
       {/* Catches a USB/Bluetooth scanner when no text field has focus. */}
       <HardwareScanCatcher onScan={onHardwareScan} enabled={!searchFocused && !payOpen && !menuOpen && !receipt} />
       {/* Offline Edition: branch/shift may come from the cache — informational only. */}
@@ -415,7 +438,7 @@ export default function Pos() {
               <Text variant="title" accessibilityRole="header">
                 Cart
               </Text>
-              {items.length > 0 ? (
+              {hasItems ? (
                 <Button title="Clear" variant="ghost" size="sm" onPress={() => useCartStore.getState().clear()} accessibilityLabel="Clear cart" />
               ) : null}
             </View>
@@ -428,11 +451,13 @@ export default function Pos() {
       ) : (
         <>
           {searchBar}
-          <View style={styles.flex}>{productList}</View>
-          <CartSummaryBar onOpenCart={() => setCartOpen(true)} onPay={openPayment} />
+          <View style={styles.flex}>
+            {productList}
+            <CartSummaryBar onOpenCart={() => setCartOpen(true)} onPay={openPayment} />
+          </View>
         </>
       )}
-    </>
+    </Animated.View>
   )
 
   return (
@@ -440,18 +465,24 @@ export default function Pos() {
       {header}
       {OFFLINE_EDITION ? null : <SyncBanners />}
       {/* R3: gates can hold an input (DeviceGate's phone name) — scroll + lift them above the keyboard. */}
+      {/* Gate ↔ till ↔ receipt swap with a quick cross-fade. (No layout
+          transition here: it would also animate every keyboard open/close.) */}
       {gate ? (
-        <FormScroll>{gate}</FormScroll>
+        <Animated.View key={`gate-${gateKind}`} entering={m.fadeIn} exiting={m.fadeOut} style={styles.flex}>
+          <FormScroll>{gate}</FormScroll>
+        </Animated.View>
       ) : receipt ? (
-        <ReceiptView
-          receipt={receipt.data}
-          queued={receipt.queued}
-          showSyncState={!OFFLINE_EDITION}
-          onNewSale={() => {
-            setReceipt(null)
-            if (tablet) searchRef.current?.focus()
-          }}
-        />
+        <Animated.View key={`receipt-${receipt.data.receiptNumber}`} entering={m.fadeIn} exiting={m.fadeOut} style={styles.flex}>
+          <ReceiptView
+            receipt={receipt.data}
+            queued={receipt.queued}
+            showSyncState={!OFFLINE_EDITION}
+            onNewSale={() => {
+              setReceipt(null)
+              if (tablet) searchRef.current?.focus()
+            }}
+          />
+        </Animated.View>
       ) : (
         selling
       )}
@@ -459,11 +490,10 @@ export default function Pos() {
       <Sheet open={cartOpen && !tablet} onClose={() => setCartOpen(false)} title="Cart" snapPoints={["88%"]} scrollable footer={<CartTotals onPay={openPayment} />}>
         <CartLines />
       </Sheet>
-      <PaymentSheet
+      <CartPaymentSheet
         key={payNonce}
         open={payOpen}
         onClose={() => setPayOpen(false)}
-        items={items}
         mpesaOffered={mpesaOffered}
         isOnline={isOnline}
         committing={committing}
@@ -478,6 +508,19 @@ export default function Pos() {
   )
 }
 
+const productKey = (p: PosProduct) => p.productId
+
+/** Stable renderItem: rows read their own "N left" from the cart store. */
+function useRenderRow(add: (p: PosProduct) => Promise<boolean>) {
+  return useCallback(({ item }: { item: PosProduct }) => <ProductResultRow product={item} onAdd={add} />, [add])
+}
+
+/** The payment sheet reads the cart itself so the till screen doesn't re-render per line. */
+function CartPaymentSheet(props: Omit<PaymentSheetProps, "items">) {
+  const items = useCartStore((s) => s.items)
+  return <PaymentSheet {...props} items={items} />
+}
+
 function createStyles(theme: Theme) {
   return StyleSheet.create({
     container: { gap: space.sm, paddingBottom: space.sm },
@@ -490,6 +533,8 @@ function createStyles(theme: Theme) {
     recentRow: { gap: space.sm },
     grid: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
     listContent: { paddingBottom: space.lg },
+    listContentWithBar: { paddingBottom: CART_BAR_SPACE + space.sm },
+    pane: { flex: 1, gap: space.sm },
     split: { flex: 1, flexDirection: "row", gap: space.lg },
     leftPane: { flex: 1, gap: space.sm },
     cartPanel: {

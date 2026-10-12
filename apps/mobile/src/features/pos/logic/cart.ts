@@ -121,3 +121,23 @@ export function lineCap(items: CartItem[], line: CartItem): number {
 export function remainingFor(items: CartItem[], productId: string, stockOnHand: number): number {
   return Math.max(0, stockOnHand - baseQtyInCart(items, productId))
 }
+
+// ── Undo a removed line ─────────────────────────────────────────────────────
+
+export type RestoreResult = { ok: true; items: CartItem[] } | { ok: false; reason: "exists" | "limit" }
+
+/**
+ * Put a just-removed line back where it was (Undo on the "Removed" toast).
+ * Refuses when the same line was re-added meanwhile ("exists" — the cashier
+ * already fixed it) or when it no longer fits the current stock/allowance
+ * `limit` ("limit" — never oversell). Every line of the product gets the
+ * fresh limit, same as add().
+ */
+export function restoreLine(items: CartItem[], line: CartItem, index: number, limit: number): RestoreResult {
+  const key = lineKey(line)
+  if (items.some((i) => lineKey(i) === key)) return { ok: false, reason: "exists" }
+  if (baseQtyInCart(items, line.productId) + line.quantity > limit) return { ok: false, reason: "limit" }
+  const at = Math.max(0, Math.min(Math.floor(index), items.length))
+  const next = [...items.slice(0, at), line, ...items.slice(at)]
+  return { ok: true, items: next.map((i) => (i.productId === line.productId ? { ...i, stockOnHand: limit } : i)) }
+}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Alert, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { Button, Card, ErrorState, ListRow, SkeletonList, Text, useIsOnline } from "../../../components"
 import { formatDateTime, formatTime } from "../../../lib/dates"
 import { scheduleSoonSync } from "../../../lib/sync/engine"
@@ -12,6 +12,7 @@ import type { LocalShiftRow } from "../../../db/schema"
 import { fetchShiftsPage, type ShiftListRow } from "../api"
 import { remoteOpenShifts } from "../logic/shifts"
 import { ForceCloseSheet, type ForceCloseTarget } from "./ForceCloseSheet"
+import { confirm as askConfirm } from "../../../lib/confirm"
 
 // R3: what a manager with shifts.close_others sees under their own shift on
 // the Shifts tab (online build only — the caller hides it in the Offline
@@ -57,25 +58,19 @@ export function OtherOpenShifts({ currentStaffId, activeShiftId }: Props) {
     [remote.data, localShifts, currentStaffId],
   )
 
-  function confirmLocal(sh: LocalShiftRow) {
+  async function confirmLocal(sh: LocalShiftRow) {
     const name = sh.cashierName ?? "this person"
-    Alert.alert(
-      `Close ${name}'s shift?`,
-      "Use this when they forgot to clock out. No cash count is recorded — it's marked as force-closed by you.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Force close",
-          style: "destructive",
-          onPress: async () => {
-            if (await forceCloseLocal(sh.clientId)) {
-              setLocalVersion((v) => v + 1)
-              scheduleSoonSync()
-            }
-          },
-        },
-      ],
-    )
+    const ok = await askConfirm({
+      title: `Close ${name}'s shift?`,
+      message: "Use this when they forgot to clock out. No cash count is recorded — it's marked as force-closed by you.",
+      confirmLabel: "Force close",
+      destructive: true,
+    })
+    if (!ok) return
+    if (await forceCloseLocal(sh.clientId)) {
+      setLocalVersion((v) => v + 1)
+      scheduleSoonSync()
+    }
   }
 
   const showRemoteSection = online && (remote.loading || !!remote.error || remoteOpen.length > 0)

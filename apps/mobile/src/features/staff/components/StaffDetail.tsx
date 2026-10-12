@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useState, type ReactNode } from "react"
-import { Alert, ScrollView, StyleSheet, View } from "react-native"
+import { ScrollView, StyleSheet, View } from "react-native"
 import { normalizeKePhone } from "@pharmatrack/core"
 import { Button, Chip, StatusBadge, Text, TextField } from "../../../components"
 import { errorMessage } from "../../../lib/api"
@@ -12,6 +12,7 @@ import { space } from "../../../theme/tokens"
 import { phoneError } from "../../settings/logic/forms"
 import { patchStaff, removeStaff, resendInvite, setStaffPin, type StaffPatch } from "../data"
 import { ASSIGNABLE_ROLES, branchLabel, roleLabel, staffBadge, staffPinError, type StaffMember } from "../logic/staff"
+import { confirm as askConfirm } from "../../../lib/confirm"
 
 // One staff member: role, branch, phone, active/inactive, set PIN, resend
 // invite, remove — the same actions (and the same PATCH/DELETE calls) as the
@@ -91,21 +92,20 @@ export function StaffDetail({ member, branches, inSheet, onChanged, onRemoved }:
     })
   }
 
-  function onRemove() {
-    Alert.alert("Remove staff member", `Remove ${member.full_name} from this organization? This can't be undone.`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: () =>
-          void run("remove", async () => {
-            const note = await removeStaff(member.id)
-            toast.success(note ?? "Staff member removed")
-            onRemoved()
-            onChanged()
-          }),
-      },
-    ])
+  async function onRemove() {
+    const ok = await askConfirm({
+      title: "Remove staff member",
+      message: `Remove ${member.full_name} from this organization? This can't be undone.`,
+      confirmLabel: "Remove",
+      destructive: true,
+    })
+    if (!ok) return
+    void run("remove", async () => {
+      const note = await removeStaff(member.id)
+      toast.success(note ?? "Staff member removed")
+      onRemoved()
+      onChanged()
+    })
   }
 
   const phoneDirty = normalizeKePhone(phone) !== (member.phone ?? "")

@@ -1,12 +1,14 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
-import { useMemo, useState } from "react"
-import { StyleSheet, View } from "react-native"
-import { Button, Card, DateField, FormScroll, IconButton, Text, TextField } from "../../../components"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Pressable, StyleSheet, View } from "react-native"
+import Animated from "react-native-reanimated"
+import { Button, Card, CheckMark, DateField, FormScroll, IconButton, Text, TextField, useFlash } from "../../../components"
 import { useCan } from "../../../hooks/useCan"
 import { apiJson, errorMessage } from "../../../lib/api"
 import { nairobiToday, parseISODate, toISODate } from "../../../lib/dates"
 import { haptics } from "../../../lib/haptics"
+import { useMotion } from "../../../lib/motion"
 import { captureScan } from "../../../lib/scanCapture"
 import { scanFields } from "../../../lib/stock/scan-fields"
 import { toast } from "../../../lib/toast"
@@ -52,6 +54,10 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
   const [attempted, setAttempted] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lastScanned, setLastScanned] = useState<string | null>(null)
+  // Bumped on every matched scan so the same line pulses again on a re-scan.
+  const [scanTick, setScanTick] = useState(0)
+  // Success interstitial shown briefly before handing the updated order back.
+  const [received, setReceived] = useState<{ order: PurchaseOrderDetail; message: string } | null>(null)
 
   const result = useMemo(() => buildReceivePayload(form, order.items, { canSeeCost, today }), [form, order.items, canSeeCost, today])
   const short = isShort(form, order.items)
@@ -68,6 +74,7 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
     }
     setForm((f) => fillFromScan(f, item.id, fields).form)
     setLastScanned(item.id)
+    setScanTick((n) => n + 1)
     haptics.success()
     toast.success(`Matched ${item.product_name}${fields.batchNumber ? ` · batch ${fields.batchNumber}` : ""}`)
   }
@@ -86,10 +93,10 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
         { method: "POST", body: result.payload },
       )
       haptics.success()
-      toast.success(
-        `${res.batches} batch${res.batches === 1 ? "" : "es"} added to stock${res.complete ? " — order complete" : " — items still outstanding"}`,
-      )
-      onDone(res.order)
+      setReceived({
+        order: res.order,
+        message: `${res.batches} batch${res.batches === 1 ? "" : "es"} added to stock${res.complete ? " — order complete" : " — items still outstanding"}`,
+      })
     } catch (err) {
       haptics.error()
       toast.error(errorMessage(err))
@@ -113,6 +120,7 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
   )
 
   return (
+    <View style={styles.flex}>
     <FormScroll footer={footer}>
       <View style={[styles.tip, { backgroundColor: theme.green50, borderColor: theme.green100 }]}>
         <Ionicons name="barcode-outline" size={20} color={theme.green600} />
@@ -137,6 +145,7 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
           canSeeCost={canSeeCost}
           minExpiry={minExpiry}
           highlight={lastScanned === item.id}
+          pulse={lastScanned === item.id ? scanTick : 0}
           errors={attempted ? result.errors : {}}
           lineError={attempted ? (result.lineErrors[item.id] ?? null) : null}
         />
@@ -170,6 +179,54 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
         ) : null}
       </Card>
     </FormScroll>
+    {received ? (
+      <ReceivedInterstitial message={received.message} onContinue={() => onDone(received.order)} />
+    ) : null}
+    </View>
+  )
+}
+
+const INTERSTITIAL_MS = 1100
+
+/**
+ * "Stock received" moment after a confirmed delivery: a check draws in, then
+ * the order screen takes over on its own (or straight away on tap).
+ */
+function ReceivedInterstitial({ message, onContinue }: { message: string; onContinue: () => void }) {
+  const theme = useTheme()
+  const m = useMotion()
+  const done = useRef(false)
+  const finish = useRef(onContinue)
+  useEffect(() => {
+    finish.current = onContinue
+  })
+  const go = () => {
+    if (done.current) return
+    done.current = true
+    finish.current()
+  }
+  useEffect(() => {
+    const t = setTimeout(go, m.reduced ? 600 : INTERSTITIAL_MS)
+    return () => clearTimeout(t)
+    // Runs once when shown.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return (
+    <Animated.View entering={m.fadeIn} style={[styles.interstitial, { backgroundColor: theme.bg }]}>
+      <Pressable onPress={go} accessibilityRole="button" accessibilityLabel={`${message}. Continue`} style={styles.interstitialBody}>
+        <Animated.View entering={m.popAt(60)} style={[styles.successDisc, { backgroundColor: theme.green50 }]}>
+          <CheckMark size={56} color={theme.green600} delay={m.reduced ? 0 : 180} />
+        </Animated.View>
+        <Animated.View entering={m.stagger(0, 220)}>
+          <Text variant="title" align="center" accessibilityRole="header">
+            Stock received
+          </Text>
+          <Text tone="secondary" align="center">
+            {message}
+          </Text>
+        </Animated.View>
+      </Pressable>
+    </Animated.View>
   )
 }
 
@@ -180,12 +237,18 @@ interface LineCardProps {
   canSeeCost: boolean
   minExpiry: Date
   highlight: boolean
+  /** Changes on every matched scan of this line → one green pulse. */
+  pulse: number
   errors: ReturnType<typeof buildReceivePayload>["errors"]
   lineError: string | null
 }
 
-function LineCard({ item, form, setForm, canSeeCost, minExpiry, highlight, errors, lineError }: LineCardProps) {
+function LineCard({ item, form, setForm, canSeeCost, minExpiry, highlight, pulse, errors, lineError }: LineCardProps) {
   const theme = useTheme()
+  const { style: flashStyle, flash } = useFlash()
+  useEffect(() => {
+    if (pulse > 0) flash()
+  }, [pulse, flash])
   const line = form.lines[item.id]
   if (!line) return null
   const out = outstandingPacks(item)
@@ -197,6 +260,7 @@ function LineCard({ item, form, setForm, canSeeCost, minExpiry, highlight, error
 
   return (
     <Card style={[styles.line, highlight && { borderColor: theme.green }, !line.included && styles.dim]}>
+      <Animated.View pointerEvents="none" style={[styles.pulse, { backgroundColor: theme.green100 }, flashStyle]} />
       <CheckRow checked={line.included} onChange={(v) => setForm((f) => setIncluded(f, item.id, v))} title={name} subtitle={subtitle} />
       {line.included ? (
         <View style={styles.batches}>
@@ -327,4 +391,8 @@ const styles = StyleSheet.create({
   addBatch: { alignSelf: "flex-start" },
   summary: { gap: space.xs, padding: space.md },
   footer: { flexDirection: "row", gap: space.sm, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth },
+  pulse: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: radius.lg - 2, opacity: 0 },
+  interstitial: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 },
+  interstitialBody: { flex: 1, alignItems: "center", justifyContent: "center", gap: space.lg, padding: space.xl },
+  successDisc: { width: 96, height: 96, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
 })

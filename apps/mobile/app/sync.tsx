@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Alert, ScrollView, StyleSheet, View } from "react-native"
+import { ScrollView, StyleSheet, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useSyncStore } from "../src/store/sync"
 import { refreshSyncState, syncNow } from "../src/lib/sync/engine"
@@ -11,6 +11,7 @@ import { toast } from "../src/lib/toast"
 import { useTheme } from "../src/theme/useTheme"
 import { space } from "../src/theme/tokens"
 import { Button, Card, DeviceGate, EmptyState, ListRow, Screen, ScreenHeader, StatusBadge, Text, type BadgeStatus } from "../src/components"
+import { confirm as askConfirm } from "../src/lib/confirm"
 
 // Full sync status (R1 rule 10): what's waiting, what the server refused and
 // why, and a manual "Sync now". Rejected items are never deleted — Dismiss
@@ -54,23 +55,19 @@ export default function SyncScreen() {
     reload()
   }
 
-  function onDismiss(item: OutboxRecord) {
-    Alert.alert(
-      "Dismiss this item?",
-      "The server did NOT record it. Only dismiss once it has been recorded manually (e.g. on the web) — it stays in this phone's history either way.",
-      [
-        { text: "Keep it", style: "cancel" },
-        {
-          text: "It's recorded — dismiss",
-          style: "destructive",
-          onPress: () => {
-            dismissRejected(item.seq)
-            refreshSyncState()
-            reload()
-          },
-        },
-      ],
-    )
+  async function onDismiss(item: OutboxRecord) {
+    const ok = await askConfirm({
+      title: "Dismiss this item?",
+      message:
+        "The server did NOT record it. Only dismiss once it has been recorded manually (e.g. on the web) — it stays in this phone's history either way.",
+      cancelLabel: "Keep it",
+      confirmLabel: "It's recorded — dismiss",
+      destructive: true,
+    })
+    if (!ok) return
+    dismissRejected(item.seq)
+    refreshSyncState()
+    reload()
   }
 
   const status = STATUS_LABEL[s.status] ?? STATUS_LABEL.idle!

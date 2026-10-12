@@ -1,12 +1,14 @@
+import { AppState } from "react-native"
 import { create } from "zustand"
 import { defaultAllows, STAFF_ROLES, toCents, type StaffRole } from "@pharmatrack/core"
 import { sqlite } from "../db/database"
 import type { ProductRow } from "../db/schema"
 import { env } from "../lib/env"
+import { createDebouncedWriter } from "../lib/debouncedWriter"
 import { kvGetSync, kvSetSync } from "../lib/kv"
 import { sellableFor } from "../lib/sync/commit-sale"
 import {
-  baseQtyInCart, cartTotals, clampDiscount, lineCap, lineKey, unitsPerSell,
+  baseQtyInCart, cartTotals, clampDiscount, lineCap, lineKey, restoreLine, unitsPerSell,
   type CartItem, type CartSellUnit, type CartTotals,
 } from "../features/pos/logic/cart"
 import { useSessionStore } from "./session"
@@ -64,6 +66,8 @@ interface CartState {
   /** Re-read the caps (after an allowance top-up, a sync, or on POS open). */
   refreshLimits: (productIds?: string[]) => void
   remove: (key: string) => void
+  /** Undo a removal: put `line` back at `index` if it still fits (re-checks the cap). */
+  restore: (line: CartItem, index: number) => { ok: true } | { ok: false; reason: "exists" | "limit" }
   clear: () => void
   totals: () => CartTotals
 }
@@ -225,6 +229,14 @@ export const useCartStore = create<CartState>((set, get) => ({
     set((s) => ({ items: s.items.filter((i) => lineKey(i) !== key) }))
   },
 
+  restore(line, index) {
+    const limit = currentLimits([line.productId]).get(line.productId) ?? 0
+    const r = restoreLine(get().items, line, index, limit)
+    if (!r.ok) return r
+    set({ items: r.items })
+    return { ok: true }
+  },
+
   clear() {
     set({ items: [] })
   },
@@ -234,13 +246,36 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 }))
 
-// Persist every change (sync write, a few hundred bytes) — survives a crash
-// or the OS killing the app between scans.
-useCartStore.subscribe((state, prev) => {
-  if (state.items === prev.items) return
+// Persist the cart so a crash or the OS killing the app mid-sale loses
+// nothing. Writes are debounced (300 ms trailing) so a scanning burst is one
+// SQLite write, not one per scan; the window is closed by:
+//  - an EMPTY cart (sale committed / cleared) is written immediately — a
+//    restart must never bring back lines that were already sold;
+//  - the app leaving the foreground flushes (the OS may kill it there);
+//  - the POS flushes right before committing a sale (flushCartPersistence).
+const PERSIST_DEBOUNCE_MS = 300
+
+function persist(items: CartItem[]) {
   try {
-    kvSetSync(KEY, state.items)
+    kvSetSync(KEY, items)
   } catch {
     // Storage failure must never block selling; the cart stays in memory.
   }
+}
+
+const cartWriter = createDebouncedWriter(persist, PERSIST_DEBOUNCE_MS)
+
+useCartStore.subscribe((state, prev) => {
+  if (state.items === prev.items) return
+  if (state.items.length === 0) cartWriter.writeNow(state.items)
+  else cartWriter.schedule(state.items)
+})
+
+/** Write any pending cart change now (before a sale commit, on background). */
+export function flushCartPersistence(): void {
+  cartWriter.flush()
+}
+
+AppState.addEventListener("change", (next) => {
+  if (next !== "active") cartWriter.flush()
 })

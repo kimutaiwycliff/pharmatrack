@@ -1,5 +1,7 @@
 import type { ReactNode } from "react"
-import { StyleSheet, View } from "react-native"
+import { StyleSheet } from "react-native"
+import Animated from "react-native-reanimated"
+import { useMotion } from "../lib/motion"
 import { space } from "../theme/tokens"
 import { Button } from "./Button"
 import { Text } from "./Text"
@@ -16,9 +18,11 @@ interface EmptyStateProps {
 // Centered icon + message for empty lists (e.g. "No products match your
 // search", "Cart is empty") — use this anywhere a list could render zero
 // rows instead of leaving blank space, and offer the obvious next step.
+// Motion: a gentle fade-in so an empty result doesn't flash in.
 export function EmptyState({ icon, title, message, action }: EmptyStateProps) {
+  const m = useMotion()
   return (
-    <View style={styles.container} accessible={!action} accessibilityRole={action ? undefined : "text"}>
+    <Animated.View entering={m.fadeIn} style={styles.container} accessible={!action} accessibilityRole={action ? undefined : "text"}>
       {icon}
       {title ? (
         <Text variant="bodyStrong" align="center">
@@ -31,7 +35,7 @@ export function EmptyState({ icon, title, message, action }: EmptyStateProps) {
       {action ? (
         <Button title={action.label} variant="secondary" onPress={action.onPress} leadingIcon={action.icon} style={styles.action} />
       ) : null}
-    </View>
+    </Animated.View>
   )
 }
 
