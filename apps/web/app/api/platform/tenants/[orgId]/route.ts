@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { asc, desc, eq, sql } from "drizzle-orm"
-import { organization, org_settings, subscription, plan, branch, staff_profile, subscription_payment, tenant_deletion, audit_log } from "@pharmatrack/db"
+import { organization, org_settings, subscription, plan, branch, staff_profile, subscription_payment, tenant_deletion, audit_log, trial_extension_request } from "@pharmatrack/db"
 import { zUuid } from "@/lib/api/validation"
 import { getPlatformContext } from "@/lib/platform"
 import { purgeTenant } from "@/lib/platform/purge"
 import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
+import { ownerContact } from "@/lib/notifications/billing"
+import { duplicateSignalsForOrg } from "@/lib/trials/eligibility"
 
 type OrgSettings = { email?: string; phone?: string; address?: string; registration_number?: string }
 
@@ -40,14 +42,26 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     : []
 
   const [del] = await db.select().from(tenant_deletion).where(eq(tenant_deletion.organization_id, orgId)).limit(1)
+  const [owner, previousTrials, trialRequests] = await Promise.all([
+    ownerContact(orgId),
+    duplicateSignalsForOrg(orgId),
+    db.select().from(trial_extension_request).where(eq(trial_extension_request.organization_id, orgId))
+      .orderBy(desc(trial_extension_request.created_at)).limit(20),
+  ])
 
   return NextResponse.json({
-    tenant: { id: orgRow.id, name: orgRow.name, email: s.email ?? null, phone: s.phone ?? null, address: s.address ?? null, created_at: orgRow.createdAt.toISOString(), subscriptions },
+    tenant: { id: orgRow.id, name: orgRow.name, owner_email: owner?.email ?? null, owner_name: owner?.name ?? null, registration_number: s.registration_number ?? null, email: s.email ?? null, phone: s.phone ?? null, address: s.address ?? null, created_at: orgRow.createdAt.toISOString(), subscriptions },
     branch_count: bc?.n ?? 0,
     staff_count: sc?.n ?? 0,
     plans: plans.map((p) => ({ ...p, price_kes: Number(p.price_kes) })),
     payments: payments.map((p) => ({ ...p, amount_kes: Number(p.amount_kes) })),
     deletion: del ? { scheduled_purge_at: del.scheduled_purge_at, requested_at: del.requested_at } : null,
+    // Other trial_grant rows sharing this tenant's email / Google / reg. no. / IP.
+    previous_trials: previousTrials,
+    trial_requests: trialRequests.map((r) => ({
+      id: r.id, status: r.status, message: r.message, days_granted: r.days_granted,
+      created_at: r.created_at.toISOString(), decided_at: r.decided_at?.toISOString() ?? null,
+    })),
   })
 }
 

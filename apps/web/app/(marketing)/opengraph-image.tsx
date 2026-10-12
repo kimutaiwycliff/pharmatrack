@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og"
+import { STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 
 export const alt = "PharmaTrack — Pharmacy POS & Inventory Software for Kenya"
 export const size = { width: 1200, height: 630 }
@@ -44,7 +45,7 @@ export default function OgImage() {
         </div>
 
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {["Offline POS", "M-Pesa", "Multi-branch", "PPB register", "30-day free trial"].map((t) => (
+          {["Offline POS", "M-Pesa", "Multi-branch", "PPB register", `${STANDARD_TRIAL_DAYS}-day free trial`].map((t) => (
             <div
               key={t}
               style={{

@@ -6,6 +6,7 @@ import { MarketingNav } from "@/components/marketing/MarketingNav"
 import { MarketingFooter } from "@/components/marketing/MarketingFooter"
 import { Analytics } from "@/components/marketing/Analytics"
 import { ContactWidget } from "@/components/marketing/ContactWidget"
+import { STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
 
 // Distinctive display face for headlines — paired with the app's Inter body.
 const display = Bricolage_Grotesque({
@@ -17,7 +18,7 @@ const display = Bricolage_Grotesque({
 export const metadata: Metadata = {
   title: "PharmaTrack — All-in-one pharmacy management for Kenya",
   description:
-    "POS, inventory, M-Pesa, appointments and PPB compliance in one offline-capable platform built for Kenyan pharmacies. Start a 30-day free trial.",
+    `POS, inventory, M-Pesa, appointments and PPB compliance in one offline-capable platform built for Kenyan pharmacies. Start a ${STANDARD_TRIAL_DAYS}-day free trial.`,
   openGraph: {
     title: "PharmaTrack — Run your whole pharmacy in one place",
     description:

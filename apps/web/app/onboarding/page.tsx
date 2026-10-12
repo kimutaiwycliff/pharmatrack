@@ -2,13 +2,13 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { getSession, getTenantContext, isPlatformAdmin } from "@/lib/auth/helpers"
 import { OnboardingForm } from "@/components/onboarding/OnboardingForm"
-import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
+import { trialDaysForSignup } from "@/lib/launch-offer"
 
 export const metadata = { title: "Set up your pharmacy — PharmaTrack" }
 export const dynamic = "force-dynamic"
 
 export default async function OnboardingPage() {
-  const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
+  const trialDays = trialDaysForSignup()
   const session = await getSession()
   if (!session?.user) redirect("/login")
   if (await isPlatformAdmin()) redirect("/platform")
@@ -29,10 +29,20 @@ export default async function OnboardingPage() {
           <h1 className="text-2xl font-bold tracking-tight text-[var(--pt-text)]">
             Welcome{session.user.name ? `, ${session.user.name.split(" ")[0]}` : ""} 👋
           </h1>
-          <p className="text-sm text-[var(--pt-text-secondary)] mt-1.5 mb-6">
-            One last step — name your pharmacy and we&apos;ll set up your {trialDays}-day free trial.
-          </p>
-          <OnboardingForm />
+          {session.user.emailVerified ? (
+            <>
+              <p className="text-sm text-[var(--pt-text-secondary)] mt-1.5 mb-6">
+                One last step — name your pharmacy and we&apos;ll set up your {trialDays}-day free trial.
+              </p>
+              <OnboardingForm />
+            </>
+          ) : (
+            <p className="text-sm text-[var(--pt-text-secondary)] mt-1.5">
+              Please verify your email address before setting up a pharmacy. To start a free trial,{" "}
+              <Link href="/signup" className="font-semibold text-[var(--pt-green-700)] hover:underline">sign up here</Link> —
+              we&apos;ll email you a verification code.
+            </p>
+          )}
         </div>
       </div>
     </div>

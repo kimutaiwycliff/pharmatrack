@@ -2,6 +2,7 @@ import { ShieldAlert, LogOut, Mail, MessageCircle } from "lucide-react"
 import { signOut } from "@/app/(auth)/login/actions"
 import { platformContact } from "@/lib/platform-contact"
 import { PaymentClaimBox } from "@/components/billing/PaymentClaimBox"
+import { TrialExtensionBox } from "@/components/billing/TrialExtensionBox"
 
 const MESSAGES: Record<string, string> = {
   // Generic enough to cover both a lapsed trial (never paid) and a missed
@@ -35,6 +36,8 @@ export function SubscriptionGate({
         </p>
 
         {isOwner && <PaymentClaimBox />}
+        {/* Renders only for a pharmacy with no trial that hasn't paid yet. */}
+        {isOwner && status !== "cancelled" && <TrialExtensionBox className="mt-4" />}
 
         {/* Contact the platform operator (env-configurable) */}
         {hasContact && (

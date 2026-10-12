@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { organization, admin, haveIBeenPwned, captcha } from "better-auth/plugins"
 import { nextCookies } from "better-auth/next-js"
+import { APIError, createAuthMiddleware } from "better-auth/api"
 import { expo } from "@better-auth/expo"
 import { dbAdmin, user, session, account, verification, organization as organizationTable, member, invitation } from "@pharmatrack/db"
 import { sendEmail } from "@/lib/notifications/email"
@@ -42,12 +43,28 @@ export const auth = betterAuth({
     customRules: {
       "/sign-in/email": { window: 300, max: 10 },        // password login
       "/sign-in/pin": { window: 300, max: 10 },          // till PIN login
-      "/sign-up/email": { window: 3600, max: 5 },        // direct Better Auth signup
+      "/sign-up/email": { window: 3600, max: 5 },        // closed publicly (see hooks.before)
       "/request-password-reset": { window: 3600, max: 5 },
       "/forget-password": { window: 3600, max: 5 },
       "/reset-password": { window: 3600, max: 10 },
       "/send-verification-email": { window: 3600, max: 5 },
     },
+  },
+  // Public email sign-up is CLOSED. Every account is created server-side via
+  // `auth.api.signUpEmail()` — self-serve signup (after email-OTP + trial
+  // eligibility checks, lib/provisioning.ts), the first-run /setup operator,
+  // operator provisioning and staff invites. `emailAndPassword.disableSignUp`
+  // can't be used: it also rejects those internal calls. Instead this hook
+  // rejects only requests that arrived over HTTP (`ctx.request` is set by the
+  // router; direct `auth.api.*` calls carry no Request), so
+  // POST /api/auth/sign-up/email can't mint verified-looking accounts that
+  // skip OTP and the one-trial-per-person checks.
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-up/email" && ctx.request) {
+        throw new APIError("FORBIDDEN", { message: "Sign up at /signup to create a PharmaTrack account." })
+      }
+    }),
   },
   emailAndPassword: {
     enabled: true,
@@ -95,6 +112,10 @@ export const auth = betterAuth({
     // pass Better Auth's origin-trust check against `trustedOrigins` above.
     expo(),
     organization({
+      // Tenants are only ever created by our own provisioning code (dbAdmin
+      // inserts), never through the plugin's public /organization/create —
+      // closing it stops a signed-in user from minting extra orgs.
+      allowUserToCreateOrganization: false,
       sendInvitationEmail: async (data) => {
         const url = `${process.env.NEXT_PUBLIC_APP_URL}/auth/accept-invite?id=${data.id}`
         await sendEmail(

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PaymentPeriodDialog } from "@/components/platform/PaymentPeriodDialog"
+import { PreviousTrialsPanel, TrialRequestsPanel, type PreviousTrial, type TrialRequest } from "@/components/platform/TrialSignalsPanel"
 import { daysLeft, endOfNairobiDay, nairobiDay } from "@/lib/billing/period"
 
 interface Plan { id: string; code: string; name: string; price_kes: number; interval: string }
@@ -23,9 +24,14 @@ interface Payment {
   period_start: string | null; period_end: string | null; created_at: string; confirmed_at: string | null; status: string
 }
 interface TenantDetail {
-  tenant: { id: string; name: string; email: string | null; phone: string | null; created_at: string; subscriptions: Sub[] }
+  tenant: {
+    id: string; name: string; email: string | null; phone: string | null; created_at: string; subscriptions: Sub[]
+    owner_email: string | null; owner_name: string | null; registration_number: string | null
+  }
   branch_count: number; staff_count: number; plans: Plan[]; payments: Payment[]
   deletion: { scheduled_purge_at: string; requested_at: string } | null
+  previous_trials: PreviousTrial[]
+  trial_requests: TrialRequest[]
 }
 
 const selectCls = "w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
@@ -182,9 +188,11 @@ export default function TenantDetailPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">{t.name}</h1>
         <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
-          {t.email ?? "—"} · {data.branch_count} branches · {data.staff_count} staff · since {new Date(t.created_at).toLocaleDateString("en-KE", { month: "short", year: "numeric" })}
+          Owner {t.owner_email ?? "—"}{t.email && t.email !== t.owner_email ? ` · ${t.email}` : ""}{t.registration_number ? ` · PPB ${t.registration_number}` : ""} · {data.branch_count} branches · {data.staff_count} staff · since {new Date(t.created_at).toLocaleDateString("en-KE", { month: "short", year: "numeric" })}
         </p>
       </div>
+
+      <TrialRequestsPanel orgId={orgId} requests={data.trial_requests} onChanged={() => void refresh()} />
 
       {/* Subscription */}
       <section className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5">
@@ -279,6 +287,10 @@ export default function TenantDetailPage() {
           </div>
         )}
       </section>
+
+      <div className="mt-5">
+        <PreviousTrialsPanel trials={data.previous_trials} />
+      </div>
 
       {/* Danger zone */}
       <section className="mt-6 rounded-xl border border-[var(--pt-red)]/40 bg-[var(--pt-red-50)] p-5">

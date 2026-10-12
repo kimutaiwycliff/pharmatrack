@@ -1,13 +1,13 @@
 import Link from "next/link"
 import { ArrowRight, ShieldCheck, WifiOff, Smartphone, TrendingUp } from "lucide-react"
-import { launchOfferActive, LAUNCH_TRIAL_DAYS, STANDARD_TRIAL_DAYS } from "@/lib/launch-offer"
+import { trialDaysForSignup } from "@/lib/launch-offer"
 import { getLatestDesktopRelease } from "@/lib/desktop/release"
 import { DesktopDownload } from "@/components/marketing/DesktopDownload"
 import { getLatestAndroidRelease } from "@/lib/android/release"
 import { AndroidDownload } from "@/components/marketing/AndroidDownload"
 
 export async function Hero() {
-  const trialDays = launchOfferActive() ? LAUNCH_TRIAL_DAYS : STANDARD_TRIAL_DAYS
+  const trialDays = trialDaysForSignup()
   const [desktopRelease, androidRelease] = await Promise.all([
     getLatestDesktopRelease(),
     getLatestAndroidRelease(),
