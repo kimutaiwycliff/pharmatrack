@@ -31,3 +31,10 @@
 		header_up X-Forwarded-For {http.request.header.Cf-Connecting-Ip}
 	}
 }
+
+# Other apps co-located on this box (e.g. Fundi POS) keep their own site blocks
+# in infra/certs/sites/*.caddy on the server. That directory is gitignored and
+# skipped by the CI rsync (certs/*), so a PharmaTrack deploy never wipes them.
+# Each app owns its file; after editing one, reload with:
+#   docker exec pharmatrack-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+import /etc/caddy/certs/sites/*.caddy
