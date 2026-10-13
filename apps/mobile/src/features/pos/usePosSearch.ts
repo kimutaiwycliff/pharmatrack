@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { ProductRow } from "../../db/schema"
 import { currentLimits } from "../../store/cart"
 import { quickAddProducts, searchPosProducts } from "./data"
@@ -10,6 +10,7 @@ export interface PosProduct extends ProductRow {
 
 const DEBOUNCE_MS = 120
 const QUICK_ADD_COUNT = 8
+const SEARCH_FAILED = "Couldn't load products on this phone. Tap Retry — if it keeps happening, restart the app."
 
 const withSellable = (rows: ProductRow[]): PosProduct[] => {
   const limits = currentLimits(rows.map((r) => r.productId))
@@ -21,11 +22,17 @@ const withSellable = (rows: ProductRow[]): PosProduct[] => {
  * one may set results, so a slow query for "am" can never overwrite the
  * results for "amox" that finished first. `refreshKey` re-runs it (after a
  * sale, a sync or a top-up) so the "N left" figures stay true.
+ *
+ * A failed read sets `error` (the list then shows it with a Retry, never a
+ * misleading "No products match"); `retry` runs both reads again.
  */
 export function usePosSearch(query: string, refreshKey: unknown) {
   const [results, setResults] = useState<PosProduct[]>([])
   const [quickAdd, setQuickAdd] = useState<PosProduct[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const seq = useRef(0)
+  const retry = useCallback(() => setAttempt((n) => n + 1), [])
 
   useEffect(() => {
     const mine = ++seq.current
@@ -33,16 +40,21 @@ export function usePosSearch(query: string, refreshKey: unknown) {
       () => {
         searchPosProducts(query)
           .then((rows) => {
-            if (mine === seq.current) setResults(withSellable(rows))
+            if (mine !== seq.current) return
+            setResults(withSellable(rows))
+            setError(null)
           })
-          .catch(() => {
-            if (mine === seq.current) setResults([])
+          .catch((err: unknown) => {
+            if (mine !== seq.current) return
+            if (__DEV__) console.warn("[pos search]", err)
+            setResults([])
+            setError(SEARCH_FAILED)
           })
       },
       query.trim() ? DEBOUNCE_MS : 0,
     )
     return () => clearTimeout(t)
-  }, [query, refreshKey])
+  }, [query, refreshKey, attempt])
 
   useEffect(() => {
     let alive = true
@@ -50,11 +62,14 @@ export function usePosSearch(query: string, refreshKey: unknown) {
       .then((rows) => {
         if (alive) setQuickAdd(withSellable(rows))
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        // Quick add is a shortcut — the full list (and its error) still shows.
+        if (__DEV__) console.warn("[pos quick add]", err)
+      })
     return () => {
       alive = false
     }
-  }, [refreshKey])
+  }, [refreshKey, attempt])
 
-  return { results, quickAdd }
+  return { results, quickAdd, error, retry }
 }

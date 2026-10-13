@@ -2,6 +2,7 @@ import { Platform } from "react-native"
 import Constants from "expo-constants"
 import * as SecureStore from "expo-secure-store"
 import { apiFetch } from "../api-fetch"
+import { httpMessage, userMessage } from "../errors"
 import { kvGetSync, kvSetSync } from "../kv"
 import { sqlite } from "../../db/database"
 import { EMPTY_ANCHORS } from "./core/clock"
@@ -59,7 +60,7 @@ export async function registerDevice(name: string, branchId?: string | null): Pr
       }),
     })
   } catch (err) {
-    return { ok: false, error: `Could not reach the server: ${err instanceof Error ? err.message : String(err)}` }
+    return { ok: false, error: userMessage(err) }
   }
   const body = (await res.json().catch(() => ({}))) as {
     error?: string
@@ -70,7 +71,8 @@ export async function registerDevice(name: string, branchId?: string | null): Pr
     if (res.status === 401 || res.status === 403) {
       return { ok: false, error: "Only a manager or owner can register a phone. Sign in as a manager and try again." }
     }
-    return { ok: false, error: body.error ?? `Could not register this phone (HTTP ${res.status})` }
+    if (res.ok) return { ok: false, error: "The server sent an incomplete answer. Please try registering again." }
+    return { ok: false, error: httpMessage(res.status, body.error) }
   }
 
   const device: DeviceInfo = {

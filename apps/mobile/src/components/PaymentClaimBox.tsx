@@ -16,7 +16,8 @@ import { TextField } from "./TextField"
 // see app/billing.tsx) is unreachable once the whole app is gated. Reads
 // GET /api/billing, posts to POST /api/billing/claim-payment — same routes
 // web uses, both allowInactiveSubscription so they work while blocked.
-// Renders nothing when the platform has no payment number configured.
+// Renders nothing when the platform has no payment number configured; when
+// the billing details can't be loaded it says so, with a Retry.
 
 interface BillingData {
   subscription: { plan: { price_kes: number } | null } | null
@@ -39,15 +40,21 @@ export function PaymentClaimBox({ context = "gate", onClaimed }: PaymentClaimBox
   const [refError, setRefError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [justSubmitted, setJustSubmitted] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     apiJson<BillingData>("/api/billing")
       .then((json) => { if (!cancelled) setData(json) })
-      .catch(() => { if (!cancelled) setData(null) })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setData(null)
+        setLoadError(errorMessage(err, "Couldn't load the payment details."))
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [])
+  }, [attempt])
 
   async function submit() {
     const ref = reference.trim()
@@ -75,6 +82,26 @@ export function PaymentClaimBox({ context = "gate", onClaimed }: PaymentClaimBox
         <Text variant="caption" tone="secondary">
           Loading payment details…
         </Text>
+      </View>
+    )
+  }
+  if (loadError) {
+    return (
+      <View style={[styles.box, { borderColor: theme.border, backgroundColor: theme.muted }]} accessibilityLiveRegion="polite">
+        <Text variant="caption" tone="secondary">
+          {loadError} The M-Pesa payment option will show here once they load.
+        </Text>
+        <Button
+          title="Retry"
+          variant="secondary"
+          size="sm"
+          onPress={() => {
+            setLoadError(null)
+            setLoading(true)
+            setAttempt((n) => n + 1)
+          }}
+          leadingIcon={<Ionicons name="refresh-outline" size={16} color={theme.text} />}
+        />
       </View>
     )
   }

@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ScrollView, StyleSheet, View, useWindowDimensions, type TextInput } from "react-native"
 import Animated from "react-native-reanimated"
 import { useShallow } from "zustand/react/shallow"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { FlashList } from "@shopify/flash-list"
 import type { BarcodeScanEvent } from "@pharmatrack/core"
 import { env } from "../../src/lib/env"
 import { AllowanceError, commitDeviceSale } from "../../src/lib/sync/commit-sale"
+import { withTimeout } from "../../src/lib/errors"
 import { refreshSyncState, scheduleSoonSync } from "../../src/lib/sync/engine"
 import type { PaymentInput } from "../../src/lib/sync/core/payload"
 import { useSyncStore } from "../../src/store/sync"
@@ -24,24 +24,37 @@ import { useMotion } from "../../src/lib/motion"
 import { useTheme } from "../../src/theme/useTheme"
 import { space, TABLET_MIN_WIDTH, radius, type Theme } from "../../src/theme/tokens"
 import {
-  Button, Card, Chip, DeviceGate, EmptyState, FormScroll, HardwareScanCatcher, IconButton, Screen, SellingLock, Sheet, StatusBadge, SyncBanners,
+  Button, Card, DeviceGate, FormScroll, HardwareScanCatcher, IconButton, Screen, SellingLock, Sheet, StatusBadge, SyncBanners,
   SyncStatusBar, Text,
 } from "../../src/components"
-import { addScanned, addToCart, topUpAllowance, useRecentScans } from "../../src/features/pos/actions"
-import { getProduct } from "../../src/features/pos/data"
+import { addScanned, topUpAllowance } from "../../src/features/pos/actions"
 import { baseQtyInCart, cartTotals, toCartLineInput } from "../../src/features/pos/logic/cart"
+import { checkoutErrorMessage } from "../../src/features/pos/logic/checkoutError"
+import { mpesaUnavailableNote } from "../../src/features/pos/logic/mpesaNote"
 import { buildReceiptData, type ReceiptData, type ReceiptPayment } from "../../src/features/pos/logic/receipt"
-import { usePosSearch, type PosProduct } from "../../src/features/pos/usePosSearch"
-import { SearchBar } from "../../src/features/pos/components/SearchBar"
-import { ProductResultRow, QuickAddTile } from "../../src/features/pos/components/ProductParts"
+import { createTapGuard } from "../../src/features/pos/logic/tapGuard"
+import { ProductBrowser, type ProductBrowserHandle } from "../../src/features/pos/components/ProductBrowser"
 import { CartLines } from "../../src/features/pos/components/CartLines"
-import { CART_BAR_SPACE, CartSummaryBar, CartTotals } from "../../src/features/pos/components/CartSummary"
+import { CartSummaryBar, CartTotals } from "../../src/features/pos/components/CartSummary"
 import { PaymentSheet, type PaymentSheetProps } from "../../src/features/pos/components/PaymentSheet"
 import { ReceiptView } from "../../src/features/pos/components/ReceiptView"
 import { PosMenu, type PosMenuAction } from "../../src/features/pos/components/PosMenu"
 
 const OFFLINE_EDITION = env.EXPO_PUBLIC_OFFLINE_MODE
 const CART_PANEL_WIDTH = 400
+// M-Pesa availability: each try is time-limited; failures retry with backoff.
+const MPESA_CHECK_TIMEOUT_MS = 15_000
+const MPESA_RETRY_DELAYS_MS = [2_000, 8_000, 30_000]
+const UNCHECKED: MpesaAvailability = { available: false, planAllowed: false, configured: false, failed: true }
+
+/** Wait one frame so a just-set spinner paints before the synchronous SQLite commit blocks the JS thread. */
+const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+
+// A double tap on a navigation button must not push the same screen twice.
+const navGuard = createTapGuard(800)
+function go(path: "/scan" | "/switch-user" | "/shifts") {
+  if (navGuard()) router.push(path)
+}
 
 // R2 POS. Phone: search on top, quick-add + results below, a persistent
 // "N items · Pay" bar; the cart opens in a sheet. Tablet (≥ 768 dp, either
@@ -55,8 +68,11 @@ export default function Pos() {
   const { width } = useWindowDimensions()
   const tablet = width >= TABLET_MIN_WIDTH
 
-  const { branchId, branches, loadMe, loaded, error: sessionError } = useSessionStore()
-  const { activeShift, loadActiveShift } = useShiftStore()
+  // Only the fields used here (not the whole stores), so unrelated updates don't re-render the till.
+  const { branchId, branches, loadMe, loaded, sessionError } = useSessionStore(
+    useShallow((s) => ({ branchId: s.branchId, branches: s.branches, loadMe: s.loadMe, loaded: s.loaded, sessionError: s.error })),
+  )
+  const { activeShift, loadActiveShift } = useShiftStore(useShallow((s) => ({ activeShift: s.activeShift, loadActiveShift: s.loadActiveShift })))
   // R1: the app-wide sync engine (mounted in the root layout) owns syncing;
   // this screen only reads its state — just the fields it renders, so a
   // progress tick or pending-count change doesn't re-render the whole till.
@@ -67,9 +83,7 @@ export default function Pos() {
   // Only whether the cart has lines — rows, tiles, the bar and the payment
   // sheet subscribe to the details they show themselves.
   const hasItems = useCartStore((s) => s.items.length > 0)
-  const recent = useRecentScans((s) => s.recent)
 
-  const [query, setQuery] = useState("")
   const [refreshKey, setRefreshKey] = useState(0)
   const [searchFocused, setSearchFocused] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
@@ -80,10 +94,10 @@ export default function Pos() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [receipt, setReceipt] = useState<{ data: ReceiptData; queued: boolean } | null>(null)
   const [mpesaAvailability, setMpesaAvailability] = useState<MpesaAvailability | null>(null)
-  const [gridWidth, setGridWidth] = useState(0)
   const searchRef = useRef<TextInput>(null)
-
-  const { results, quickAdd } = usePosSearch(query, `${refreshKey}:${lastSyncAt ?? ""}`)
+  const browserRef = useRef<ProductBrowserHandle>(null)
+  // Refs, not state: a second tap can arrive before React re-renders.
+  const paying = useRef(false)
 
   useEffect(() => {
     loadMe()
@@ -99,29 +113,48 @@ export default function Pos() {
     useCartStore.getState().refreshLimits()
   }, [lastSyncAt])
 
-  // Fetched once on screen load — mirrors the web POS's mpesaAvailable query.
+  // Mirrors the web POS's mpesaAvailable query, but a failed check (weak
+  // signal on open) is retried with backoff and again when the phone comes
+  // back online, so the M-Pesa/Split tabs appear without restarting the app.
   useEffect(() => {
-    if (OFFLINE_EDITION) return
-    fetchMpesaAvailability().then(setMpesaAvailability)
-  }, [])
+    if (OFFLINE_EDITION || !isOnline) return
+    if (mpesaAvailability && !mpesaAvailability.failed) return
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const check = async (attempt: number) => {
+      const result = await withTimeout(fetchMpesaAvailability(), MPESA_CHECK_TIMEOUT_MS).catch(() => UNCHECKED)
+      if (!alive) return
+      setMpesaAvailability(result)
+      const delay = MPESA_RETRY_DELAYS_MS[attempt]
+      if (result.failed && delay !== undefined) timer = setTimeout(() => void check(attempt + 1), delay)
+    }
+    void check(0)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+    // Re-run only when connectivity changes (the retries above cover a failed check).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline])
   // M-Pesa/Split are only offered when the tenant's plan+config allow STK
-  // push at all; while loading they stay hidden, same as "not available".
+  // push at all; while loading they stay hidden and the sheet says why.
   const mpesaOffered = mpesaAvailability?.available ?? false
+  // Offline before the first check: say it'll be checked online, not "Checking…".
+  const mpesaNote = mpesaUnavailableNote(mpesaAvailability ?? (isOnline ? null : UNCHECKED), OFFLINE_EDITION)
 
   const onHardwareScan = useCallback((event: BarcodeScanEvent) => {
     void addScanned(event.raw)
   }, [])
 
-  // Stable for memoised rows/tiles; resolves true when it went in (green flash).
-  const add = useCallback((p: PosProduct) => addToCart(p), [])
-  const renderRow = useRenderRow(add)
-
-  function openPayment() {
+  // Stable, so the memoised cart bar / product list keep their props.
+  const openPayment = useCallback(() => {
     setCheckoutError(null)
     setCartOpen(false)
     setPayNonce((n) => n + 1)
     setPayOpen(true)
-  }
+  }, [])
+  const openCart = useCallback(() => setCartOpen(true), [])
+  const cartBar = useMemo(() => <CartSummaryBar onOpenCart={openCart} onPay={openPayment} />, [openCart, openPayment])
 
   function finishSale(receiptNumber: string, payment: ReceiptPayment, cashier: string) {
     const cart = useCartStore.getState()
@@ -142,9 +175,31 @@ export default function Pos() {
     cart.clear()
     setPayOpen(false)
     setCartOpen(false)
-    setQuery("")
+    browserRef.current?.clear()
     setReceipt({ data, queued: !OFFLINE_EDITION && !useSyncStore.getState().online })
     setRefreshKey((k) => k + 1)
+  }
+
+  /**
+   * Every pay handler runs through here: one checkout at a time. A second tap
+   * (or a queued tap landing after the cart was emptied) is ignored instead of
+   * running against a sold cart.
+   */
+  async function oneCheckout(run: () => Promise<void>): Promise<void> {
+    if (paying.current) return
+    paying.current = true
+    try {
+      await run()
+    } finally {
+      paying.current = false
+    }
+  }
+
+  function failCheckout(err: unknown) {
+    if (__DEV__ && !(err instanceof AllowanceError)) console.warn("[checkout]", err)
+    haptics.error()
+    // The commit is one transaction: on failure nothing was saved and the cart is untouched.
+    setCheckoutError(checkoutErrorMessage(err))
   }
 
   // R1 rules 2 + 7: the one commit path for the online build — allowance
@@ -166,6 +221,7 @@ export default function Pos() {
     flushCartPersistence()
     setCommitting(true)
     try {
+      await nextFrame()
       const attempt = () =>
         commitDeviceSale({
           deviceCode: device.code,
@@ -191,21 +247,24 @@ export default function Pos() {
       refreshSyncState()
       scheduleSoonSync()
     } catch (err) {
-      haptics.error()
-      setCheckoutError(err instanceof Error ? err.message : String(err))
+      failCheckout(err)
     } finally {
       setCommitting(false)
     }
   }
 
-  async function onCash(tenderedCents: number) {
+  const onCash = (tenderedCents: number) => oneCheckout(() => payCash(tenderedCents))
+
+  async function payCash(tenderedCents: number) {
+    // Already sold (a late tap as the sheet closes) — nothing to do.
+    if (useCartStore.getState().items.length === 0) return
     setCheckoutError(null)
     const total = cartTotals(useCartStore.getState().items).total
     if (!activeShift) {
       setCheckoutError("Clock in before taking sales")
       return
     }
-    if (useCartStore.getState().items.length === 0 || tenderedCents < total) {
+    if (tenderedCents < total) {
       setCheckoutError("Enter a tendered amount covering the total")
       return
     }
@@ -218,6 +277,7 @@ export default function Pos() {
       flushCartPersistence()
       setCommitting(true)
       try {
+        await nextFrame()
         const staffRow = await getCurrentStaff()
         const { receiptNumber } = await commitLocalSale({
           branchId,
@@ -230,8 +290,7 @@ export default function Pos() {
         })
         finishSale(receiptNumber, receiptPayment, staffRow?.fullName ?? "Staff")
       } catch (err) {
-        haptics.error()
-        setCheckoutError(err instanceof Error ? err.message : String(err))
+        failCheckout(err)
       } finally {
         setCommitting(false)
       }
@@ -240,46 +299,39 @@ export default function Pos() {
     await commitOnline({ method: "cash", tenderedCents }, receiptPayment)
   }
 
-  async function onMpesa(reference: string | null) {
-    if (useCartStore.getState().items.length === 0) return
-    const total = cartTotals(useCartStore.getState().items).total
-    await commitOnline(
-      { method: "mpesa", reference, verified: true },
-      { label: "M-Pesa", paidCents: total, changeCents: 0, mpesaReference: reference },
-    )
-  }
+  const onMpesa = (reference: string | null) =>
+    oneCheckout(async () => {
+      if (useCartStore.getState().items.length === 0) return
+      const total = cartTotals(useCartStore.getState().items).total
+      await commitOnline(
+        { method: "mpesa", reference, verified: true },
+        { label: "M-Pesa", paidCents: total, changeCents: 0, mpesaReference: reference },
+      )
+    })
 
-  async function onTill(code: string | null) {
-    if (useCartStore.getState().items.length === 0) return
-    const total = cartTotals(useCartStore.getState().items).total
-    await commitOnline(
-      { method: "mpesa", reference: code, verified: false },
-      { label: "M-Pesa till", paidCents: total, changeCents: 0, mpesaReference: code },
-    )
-  }
+  const onTill = (code: string | null) =>
+    oneCheckout(async () => {
+      if (useCartStore.getState().items.length === 0) return
+      const total = cartTotals(useCartStore.getState().items).total
+      await commitOnline(
+        { method: "mpesa", reference: code, verified: false },
+        { label: "M-Pesa till", paidCents: total, changeCents: 0, mpesaReference: code },
+      )
+    })
 
-  async function onSplit(cashCents: number, mpesaCents: number, reference: string | null) {
-    if (useCartStore.getState().items.length === 0) return
-    await commitOnline(
-      { method: "split", cashCents, mpesaCents, reference, verified: true },
-      { label: `Cash ${(cashCents / 100).toLocaleString("en-KE")} + M-Pesa`, paidCents: cashCents + mpesaCents, changeCents: 0, mpesaReference: reference },
-    )
-  }
-
-  function onSubmitSearch() {
-    // Enter on a single match adds it (keyboard-only cashiers).
-    if (results.length === 1 && results[0]) void add(results[0])
-  }
-
-  async function addRecent(productId: string) {
-    const p = await getProduct(productId)
-    if (p) await addToCart(p)
-  }
+  const onSplit = (cashCents: number, mpesaCents: number, reference: string | null) =>
+    oneCheckout(async () => {
+      if (useCartStore.getState().items.length === 0) return
+      await commitOnline(
+        { method: "split", cashCents, mpesaCents, reference, verified: true },
+        { label: `Cash ${(cashCents / 100).toLocaleString("en-KE")} + M-Pesa`, paidCents: cashCents + mpesaCents, changeCents: 0, mpesaReference: reference },
+      )
+    })
 
   const menuActions: PosMenuAction[] = [
-    { label: "Scan with camera", icon: "camera-outline", onPress: () => router.push("/scan") },
-    ...(OFFLINE_EDITION ? [] : [{ label: "Switch user", icon: "people-outline" as const, onPress: () => router.push("/switch-user") }]),
-    { label: "Shifts", icon: "time-outline", onPress: () => router.push("/shifts") },
+    { label: "Scan with camera", icon: "camera-outline", onPress: () => go("/scan") },
+    ...(OFFLINE_EDITION ? [] : [{ label: "Switch user", icon: "people-outline" as const, onPress: () => go("/switch-user") }]),
+    { label: "Shifts", icon: "time-outline", onPress: () => go("/shifts") },
     { label: "Sign out", icon: "log-out-outline", onPress: confirmSignOut, danger: true },
   ]
 
@@ -287,7 +339,7 @@ export default function Pos() {
     <View style={styles.header}>
       <View style={styles.headerStatus}>{OFFLINE_EDITION ? <StatusBadge status="ok" label="Offline edition" /> : <SyncStatusBar />}</View>
       <View style={styles.headerActions}>
-        <IconButton icon="barcode-outline" accessibilityLabel="Scan with camera" onPress={() => router.push("/scan")} />
+        <IconButton icon="barcode-outline" accessibilityLabel="Scan with camera" onPress={() => go("/scan")} />
         <IconButton icon="ellipsis-vertical" accessibilityLabel="More options" onPress={() => setMenuOpen(true)} />
       </View>
     </View>
@@ -320,7 +372,7 @@ export default function Pos() {
         <Text align="center">Choose who is selling on this phone</Text>
         <Button
           title="Choose staff"
-          onPress={() => router.push("/switch-user")}
+          onPress={() => go("/switch-user")}
           leadingIcon={<Ionicons name="people-outline" size={18} color={theme.onAccent} />}
         />
       </Card>
@@ -345,76 +397,20 @@ export default function Pos() {
         <Text align="center">Clock in before taking sales</Text>
         <Button
           title="Go to Shifts"
-          onPress={() => router.push("/shifts")}
+          onPress={() => go("/shifts")}
           leadingIcon={<Ionicons name="time-outline" size={18} color={theme.onAccent} />}
         />
       </Card>
     ) : null
 
-  const columns = tablet ? 4 : 2
-  const tileWidth = gridWidth > 0 ? Math.floor((gridWidth - space.sm * (columns - 1)) / columns) : 0
-
-  const quickSection =
-    query.trim() === "" ? (
-      <View style={styles.quickSection} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
-        {recent.length > 0 ? (
-          <>
-            <Text variant="label" tone="secondary">
-              Recently scanned
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentRow} keyboardShouldPersistTaps="handled">
-              {recent.map((r) => (
-                <Chip key={r.productId} label={r.name} accessibilityLabel={`Add ${r.name} again`} onPress={() => void addRecent(r.productId)} />
-              ))}
-            </ScrollView>
-          </>
-        ) : null}
-        {quickAdd.length > 0 && tileWidth > 0 ? (
-          <>
-            <Text variant="label" tone="secondary">
-              Quick add
-            </Text>
-            <View style={styles.grid}>
-              {quickAdd.map((p) => (
-                <QuickAddTile key={p.productId} product={p} width={tileWidth} onAdd={add} />
-              ))}
-            </View>
-          </>
-        ) : null}
-        <Text variant="label" tone="secondary">
-          All products
-        </Text>
-      </View>
-    ) : null
-
-  const productList = (
-    <FlashList
-      data={results}
-      keyExtractor={productKey}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      ListHeaderComponent={quickSection}
-      renderItem={renderRow}
-      ListEmptyComponent={
-        <EmptyState
-          icon={<Ionicons name="search-outline" size={32} color={theme.textTertiary} />}
-          message={query ? `No products match "${query.trim()}"` : "No products on this phone yet — sync first"}
-        />
-      }
-      // Phone: the cart bar floats over the list's bottom — leave room for it.
-      contentContainerStyle={!tablet && hasItems ? styles.listContentWithBar : styles.listContent}
-    />
-  )
-
-  const searchBar = (
-    <SearchBar
-      ref={searchRef}
-      value={query}
-      onChangeText={setQuery}
-      onScan={(code) => void addScanned(code)}
-      onSubmitSearch={onSubmitSearch}
-      onFocusChange={setSearchFocused}
-    />
+  // The search box, quick add and product list (they own the search text, so
+  // typing re-renders only them). Memoised: the till re-rendering for sync
+  // state or a sheet opening doesn't re-render the list.
+  const searchKey = `${refreshKey}:${lastSyncAt ?? ""}`
+  const browser = (children?: ReactNode) => (
+    <ProductBrowser ref={browserRef} inputRef={searchRef} refreshKey={searchKey} tablet={tablet} onFocusChange={setSearchFocused}>
+      {children}
+    </ProductBrowser>
   )
 
   const selling = (
@@ -429,10 +425,7 @@ export default function Pos() {
       ) : null}
       {tablet ? (
         <View style={styles.split}>
-          <View style={styles.leftPane}>
-            {searchBar}
-            <View style={styles.flex}>{productList}</View>
-          </View>
+          <View style={styles.leftPane}>{browser()}</View>
           <View style={[styles.cartPanel, { borderColor: theme.border, backgroundColor: theme.surface }]}>
             <View style={styles.cartHead}>
               <Text variant="title" accessibilityRole="header">
@@ -449,13 +442,7 @@ export default function Pos() {
           </View>
         </View>
       ) : (
-        <>
-          {searchBar}
-          <View style={styles.flex}>
-            {productList}
-            <CartSummaryBar onOpenCart={() => setCartOpen(true)} onPay={openPayment} />
-          </View>
-        </>
+        browser(cartBar)
       )}
     </Animated.View>
   )
@@ -495,24 +482,18 @@ export default function Pos() {
         open={payOpen}
         onClose={() => setPayOpen(false)}
         mpesaOffered={mpesaOffered}
+        mpesaNote={mpesaNote}
         isOnline={isOnline}
         committing={committing}
         error={checkoutError}
-        onCash={(c) => void onCash(c)}
-        onMpesa={(r) => void onMpesa(r)}
-        onTill={(c) => void onTill(c)}
-        onSplit={(c, m, r) => void onSplit(c, m, r)}
+        onCash={onCash}
+        onMpesa={onMpesa}
+        onTill={onTill}
+        onSplit={onSplit}
       />
       <PosMenu open={menuOpen} onClose={() => setMenuOpen(false)} actions={menuActions} />
     </Screen>
   )
-}
-
-const productKey = (p: PosProduct) => p.productId
-
-/** Stable renderItem: rows read their own "N left" from the cart store. */
-function useRenderRow(add: (p: PosProduct) => Promise<boolean>) {
-  return useCallback(({ item }: { item: PosProduct }) => <ProductResultRow product={item} onAdd={add} />, [add])
 }
 
 /** The payment sheet reads the cart itself so the till screen doesn't re-render per line. */
@@ -529,11 +510,6 @@ function createStyles(theme: Theme) {
     headerStatus: { flex: 1 },
     headerActions: { flexDirection: "row", gap: space.xxs },
     gateCard: { gap: space.sm },
-    quickSection: { gap: space.sm, paddingBottom: space.sm },
-    recentRow: { gap: space.sm },
-    grid: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-    listContent: { paddingBottom: space.lg },
-    listContentWithBar: { paddingBottom: CART_BAR_SPACE + space.sm },
     pane: { flex: 1, gap: space.sm },
     split: { flex: 1, flexDirection: "row", gap: space.lg },
     leftPane: { flex: 1, gap: space.sm },

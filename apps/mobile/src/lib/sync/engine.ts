@@ -1,12 +1,12 @@
+import NetInfo from "@react-native-community/netinfo"
 import { sqlite } from "../../db/database"
 import { env } from "../env"
+import { userMessage } from "../errors"
 import { kvGetSync, kvSetSync } from "../kv"
 import { useSyncStore, type SyncSummary } from "../../store/sync"
 import { appVersion, getDeviceInfo, getDeviceToken, META_KEY } from "./device"
 import { deviceFetch, NetworkError, SyncHttpError } from "./http"
-import {
-  bumpAttempts, markRejected, markSynced, noteRetry, outboxCounts, pendingBatch, pendingSaleQuantities, refusedShiftIds,
-} from "./outbox"
+import { bumpAttempts, markRejected, markSynced, noteRetry, outboxCounts, pendingBatch, refusedShiftIds } from "./outbox"
 import { applyPullPage, type PullContext, type PullResponse } from "./pull-apply"
 import { migrateLegacyQueue } from "./legacy"
 import { updateDeadlineReminders } from "./notifications"
@@ -118,6 +118,22 @@ export function setOnline(online: boolean): void {
   useSyncStore.setState({ online, status })
 }
 
+/** What the phone itself says about connectivity (false if it can't tell). */
+async function deviceHasInternet(): Promise<boolean> {
+  try {
+    const net = await NetInfo.fetch()
+    return !!net.isConnected && net.isInternetReachable !== false
+  } catch {
+    return false
+  }
+}
+
+// Messages for people (R1: sales are never at risk, so say so).
+export const OFFLINE_MESSAGE = "No internet — your sales are saved on this phone and will sync when you're back online."
+const REVOKED_MESSAGE = "This phone was removed from the pharmacy's devices. Ask a manager to register it again — sales on it are kept and will upload."
+const SUBSCRIPTION_MESSAGE = "The pharmacy's subscription is inactive — ask the owner to renew it so this phone can sync. Sales stay saved here."
+const RESTART_MESSAGE = "The download had to start over. Tap Sync now to finish it."
+
 // ── Run control ─────────────────────────────────────────────────────────────
 
 export type SyncOutcome = "synced" | "partial" | "offline" | "revoked" | "subscription" | "error" | "unregistered" | "disabled"
@@ -133,35 +149,106 @@ export interface SyncResult {
 }
 
 let running: Promise<SyncResult> | null = null
-let soonTimer: ReturnType<typeof setTimeout> | null = null
+// A forced run waiting for the current one to finish. Further forced calls
+// join it (it starts after them, so it includes what they enqueued) instead of
+// queueing yet another whole sync — a double-tapped "Sync now" runs once more,
+// not twice more.
+let queuedForced: Promise<SyncResult> | null = null
+
+function start(reason: string): Promise<SyncResult> {
+  const run = runSync(reason).finally(() => {
+    if (running === run) running = null
+  })
+  running = run
+  return run
+}
 
 /**
  * Run a sync now. Overlapping calls share the run in progress; `force`
- * (clock-out) waits for it and then runs again, so an item enqueued a moment
- * ago is definitely included.
+ * (clock-out, "Sync now") waits for it and then runs again, so an item
+ * enqueued a moment ago is definitely included.
  */
-export async function syncNow(reason: string, opts: { force?: boolean } = {}): Promise<SyncResult> {
+export function syncNow(reason: string, opts: { force?: boolean } = {}): Promise<SyncResult> {
   if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-    return { ok: false, outcome: "disabled", pushed: 0, rejected: 0, productsUpdated: 0, deleted: 0 }
+    return Promise.resolve({ ok: false, outcome: "disabled", pushed: 0, rejected: 0, productsUpdated: 0, deleted: 0 })
   }
-  while (running) {
-    if (!opts.force) return running
-    await running.catch(() => undefined)
+  if (!running) return start(reason)
+  if (!opts.force) return queuedForced ?? running
+  if (!queuedForced) {
+    const queued: Promise<SyncResult> = running
+      .catch(() => undefined)
+      .then(() => {
+        queuedForced = null
+        // Another caller may have started a run in between; still run after it.
+        return running ? running.catch(() => undefined).then(() => start(reason)) : start(reason)
+      })
+    queuedForced = queued
   }
-  running = runSync(reason).finally(() => {
-    running = null
-  })
-  return running
+  return queuedForced
 }
 
-/** Debounced sync ~2s after a sale, so a burst of sales uploads together. */
-export function scheduleSoonSync(): void {
-  if (env.EXPO_PUBLIC_OFFLINE_MODE) return
+// ── After-sale sync: wait for a quiet moment ───────────────────────────────
+// A sync's database work runs on the JS thread, so it should never land while
+// the cashier is ringing up the next customer. After a sale we wait until the
+// till has been untouched for QUIET_MS and the cart is empty (between
+// customers); a cart that stays full only defers it up to MAX_DEFER_MS, so
+// sales still upload promptly. The 5-minute poll goes through the same gate.
+
+const QUIET_MS = 4000
+const MAX_DEFER_MS = 60_000
+
+let soonTimer: ReturnType<typeof setTimeout> | null = null
+let soonSince: number | null = null
+let soonReason = "after-sale"
+let lastActivity = 0
+let tillBusy: () => boolean = () => false
+
+/** Registers what "the cashier is mid-sale" means (SyncRunner: the cart has lines). */
+export function deferSyncWhile(busy: () => boolean): void {
+  tillBusy = busy
+}
+
+/** Note a cashier interaction (cart change); a pending quiet-time sync waits again. */
+export function noteTillActivity(): void {
+  lastActivity = Date.now()
+  if (soonTimer) armSoonTimer(QUIET_MS)
+}
+
+// Never re-arm past the MAX_DEFER_MS cap: a till whose cart changes more often
+// than QUIET_MS would otherwise push the sync back for as long as it's busy.
+function armSoonTimer(ms: number): void {
   if (soonTimer) clearTimeout(soonTimer)
-  soonTimer = setTimeout(() => {
-    soonTimer = null
-    void syncNow("after-sale")
-  }, 2000)
+  const capLeft = soonSince == null ? ms : Math.max(0, soonSince + MAX_DEFER_MS - Date.now())
+  soonTimer = setTimeout(fireSoonSync, Math.min(ms, capLeft))
+}
+
+function fireSoonSync(): void {
+  soonTimer = null
+  const now = Date.now()
+  const waited = now - (soonSince ?? now)
+  const quietFor = now - lastActivity
+  let busy = false
+  try {
+    busy = tillBusy()
+  } catch {
+    // a broken guard must never stop sales uploading
+  }
+  if (waited < MAX_DEFER_MS && (busy || quietFor < QUIET_MS)) {
+    armSoonTimer(Math.max(1000, QUIET_MS - quietFor))
+    return
+  }
+  soonSince = null
+  syncNow(soonReason).catch((err: unknown) => {
+    if (__DEV__) console.warn("[sync] after-sale sync failed", err)
+  })
+}
+
+/** Sync soon after a sale, once the till is quiet; a burst of sales uploads together. */
+export function scheduleSoonSync(reason = "after-sale"): void {
+  if (env.EXPO_PUBLIC_OFFLINE_MODE) return
+  soonReason = reason
+  if (soonSince == null) soonSince = Date.now()
+  armSoonTimer(QUIET_MS)
 }
 
 export function isSyncRunning(): boolean {
@@ -256,7 +343,6 @@ async function runSync(_reason: string): Promise<SyncResult> {
       first: true,
       last: false,
       refreshedAllocation: refresh,
-      pending: refresh ? new Map() : pendingSaleQuantities(),
       stockMap: new Map(),
       seenProducts: full ? new Set() : null,
       seenPacks: full ? new Set() : null,
@@ -309,7 +395,7 @@ async function runSync(_reason: string): Promise<SyncResult> {
     useSyncStore.setState({
       status: fullySynced ? "idle" : "error",
       online: true,
-      lastError: stopped ? `Some items are waiting for the server: ${stopped.message}` : null,
+      lastError: stopped ? `Some items are still waiting to upload: ${stopped.message}` : null,
       progress: null,
       lastSummary: summary,
     })
@@ -317,26 +403,34 @@ async function runSync(_reason: string): Promise<SyncResult> {
   } catch (err) {
     useSyncStore.setState({ progress: null })
     if (err instanceof NetworkError) {
-      useSyncStore.setState({ status: "offline", online: false, lastError: null })
+      // Only call the phone offline if it really is: a slow or unreachable
+      // server with working internet is a retry, not "offline" (which would
+      // also switch off M-Pesa until NetInfo next reports a change).
+      const hasInternet = await deviceHasInternet()
+      const message = hasInternet ? userMessage(err) : OFFLINE_MESSAGE
+      useSyncStore.setState({ status: hasInternet ? "error" : "offline", online: hasInternet, lastError: hasInternet ? message : null })
       result.outcome = "offline"
-      result.message = "No connection"
+      result.message = message
     } else if (err instanceof SyncHttpError && err.revoked) {
       writeMeta({ revoked: true })
-      useSyncStore.setState({ status: "revoked", lastError: err.message })
+      useSyncStore.setState({ status: "revoked", lastError: REVOKED_MESSAGE })
       result.outcome = "revoked"
-      result.message = err.message
+      result.message = REVOKED_MESSAGE
     } else if (err instanceof SyncHttpError && err.subscriptionInactive) {
       writeMeta({ subscriptionInactive: true })
-      useSyncStore.setState({ status: "error", lastError: "Subscription inactive — renew to keep syncing." })
+      useSyncStore.setState({ status: "error", lastError: SUBSCRIPTION_MESSAGE })
       result.outcome = "subscription"
-      result.message = "Subscription inactive — renew to keep syncing."
+      result.message = SUBSCRIPTION_MESSAGE
     } else if (err instanceof SyncHttpError && err.code === "bad_cursor") {
       // The server didn't like our cursor: start a full download next time.
       writeMeta({ cursor: null })
-      useSyncStore.setState({ status: "error", lastError: "Sync restarted — tap Sync now" })
-      result.message = err.message
+      useSyncStore.setState({ status: "error", lastError: RESTART_MESSAGE })
+      result.message = RESTART_MESSAGE
     } else {
-      const message = err instanceof Error ? err.message : String(err)
+      // SyncHttpError text is already readable; anything else (a bug, SQLite)
+      // becomes a plain sentence — the original goes to the log.
+      if (!(err instanceof SyncHttpError)) console.warn("[sync] run failed", err)
+      const message = userMessage(err, "Sync didn't finish. Your sales are safe on this phone — tap Sync now to try again.")
       useSyncStore.setState({ status: "error", lastError: message })
       result.message = message
     }
@@ -350,9 +444,10 @@ async function runSync(_reason: string): Promise<SyncResult> {
 
 /**
  * Ask the server for `quantity` more units of a product from stock nobody
- * holds. Returns the units granted (0 when offline or none free). The local
+ * holds. Returns the units granted (0 when none are free). The local
  * allowance grows by exactly what was granted — never set to the server's
- * total, which still includes our unsynced sales.
+ * total, which still includes our unsynced sales. Throws NetworkError when
+ * the server can't be reached (so the till can say "no connection").
  */
 export async function requestTopUp(productId: string, quantity: number): Promise<number> {
   if (env.EXPO_PUBLIC_OFFLINE_MODE || quantity <= 0) return 0
@@ -363,6 +458,7 @@ export async function requestTopUp(productId: string, quantity: number): Promise
       method: "POST",
       body: { product_id: productId, quantity: Math.ceil(quantity) },
     })
+    setOnline(true)
     if (res.granted > 0) {
       sqlite.runSync(
         `INSERT INTO allowances (product_id, quantity, reserved_until, updated_at) VALUES (?, ?, ?, ?)
@@ -373,7 +469,14 @@ export async function requestTopUp(productId: string, quantity: number): Promise
     }
     return res.granted
   } catch (err) {
-    if (err instanceof NetworkError) setOnline(false)
+    // Ask the phone rather than assuming offline: the flag only recovers on a
+    // NetInfo change, so a single slow request must not leave M-Pesa disabled.
+    // A connection failure is rethrown so the till can say "no connection"
+    // rather than "none left"; a server refusal is just "nothing granted".
+    if (err instanceof NetworkError) {
+      void deviceHasInternet().then(setOnline)
+      throw err
+    }
     return 0
   }
 }

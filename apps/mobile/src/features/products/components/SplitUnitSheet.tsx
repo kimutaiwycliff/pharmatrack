@@ -46,7 +46,7 @@ export function SplitUnitSheet({ open, product, onClose, onDone }: SplitUnitShee
       onDone()
       onClose()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't change the unit. Nothing was changed — please try again."))
     } finally {
       setSaving(false)
     }

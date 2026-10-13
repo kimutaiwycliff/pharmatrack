@@ -1,4 +1,4 @@
-import { and, eq, gte, lte, desc } from "drizzle-orm"
+import { and, eq, gte, lte, desc, isNotNull, sql, type SQL } from "drizzle-orm"
 import { db } from "../db/database"
 import { sales, saleItems, products, productBatches, staff } from "../db/schema"
 
@@ -7,7 +7,9 @@ import { sales, saleItems, products, productBatches, staff } from "../db/schema"
 // than SQL GROUP BY — a single pharmacy's local dataset is small enough that
 // this is simpler to keep correct than hand-rolled SQL aggregates, the same
 // "small dataset, aggregate in code" approach already used by
-// repo/inventory.ts's listLocalInventory().
+// repo/inventory.ts's listLocalInventory(). The sale lines (with their batch
+// and product cost) are read in ONE joined query per report rather than one
+// query per sale and two per line.
 
 function dateKey(ms: number): string {
   const d = new Date(ms)
@@ -18,19 +20,46 @@ function monthKey(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
 }
 
+interface CostedItem {
+  saleId: string
+  productId: string | null
+  batchId: string | null
+  productName: string
+  quantity: number
+  lineTotalCents: number
+  batchCostCents: number | null
+  productCost: number | null
+}
+
 /** Batch cost first, falling back to the product's own cost_price — matches
  *  CLAUDE.md's "gross profit + margin (batch cost → fallback to product
  *  cost)" rule exactly. */
-async function costCentsForItem(it: typeof saleItems.$inferSelect): Promise<number> {
-  if (it.batchId) {
-    const [batch] = await db.select({ costPriceCents: productBatches.costPriceCents }).from(productBatches).where(eq(productBatches.id, it.batchId)).limit(1)
-    if (batch?.costPriceCents != null) return batch.costPriceCents * it.quantity
-  }
-  if (it.productId) {
-    const [product] = await db.select({ costPrice: products.costPrice }).from(products).where(eq(products.productId, it.productId)).limit(1)
-    if (product?.costPrice != null) return Math.round(product.costPrice * 100) * it.quantity
-  }
+function costCentsForItem(it: CostedItem): number {
+  if (it.batchId && it.batchCostCents != null) return it.batchCostCents * it.quantity
+  if (it.productId && it.productCost != null) return Math.round(it.productCost * 100) * it.quantity
   return 0
+}
+
+/** Every line of the sales matching `where`, with its batch + product cost, grouped by sale. */
+async function itemsBySale(where: SQL | undefined): Promise<Map<string, CostedItem[]>> {
+  const q = db
+    .select({
+      saleId: saleItems.saleId, productId: saleItems.productId, batchId: saleItems.batchId, productName: saleItems.productName,
+      quantity: saleItems.quantity, lineTotalCents: saleItems.lineTotalCents,
+      batchCostCents: productBatches.costPriceCents, productCost: products.costPrice,
+    })
+    .from(saleItems)
+    .innerJoin(sales, eq(sales.id, saleItems.saleId))
+    .leftJoin(productBatches, eq(productBatches.id, saleItems.batchId))
+    .leftJoin(products, eq(products.productId, saleItems.productId))
+  const rows = where ? await q.where(where) : await q
+  const map = new Map<string, CostedItem[]>()
+  for (const r of rows) {
+    const list = map.get(r.saleId)
+    if (list) list.push(r)
+    else map.set(r.saleId, [r])
+  }
+  return map
 }
 
 export async function getLocalDashboard(branchId: string) {
@@ -59,10 +88,10 @@ export async function getLocalDashboard(branchId: string) {
     date, total: v.total / 100, cash: v.cash / 100, mpesa: v.mpesa / 100, transactions: v.transactions,
   })).sort((a, b) => a.date.localeCompare(b.date))
 
+  const todayItems = todaySales.length > 0 ? await itemsBySale(and(eq(sales.branchId, branchId), gte(sales.createdAt, todayStart.getTime()))) : new Map<string, CostedItem[]>()
   const itemsByProduct = new Map<string, { name: string; revenue: number; qty: number }>()
   for (const s of todaySales) {
-    const items = await db.select().from(saleItems).where(eq(saleItems.saleId, s.id))
-    for (const it of items) {
+    for (const it of todayItems.get(s.id) ?? []) {
       const key = it.productId ?? it.productName
       const entry = itemsByProduct.get(key) ?? { name: it.productName, revenue: 0, qty: 0 }
       entry.revenue += it.lineTotalCents
@@ -79,10 +108,17 @@ export async function getLocalDashboard(branchId: string) {
     payment_method: s.paymentMethod, customer_name: s.customerName, created_at: new Date(s.createdAt).toISOString(),
   }))
 
-  const allProducts = await db.select().from(products)
-  const outOfStock = allProducts.filter((p) => (p.stockOnHand ?? 0) <= 0).length
-  const lowStock = allProducts.filter((p) => (p.stockOnHand ?? 0) > 0 && p.stockOnHand! <= p.reorderLevel).length
-  const expiring = allProducts.filter((p) => p.earliestExpiry && Math.ceil((new Date(p.earliestExpiry).getTime() - Date.now()) / 86_400_000) <= 90).length
+  // Stock counts in SQL; expiry read alone so "≤ 90 days" keeps the JS date rule.
+  const [counts] = await db
+    .select({
+      outOfStock: sql<number>`coalesce(sum(case when coalesce(${products.stockOnHand}, 0) <= 0 then 1 else 0 end), 0)`,
+      lowStock: sql<number>`coalesce(sum(case when coalesce(${products.stockOnHand}, 0) > 0 and ${products.stockOnHand} <= ${products.reorderLevel} then 1 else 0 end), 0)`,
+    })
+    .from(products)
+  const expiries = await db.select({ e: products.earliestExpiry }).from(products).where(isNotNull(products.earliestExpiry))
+  const outOfStock = Number(counts?.outOfStock ?? 0)
+  const lowStock = Number(counts?.lowStock ?? 0)
+  const expiring = expiries.filter((p) => p.e && Math.ceil((new Date(p.e).getTime() - Date.now()) / 86_400_000) <= 90).length
 
   return {
     kpis: {
@@ -127,15 +163,16 @@ export async function getLocalReport(opts: { type: "sales" | "inventory" | "fina
   if (opts.branchId) clauses.push(eq(sales.branchId, opts.branchId))
   if (opts.from) clauses.push(gte(sales.createdAt, new Date(opts.from).getTime()))
   if (opts.to) clauses.push(lte(sales.createdAt, new Date(opts.to).getTime()))
-  const rows = clauses.length > 0 ? await db.select().from(sales).where(and(...clauses)) : await db.select().from(sales)
+  const where = clauses.length > 0 ? and(...clauses) : undefined
+  const rows = where ? await db.select().from(sales).where(where) : await db.select().from(sales)
+  const lines = rows.length > 0 ? await itemsBySale(where) : new Map<string, CostedItem[]>()
 
   if (opts.type === "financial") {
     const totalRevenue = rows.reduce((s, r) => s + r.totalAmountCents, 0)
     const totalDiscounts = rows.reduce((s, r) => s + r.discountAmountCents, 0)
     let totalCostCents = 0
     for (const s of rows) {
-      const items = await db.select().from(saleItems).where(eq(saleItems.saleId, s.id))
-      for (const it of items) totalCostCents += await costCentsForItem(it)
+      for (const it of lines.get(s.id) ?? []) totalCostCents += costCentsForItem(it)
     }
     const monthMap = new Map<string, { revenue: number; discounts: number; count: number }>()
     for (const s of rows) {
@@ -192,9 +229,8 @@ export async function getLocalReport(opts: { type: "sales" | "inventory" | "fina
     cEntry.revenue += s.totalAmountCents; cEntry.count += 1
     cashierMap.set(name, cEntry)
 
-    const items = await db.select().from(saleItems).where(eq(saleItems.saleId, s.id))
-    for (const it of items) {
-      const costCents = await costCentsForItem(it)
+    for (const it of lines.get(s.id) ?? []) {
+      const costCents = costCentsForItem(it)
       totalCostCents += costCents
       const key = it.productId ?? it.productName
       const pEntry = productMap.get(key) ?? { name: it.productName, qty: 0, revenue: 0, cost: 0 }
@@ -204,7 +240,7 @@ export async function getLocalReport(opts: { type: "sales" | "inventory" | "fina
   }
 
   const transactions = await Promise.all(rows.sort((a, b) => b.createdAt - a.createdAt).slice(0, 100).map(async (s) => {
-    const itemCount = (await db.select().from(saleItems).where(eq(saleItems.saleId, s.id))).length
+    const itemCount = lines.get(s.id)?.length ?? 0
     return {
       id: s.id, receipt_number: s.receiptNumber ?? "", created_at: new Date(s.createdAt).toISOString(),
       payment_method: s.paymentMethod, total_amount: s.totalAmountCents / 100, discount_amount: s.discountAmountCents / 100,

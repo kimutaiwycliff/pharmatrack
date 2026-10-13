@@ -5,6 +5,7 @@ import { createLocalBranch, createLocalStaff } from "../src/lib/local-auth"
 import { kvSet } from "../src/lib/kv"
 import { space } from "../src/theme/tokens"
 import { Button, FormScroll, Screen, Text, TextField } from "../src/components"
+import { errorMessage } from "../src/lib/api"
 
 // ADR-014 — Offline Edition first-run setup. Shown by app/index.tsx only
 // when isFirstRun() (no `staff` row exists yet) — replaces the online app's
@@ -53,7 +54,7 @@ export default function Setup() {
       await kvSet("offline_current_staff_id", owner.id)
       router.replace("/pos")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Setup failed")
+      setError(errorMessage(err, "Couldn't finish setting up this phone. Check the details and try again."))
     } finally {
       setPending(false)
     }

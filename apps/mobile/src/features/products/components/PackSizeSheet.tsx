@@ -60,7 +60,7 @@ export function PackSizeSheet({ open, productId, baseUnit, packSize, onClose, on
       onSaved(saved)
       onClose()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't save the pack size. Please try again."))
     } finally {
       setBusy(null)
     }
@@ -74,7 +74,7 @@ export function PackSizeSheet({ open, productId, baseUnit, packSize, onClose, on
       onSaved(saved)
       onClose()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't update the pack size. Please try again."))
     } finally {
       setBusy(null)
     }
@@ -96,7 +96,7 @@ export function PackSizeSheet({ open, productId, baseUnit, packSize, onClose, on
       onDeleted(packSize.id)
       onClose()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't delete the pack size. Please try again."))
     } finally {
       setBusy(null)
     }

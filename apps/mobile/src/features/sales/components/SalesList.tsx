@@ -173,7 +173,7 @@ export function SalesList({ selectedKey, onSelect }: SalesListProps) {
           leading={<Ionicons name="search" size={18} color={theme.textTertiary} />}
           trailing={rawSearch ? <IconButton icon="close-circle" accessibilityLabel="Clear search" onPress={() => setRawSearch("")} /> : null}
         />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {DATE_CHIPS.map((c) => (
             <Chip
               key={c.id}

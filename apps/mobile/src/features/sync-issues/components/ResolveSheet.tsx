@@ -24,7 +24,7 @@ export function ResolveSheet({ issue, onClose, onResolved }: { issue: SyncIssue 
       onResolved(issue.id, trimmed || null)
     } catch (err) {
       haptics.error()
-      toast.error(`Couldn't resolve — ${errorMessage(err)}`)
+      toast.error(errorMessage(err, "Couldn't mark it resolved. Please try again."))
     } finally {
       setPending(false)
     }
@@ -36,7 +36,7 @@ export function ResolveSheet({ issue, onClose, onResolved }: { issue: SyncIssue 
       onClose={onClose}
       title="Resolve issue"
       scrollable
-      footer={<Button title="Mark resolved" size="lg" loading={pending} onPress={() => void resolve()} />}
+      footer={<Button title="Mark resolved" size="lg" loading={pending} onPress={() => resolve()} />}
     >
       {issue && k ? (
         <>

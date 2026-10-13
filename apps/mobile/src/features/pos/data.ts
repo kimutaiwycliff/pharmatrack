@@ -3,6 +3,7 @@ import { db, sqlite } from "../../db/database"
 import { productPackSizes, products, type ProductRow } from "../../db/schema"
 import { env } from "../../lib/env"
 import type { CartSellUnit } from "./logic/cart"
+import { createSaleCache, recentSalesCached } from "./logic/saleCache"
 import { topSellers, type SaleLike } from "./logic/topSellers"
 
 // Local-only reads behind the POS (SQLite catalogue cache in the online build,
@@ -34,10 +35,12 @@ export async function searchPosProducts(query: string): Promise<ProductRow[]> {
       return or(like(products.name, p), like(products.brandName, p), like(products.genericName, p), like(products.strength, p))
     }),
   )
-  const packIds = sqlite
-    .getAllSync<{ id: string }>("SELECT product_id AS id FROM product_pack_sizes WHERE barcode = ? AND is_active = 1", [q])
-    .map((r) => r.id)
-  const codeMatch = or(eq(products.gtin, q), eq(products.barcodeRaw, q), packIds.length ? inArray(products.productId, packIds) : undefined)
+  // Pack-size barcodes as a subquery — one SQLite round trip per keystroke, not two.
+  const packIds = db
+    .select({ id: productPackSizes.productId })
+    .from(productPackSizes)
+    .where(and(eq(productPackSizes.barcode, q), eq(productPackSizes.isActive, true)))
+  const codeMatch = or(eq(products.gtin, q), eq(products.barcodeRaw, q), inArray(products.productId, packIds))
   return db
     .select()
     .from(products)
@@ -91,6 +94,8 @@ export function listSellUnits(productId: string): CartSellUnit[] {
     .map(toSellUnit)
 }
 
+const saleCache = createSaleCache()
+
 /** Recent sale lines on this device, newest first, as {product_id, quantity} sets. */
 function recentSales(): SaleLike[] {
   if (OFFLINE_EDITION) {
@@ -107,17 +112,16 @@ function recentSales(): SaleLike[] {
     }
     return [...bySale.values()]
   }
-  const rows = sqlite.getAllSync<{ payload: string }>("SELECT payload FROM outbox WHERE type = 'sale' ORDER BY seq DESC LIMIT 300")
-  const out: SaleLike[] = []
-  for (const r of rows) {
-    try {
-      const p = JSON.parse(r.payload) as SaleLike
-      if (Array.isArray(p.items)) out.push(p)
-    } catch {
-      // unreadable payload — skip it
-    }
-  }
-  return out
+  // Only new outbox rows are read and parsed (see logic/saleCache.ts).
+  const seqs = sqlite
+    .getAllSync<{ seq: number }>("SELECT seq FROM outbox WHERE type = 'sale' ORDER BY seq DESC LIMIT 300")
+    .map((r) => r.seq)
+  return recentSalesCached(saleCache, seqs, (missing) =>
+    sqlite.getAllSync<{ seq: number; payload: string }>(
+      `SELECT seq, payload FROM outbox WHERE seq IN (${missing.map(() => "?").join(",")})`,
+      missing,
+    ),
+  )
 }
 
 /** "Quick add" tiles: this device's best sellers, topped up with the first catalogue products. */

@@ -1,10 +1,11 @@
 import { and, asc, eq, gt, desc, gte, lte, like, or, sql } from "drizzle-orm"
 import * as Crypto from "expo-crypto"
-import { db } from "../db/database"
+import { db, sqlite } from "../db/database"
 import { sales, saleItems, payments, productBatches, products, shifts, controlledSubstanceLog, receiptCounters, staff, branches } from "../db/schema"
 import type { CartItem } from "../store/cart"
 import { lineTotals, toCartLineInput } from "../features/pos/logic/cart"
 import { effectiveUnitPriceCents } from "../lib/sync/core/payload"
+import { UserFacingError } from "../lib/errors"
 
 // ADR-014 — Offline Edition real sale ledger. Unlike lib/sync/sales.ts
 // (queueSale/buildSalePayload — the ONLINE app's "queue now, POST /api/sales
@@ -79,6 +80,27 @@ export interface CommitSaleResult {
  *  refreshes each sold product's cached stock fields. Throws on insufficient
  *  stock rather than partially committing. */
 export async function commitLocalSale(args: CommitSaleArgs): Promise<CommitSaleResult> {
+  // All-or-nothing: without this, a later line running out of stock threw
+  // after earlier lines' batches were already decremented. Drizzle's
+  // expo-sqlite driver runs each query synchronously and its promises resolve
+  // as microtasks, so nothing else can touch the database between BEGIN and
+  // COMMIT (db.transaction() can't be used — see db/database.ts).
+  sqlite.execSync("BEGIN IMMEDIATE")
+  try {
+    const result = await writeLocalSale(args)
+    sqlite.execSync("COMMIT")
+    return result
+  } catch (err) {
+    try {
+      sqlite.execSync("ROLLBACK")
+    } catch {
+      // keep the original error — it's the one that explains what failed
+    }
+    throw err
+  }
+}
+
+async function writeLocalSale(args: CommitSaleArgs): Promise<CommitSaleResult> {
   const saleId = Crypto.randomUUID()
   const receiptNumber = await nextReceiptNumber(args.branchId)
 
@@ -122,7 +144,7 @@ export async function commitLocalSale(args: CommitSaleArgs): Promise<CommitSaleR
       remaining -= take
     }
     if (remaining > 0) {
-      throw new Error(`Insufficient stock for ${item.productName}: need ${item.quantity}, only ${item.quantity - remaining} available`)
+      throw new UserFacingError(`Not enough stock for ${item.productName}: need ${item.quantity}, only ${item.quantity - remaining} available`)
     }
     await refreshProductStockCache(item.productId, args.branchId)
   }
@@ -149,7 +171,8 @@ export async function commitLocalSale(args: CommitSaleArgs): Promise<CommitSaleR
     createdAt: Date.now(),
   })
 
-  for (const row of itemRows) await db.insert(saleItems).values(row)
+  // One multi-row INSERT per table (not one statement — and one commit — per line).
+  if (itemRows.length > 0) await db.insert(saleItems).values(itemRows)
 
   if (args.paymentMethod === "split") {
     if (args.cashAmountCents) await db.insert(payments).values({ id: Crypto.randomUUID(), saleId, method: "cash", amountCents: args.cashAmountCents, createdAt: Date.now() })
@@ -158,14 +181,16 @@ export async function commitLocalSale(args: CommitSaleArgs): Promise<CommitSaleR
     await db.insert(payments).values({ id: Crypto.randomUUID(), saleId, method: args.paymentMethod, amountCents: totalAmountCents, mpesaReceipt: args.paymentMethod === "mpesa" ? (args.mpesaReference ?? null) : null, createdAt: Date.now() })
   }
 
-  for (const line of controlledLines) {
-    await db.insert(controlledSubstanceLog).values({
-      id: Crypto.randomUUID(),
-      saleItemId: line.saleItemId,
-      quantity: line.quantity,
-      batchNumber: line.batchNumber,
-      createdAt: Date.now(),
-    })
+  if (controlledLines.length > 0) {
+    await db.insert(controlledSubstanceLog).values(
+      controlledLines.map((line) => ({
+        id: Crypto.randomUUID(),
+        saleItemId: line.saleItemId,
+        quantity: line.quantity,
+        batchNumber: line.batchNumber,
+        createdAt: Date.now(),
+      })),
+    )
   }
 
   return { saleId, receiptNumber }
@@ -189,7 +214,7 @@ export async function clockInLocal(branchId: string, cashierId: string, openingF
 
 export async function clockOutLocal(shiftId: string, closingCashCents: number, notes: string | null) {
   const [shift] = await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1)
-  if (!shift) throw new Error("Shift not found")
+  if (!shift) throw new UserFacingError("That shift no longer exists. Go back and refresh.")
   const salesRows = await db.select().from(sales).where(eq(sales.shiftId, shiftId))
   const cashSalesCents = salesRows
     .filter((s) => s.paymentMethod === "cash" || s.paymentMethod === "split")

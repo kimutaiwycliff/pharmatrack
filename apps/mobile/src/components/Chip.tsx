@@ -37,6 +37,7 @@ export function Chip({ label, onPress, selected, icon, tone = "default", disable
   return (
     <PressableScale
       onPress={onPress}
+      pressGuardMs={300}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}

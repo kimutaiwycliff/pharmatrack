@@ -114,7 +114,7 @@ export default function Suppliers() {
       setForm(null)
       q.refresh()
     } catch (err) {
-      setFormError(errorMessage(err))
+      setFormError(errorMessage(err, "Couldn't save the supplier. Please try again."))
     } finally {
       setSubmitting(false)
     }
@@ -129,7 +129,7 @@ export default function Suppliers() {
     body = <ErrorState message={q.error} onRetry={q.retry} />
   } else {
     body = (
-      <FlashList
+      <FlashList keyboardShouldPersistTaps="handled"
         data={suppliers}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}

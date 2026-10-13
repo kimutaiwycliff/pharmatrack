@@ -7,6 +7,8 @@ import { env } from "../src/lib/env"
 import { useTheme } from "../src/theme/useTheme"
 import { space } from "../src/theme/tokens"
 import { Button, FormScroll, Screen, ScreenHeader, Text, TextField } from "../src/components"
+import { errorMessage } from "../src/lib/api"
+import { httpMessage } from "../src/lib/errors"
 
 // Mirrors apps/web/app/(auth)/auth/reset/page.tsx: same authClient.requestPasswordReset
 // call. redirectTo points at the WEB app's /auth/set-password (there's no
@@ -30,10 +32,13 @@ export default function ForgotPassword() {
         email: email.trim(),
         redirectTo: `${env.EXPO_PUBLIC_API_URL}/auth/set-password`,
       })
-      if (reqError) throw new Error(reqError.message)
+      if (reqError) {
+        setError(httpMessage(reqError.status || 400, reqError.message))
+        return
+      }
       setSent(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send reset email")
+      setError(errorMessage(err, "Couldn't send the reset email. Check your connection and try again."))
     } finally {
       setSending(false)
     }

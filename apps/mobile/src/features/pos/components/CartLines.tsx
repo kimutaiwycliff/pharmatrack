@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
-import { useMemo, useState } from "react"
+import { memo, useCallback, useMemo, useState } from "react"
 import { StyleSheet, View } from "react-native"
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable"
 import Animated from "react-native-reanimated"
@@ -63,6 +63,7 @@ export function CartLines() {
   const m = useMotion()
   const items = useCartStore((s) => s.items)
   const [editor, setEditor] = useState<{ key: string; mode: EditMode } | null>(null)
+  const openEditor = useCallback((key: string, mode: EditMode) => setEditor({ key, mode }), [])
   const discountAllowed = canGiveDiscount()
 
   if (items.length === 0) {
@@ -72,11 +73,19 @@ export function CartLines() {
   // a removed line fades out and the rest slide up to close the gap.
 
   const editing = editor ? items.find((i) => lineKey(i) === editor.key) ?? null : null
+  // Lines are memoised and get plain numbers (left / cap), so a change to one
+  // line re-renders only the lines of that product, not the whole cart.
   return (
     <View style={styles.list}>
       {items.map((line) => (
         <Animated.View key={lineKey(line)} entering={m.fadeIn} exiting={m.fadeOut} layout={m.layout}>
-          <CartLine line={line} items={items} discountAllowed={discountAllowed} onEdit={(mode) => setEditor({ key: lineKey(line), mode })} />
+          <CartLine
+            line={line}
+            left={remainingFor(items, line.productId, line.stockOnHand)}
+            cap={lineCap(items, line)}
+            discountAllowed={discountAllowed}
+            onEdit={openEditor}
+          />
         </Animated.View>
       ))}
       <LineEditor line={editing} mode={editor?.mode ?? null} onClose={() => setEditor(null)} />
@@ -86,18 +95,21 @@ export function CartLines() {
 
 interface CartLineProps {
   line: CartItem
-  items: CartItem[]
+  /** Base units of the product still free once the whole cart is counted. */
+  left: number
+  /** Most sell units this line may hold (lineCap). */
+  cap: number
   discountAllowed: boolean
-  onEdit: (mode: EditMode) => void
+  /** Stable (useCallback) so memo holds. */
+  onEdit: (key: string, mode: EditMode) => void
 }
 
-function CartLine({ line, items, discountAllowed, onEdit }: CartLineProps) {
+const CartLine = memo(function CartLine({ line, left, cap, discountAllowed, onEdit }: CartLineProps) {
   const theme = useTheme()
   const key = lineKey(line)
   const qty = sellQty(line)
   const unit = sellUnitLabel(line)
   const totals = lineTotals(line)
-  const left = remainingFor(items, line.productId, line.stockOnHand)
   const packs = useMemo(() => listSellUnits(line.productId), [line.productId])
   const title = `${line.productName}${line.productStrength ? ` ${line.productStrength}` : ""}`
 
@@ -146,7 +158,7 @@ function CartLine({ line, items, discountAllowed, onEdit }: CartLineProps) {
           <QuantityStepper
             value={qty}
             min={1}
-            max={lineCap(items, line)}
+            max={cap}
             unitLabel={unit}
             onChange={(n) => void setLineQty(key, n)}
             onLimit={() => void setLineQty(key, qty + 1)}
@@ -155,7 +167,7 @@ function CartLine({ line, items, discountAllowed, onEdit }: CartLineProps) {
             <Chip
               label={`${unit} ▾`}
               accessibilityLabel={`Selling by ${unit}. Change unit`}
-              onPress={() => onEdit("unit")}
+              onPress={() => onEdit(key, "unit")}
               style={styles.unitChip}
             />
           ) : null}
@@ -166,7 +178,7 @@ function CartLine({ line, items, discountAllowed, onEdit }: CartLineProps) {
             label="Sell KES ___"
             icon={<Ionicons name="cash-outline" size={16} color={theme.text} />}
             accessibilityLabel={`Sell ${line.productName} by amount`}
-            onPress={() => onEdit("amount")}
+            onPress={() => onEdit(key, "amount")}
           />
           {discountAllowed ? (
             <Chip
@@ -174,7 +186,7 @@ function CartLine({ line, items, discountAllowed, onEdit }: CartLineProps) {
               selected={line.discountPercent > 0}
               icon={<Ionicons name="pricetag-outline" size={16} color={line.discountPercent > 0 ? theme.green600 : theme.text} />}
               accessibilityLabel={`Discount for ${line.productName}`}
-              onPress={() => onEdit("discount")}
+              onPress={() => onEdit(key, "discount")}
             />
           ) : null}
           <ClinicalBadges requiresPrescription={line.requiresPrescription} isControlled={line.isControlled} />
@@ -190,7 +202,7 @@ function CartLine({ line, items, discountAllowed, onEdit }: CartLineProps) {
       </View>
     </ReanimatedSwipeable>
   )
-}
+})
 
 interface EditorProps {
   line: CartItem | null
@@ -213,7 +225,8 @@ function LineEditor({ line, mode, onClose }: EditorProps) {
 
 function UnitPicker({ line, onDone }: { line: CartItem; onDone: () => void }) {
   const theme = useTheme()
-  const packs = listSellUnits(line.productId)
+  // A synchronous SQLite read — once per line, not on every render.
+  const packs = useMemo(() => listSellUnits(line.productId), [line.productId])
   const options: { unit: CartSellUnit | null; label: string; detail: string; price: number }[] = [
     { unit: null, label: line.baseUnit, detail: `1 ${line.baseUnit}`, price: line.unitPrice },
     ...packs.map((p) => ({ unit: p, label: p.label, detail: `${p.unitCount} ${line.baseUnit}s`, price: p.priceCents })),
@@ -286,7 +299,7 @@ function AmountEditor({ line, onDone }: { line: CartItem; onDone: () => void }) 
                 key={o.units}
                 title={`${o.units} ${unit}${o.units === 1 ? "" : "s"} · ${formatKES(o.cents)}`}
                 variant={result.kind === "exact" ? "primary" : "secondary"}
-                onPress={() => void pick(o.units)}
+                onPress={() => pick(o.units)}
                 style={styles.flex}
               />
             ))}

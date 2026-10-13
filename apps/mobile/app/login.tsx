@@ -8,6 +8,9 @@ import { signInEmail, signInPin } from "../src/lib/auth-client"
 import { cacheDeviceUserAfterPinLogin, tryOfflinePinLogin } from "../src/lib/device-users"
 import { verifyLocalPin } from "../src/lib/local-auth"
 import { env } from "../src/lib/env"
+import { errorMessage } from "../src/lib/api"
+import { signInErrorMessage, type AuthFailure } from "../src/lib/auth-errors"
+import { isNetworkProblem } from "../src/lib/errors"
 import { findRosterByPhone, rosterToStaff, verifyRosterPin } from "../src/lib/sync/roster"
 import { adoptSignedInUser, switchStaff } from "../src/lib/sync/staff-session"
 import { useSyncStore } from "../src/store/sync"
@@ -44,9 +47,13 @@ export default function Login() {
     if (error) shake()
   }, [error, shake])
 
+  // A ref, not `pending`: two quick taps (or Return + tap) land before the
+  // re-render, so a state guard would let both submit.
+  const busy = useRef(false)
+
   async function onSubmit() {
-    // Return key on the last field can fire while a submit is in flight.
-    if (pending) return
+    if (busy.current) return
+    busy.current = true
     setError(null)
     setPending(true)
     try {
@@ -61,7 +68,7 @@ export default function Login() {
       } else if (mode === "email") {
         const { error: signInError } = await signInEmail(email, password)
         if (signInError) {
-          setError(signInError.message ?? "Invalid email or password")
+          setError(signInErrorMessage(signInError, "email"))
           return
         }
         await adoptSignedInUser()
@@ -70,16 +77,22 @@ export default function Login() {
         // "wrong PIN" (or similar) 401 here must never be second-guessed by
         // falling back to the offline cache below. Only a genuine network
         // failure (authClient.$fetch throwing, since catchAllError isn't set)
-        // reaches the catch block and attempts the offline PIN check.
+        // attempts the offline PIN check; any other throw is a real error.
+        let reached = true
         try {
           const { error: pinError } = await signInPin(phone, pin)
           if (pinError) {
-            setError((pinError as { message?: string }).message ?? "Invalid phone or PIN")
+            setError(signInErrorMessage(pinError as AuthFailure, "pin"))
             return
           }
+        } catch (err) {
+          if (!isNetworkProblem(err)) throw err
+          reached = false
+        }
+        if (reached) {
           await cacheDeviceUserAfterPinLogin(phone, pin)
           await adoptSignedInUser()
-        } catch {
+        } else {
           // R1: on a registered phone the synced staff roster is the offline
           // credential store (server bcrypt hashes) — no cached cookie needed.
           const member = useSyncStore.getState().device ? findRosterByPhone(phone) : null
@@ -102,7 +115,10 @@ export default function Login() {
         }
       }
       router.replace("/checking")
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't sign you in. Check your details and connection, then try again."))
     } finally {
+      busy.current = false
       setPending(false)
     }
   }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { StyleSheet } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated"
+import { errorMessage } from "../lib/api"
 import { useMotion } from "../lib/motion"
 import { useTheme } from "../theme/useTheme"
 import { motion, space } from "../theme/tokens"
@@ -34,25 +35,34 @@ export function PinEntry({ title, subtitle, submitLabel = "Continue", onSubmit, 
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const { style: shakeStyle, shake } = useShake()
+  // Ref guard: a second tap lands before `pending` re-renders.
+  const busy = useRef(false)
 
   async function submit() {
-    if (pending) return
+    if (busy.current) return
     if (pin.length < MIN_PIN) {
       setError("Enter the 4-digit PIN")
       shake()
       return
     }
+    busy.current = true
     setError(null)
     setPending(true)
+    let err: string | null
     try {
-      const err = await onSubmit(pin)
-      if (err) {
-        setError(err)
-        setPin("")
-        shake()
-      }
+      err = await onSubmit(pin)
+    } catch (e) {
+      // onSubmit itself failed (switching staff, saving the override) —
+      // say so instead of leaving the keypad looking stuck.
+      err = errorMessage(e, "Couldn't continue with that PIN. Please try again.")
     } finally {
+      busy.current = false
       setPending(false)
+    }
+    if (err) {
+      setError(err)
+      setPin("")
+      shake()
     }
   }
 

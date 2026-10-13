@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { router, useLocalSearchParams } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
@@ -177,16 +177,22 @@ function ReceiveForm() {
       if (f.batchNumber || f.expiry) toast.info("Batch and expiry filled from the pack")
       else toast.info(`${target.name} selected — enter the batch and expiry`)
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't read that barcode. Try scanning again."))
     } finally {
       setScanning(false)
     }
   }
 
+  // Ref guard (not `saving`): a second tap before the re-render would POST a
+  // duplicate batch — the server has no idempotency key for this route.
+  const submitting = useRef(false)
+
   async function submit() {
+    if (submitting.current) return
     setSubmitted(true)
     if (!result.ok || !product) return
     const body = result.body
+    submitting.current = true
     setSaving(true)
     try {
       if (OFFLINE) {
@@ -205,8 +211,9 @@ function ReceiveForm() {
       toast.success(`Received ${body.quantity_received.toLocaleString("en-KE")} × ${product.name}`)
       setReceived({ product, units: body.quantity_received, batchNumber: body.batch_number })
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't receive the stock. Check the details and try again."))
     } finally {
+      submitting.current = false
       setSaving(false)
     }
   }
@@ -233,7 +240,7 @@ function ReceiveForm() {
       if (mode === "print") await printLabel(input)
       else await shareLabelPDF(input)
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't make the barcode stickers. Check the printer and try again."))
     } finally {
       setPrinting(null)
     }
@@ -262,7 +269,7 @@ function ReceiveForm() {
                 <Button
                   title="Print"
                   variant="secondary"
-                  onPress={() => void labels("print")}
+                  onPress={() => labels("print")}
                   loading={printing === "print"}
                   leadingIcon={<Ionicons name="print-outline" size={18} color={theme.text} />}
                   style={styles.flex}
@@ -270,7 +277,7 @@ function ReceiveForm() {
                 <Button
                   title="Share PDF"
                   variant="secondary"
-                  onPress={() => void labels("share")}
+                  onPress={() => labels("share")}
                   loading={printing === "share"}
                   leadingIcon={<Ionicons name="share-outline" size={18} color={theme.text} />}
                   style={styles.flex}
@@ -300,7 +307,7 @@ function ReceiveForm() {
             <View style={[styles.footer, { borderTopColor: theme.border, backgroundColor: theme.bg }]}>
               <Button
                 title="Receive stock"
-                onPress={() => void submit()}
+                onPress={() => submit()}
                 loading={saving}
                 leadingIcon={<Ionicons name="checkmark-circle-outline" size={20} color={theme.onAccent} />}
               />
@@ -310,7 +317,7 @@ function ReceiveForm() {
           <Button
             title={scanning ? "Opening camera…" : "Scan pack barcode"}
             variant="secondary"
-            onPress={() => void scan()}
+            onPress={() => scan()}
             disabled={scanning}
             accessibilityHint="A GS1 DataMatrix fills in the batch number and expiry"
             leadingIcon={<Ionicons name="scan-outline" size={20} color={theme.text} />}

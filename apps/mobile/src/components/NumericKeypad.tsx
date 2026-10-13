@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
+import { useLayoutEffect, useRef } from "react"
 import { StyleSheet, Text, View } from "react-native"
 import { haptics } from "../lib/haptics"
 import { applyKeypadKey, applyPinKey, type KeypadKey } from "../lib/keypad"
@@ -33,9 +34,18 @@ export function NumericKeypad({ value, onChange, maxLength = 7, hideDoubleZero, 
   const theme = useTheme()
   const pin = mode === "pin"
   const noDoubleZero = hideDoubleZero || pin
+  // Build on the latest value, not the one from the last render: two quick
+  // taps can land before the parent re-renders, and the second would
+  // otherwise overwrite the first digit.
+  const latest = useRef(value)
+  useLayoutEffect(() => {
+    latest.current = value
+  })
   const press = (key: KeypadKey) => {
     haptics.tick()
-    onChange(pin ? applyPinKey(value, key, maxLength) : applyKeypadKey(value, key, maxLength))
+    const next = pin ? applyPinKey(latest.current, key, maxLength) : applyKeypadKey(latest.current, key, maxLength)
+    latest.current = next
+    onChange(next)
   }
   return (
     <View style={styles.grid}>

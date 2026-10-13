@@ -57,14 +57,17 @@ function useLeft(productId: string, sellable: number): number {
   return useCartStore((s) => remainingFor(s.items, productId, sellable))
 }
 
-/** Press → add → brief green flash on success (opacity only, UI thread). */
+/**
+ * Press → add → brief green flash on success (opacity only, UI thread).
+ * Returns the add's promise so PressableScale ignores this row while a slow
+ * allowance top-up is in flight (a plain add settles at once).
+ */
 function useAddPress<P extends ProductTileData>(product: P, onAdd: RowProps<P>["onAdd"]) {
   const { style, flash } = useFlash()
-  const onPress = () => {
-    void Promise.resolve(onAdd(product)).then((ok) => {
+  const onPress = () =>
+    Promise.resolve(onAdd(product)).then((ok) => {
       if (ok !== false) flash()
     })
-  }
   return { flashStyle: style, onPress }
 }
 
@@ -78,15 +81,16 @@ function ProductResultRowImpl<P extends ProductTileData>({ product, onAdd }: Row
   const sub = [product.genericName && product.genericName !== product.name ? product.genericName : null, product.brandName]
     .filter(Boolean)
     .join(" · ")
+  // Never `disabled` when none are left: only greyed. The tap still goes to
+  // addToCart, which asks the server for more allowance (online build) or
+  // says why it can't add — a disabled row would silently swallow the tap.
   return (
     <PressableScale
       onPress={onPress}
-      disabled={none}
       scaleTo={motion.rowPressScale}
       accessibilityRole="button"
       accessibilityLabel={`${product.name}${product.strength ? ` ${product.strength}` : ""}, ${leftLabel(left)}`}
-      accessibilityHint={none ? undefined : "Adds one to the cart"}
-      accessibilityState={{ disabled: none }}
+      accessibilityHint={none ? (OFFLINE_EDITION ? undefined : "Checks the server for more stock") : "Adds one to the cart"}
       style={({ pressed }) => [
         styles.row,
         { borderBottomColor: theme.border, backgroundColor: pressed ? theme.mutedStrong : theme.surface },
@@ -133,12 +137,11 @@ function QuickAddTileImpl<P extends ProductTileData>({ product, onAdd, width }: 
   const { flashStyle, onPress } = useAddPress(product, onAdd)
   const none = left <= 0
   return (
+    // Greyed, not disabled, when none are left (see ProductResultRow).
     <PressableScale
       onPress={onPress}
-      disabled={none}
       accessibilityRole="button"
-      accessibilityLabel={`Quick add ${product.name}${product.strength ? ` ${product.strength}` : ""}`}
-      accessibilityState={{ disabled: none }}
+      accessibilityLabel={`Quick add ${product.name}${product.strength ? ` ${product.strength}` : ""}${none ? `, ${leftLabel(0)}` : ""}`}
       style={[styles.tile, { width, borderColor: theme.border, backgroundColor: theme.surface }, none && styles.disabled]}
     >
       <Animated.View pointerEvents="none" style={[styles.flash, { backgroundColor: theme.green100 }, flashStyle]} />

@@ -80,7 +80,10 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
       await Linking.openURL(url)
     } catch {
       // WhatsApp not installed (whatsapp:// can't open) — any app will do.
-      await Share.share({ message: text }).catch(() => {})
+      await Share.share({ message: text }).catch((err: unknown) => {
+        if (__DEV__) console.warn("[receipt share]", err)
+        toast.error("Couldn't open WhatsApp or any app to share the receipt. Try Share PDF instead.")
+      })
     }
   }
 
@@ -94,7 +97,8 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
       })
       await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: `Receipt ${receipt.receiptNumber}` })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create the receipt PDF")
+      if (__DEV__) console.warn("[receipt pdf]", err)
+      toast.error("Couldn't create or share the receipt PDF. Try again, or send it by WhatsApp instead.")
     } finally {
       setSharingPdf(false)
     }
@@ -203,7 +207,7 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
           <Button
             title="WhatsApp"
             variant="secondary"
-            onPress={() => void shareWhatsApp()}
+            onPress={shareWhatsApp}
             accessibilityLabel="Share receipt via WhatsApp"
             leadingIcon={<Ionicons name="logo-whatsapp" size={20} color={theme.green600} />}
             style={styles.flex}
@@ -211,7 +215,7 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
           <Button
             title="Share PDF"
             variant="secondary"
-            onPress={() => void sharePdf()}
+            onPress={sharePdf}
             loading={sharingPdf}
             accessibilityLabel="Share receipt as PDF"
             leadingIcon={<Ionicons name="document-text-outline" size={20} color={theme.text} />}

@@ -83,7 +83,7 @@ function OrgFormView({ data, onSaved }: { data: SettingsData; onSaved: (patch: P
       toast.success("Organization updated")
       router.back()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't save the pharmacy details. Please try again."))
     } finally {
       setSaving(false)
     }

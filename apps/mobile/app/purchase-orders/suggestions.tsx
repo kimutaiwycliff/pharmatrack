@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { FlashList } from "@shopify/flash-list"
 import { router } from "expo-router"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { ScrollView, StyleSheet, View } from "react-native"
 import {
   Button, Chip, EmptyState, ErrorState, Money, NeedsInternet, Screen, ScreenHeader, SkeletonList, StatusBadge, Text,
@@ -91,20 +91,28 @@ function Suggestions() {
     [groups],
   )
 
+  // Ref guard: one draft at a time, and never a second one for the same
+  // supplier group (its row disappears only after the re-render).
+  const creatingRef = useRef(false)
+  const createdKeys = useRef(new Set<string>())
+
   async function create(group: SuggestionGroup) {
-    if (!branchId) return
+    if (!branchId || creatingRef.current || createdKeys.current.has(group.key)) return
+    creatingRef.current = true
     setCreating(group.key)
     try {
       const res = await apiJson<{ id: string; po_number: string }>("/api/purchase-orders", {
         method: "POST",
         body: buildDraftOrderBody(branchId, group, canSeeCost),
       })
+      createdKeys.current.add(group.key)
       setDone((d) => new Set(d).add(group.key))
       toast.success(`Draft ${res.po_number} created — review it, then send it to the supplier`)
       router.push({ pathname: "/purchase-orders/[id]", params: { id: res.id } })
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't create the purchase order. Please try again."))
     } finally {
+      creatingRef.current = false
       setCreating(null)
     }
   }
@@ -117,7 +125,7 @@ function Suggestions() {
     <Screen>
       <ScreenHeader title="Restock suggestions" subtitle={subtitle} />
       {scope.canSwitch && scope.isAll ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipBar} contentContainerStyle={styles.chips}>
+        <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={styles.chipBar} contentContainerStyle={styles.chips}>
           {scope.branches.map((b) => (
             <Chip key={b.id} label={b.name} selected={b.id === branchId} onPress={() => setPicked(b.id)} accessibilityLabel={`Restock ${b.name}`} />
           ))}
@@ -130,7 +138,7 @@ function Suggestions() {
       ) : q.error && !q.data ? (
         <ErrorState message={q.error} onRetry={q.retry} />
       ) : (
-        <FlashList
+        <FlashList keyboardShouldPersistTaps="handled"
           data={rows}
           keyExtractor={(r) => (r.type === "item" ? r.key : `${r.type}:${r.group.key}`)}
           getItemType={(r) => r.type}
@@ -144,7 +152,7 @@ function Suggestions() {
               <View style={[styles.footer, { borderColor: theme.border, backgroundColor: theme.surface }]}>
                 <Button
                   title="Create draft PO"
-                  onPress={() => void create(r.group)}
+                  onPress={() => create(r.group)}
                   loading={creating === r.group.key}
                   disabled={creating !== null}
                   accessibilityLabel={`Create a draft purchase order for ${r.group.supplierName}`}

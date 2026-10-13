@@ -99,7 +99,7 @@ export default function NewPrescription() {
       router.back()
     } catch (err) {
       haptics.error()
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't save the prescription. Please try again."))
     } finally {
       setSaving(false)
     }

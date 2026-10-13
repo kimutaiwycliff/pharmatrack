@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { StyleSheet } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
@@ -20,12 +20,22 @@ export default function SwitchUser() {
   const device = useSyncStore((s) => s.device)
   const [roster] = useState<RosterMember[]>(() => listRoster().filter((m) => m.isActive && m.permissions.includes("pos.sell")))
   const [picked, setPicked] = useState<RosterMember | null>(null)
+  // Once switched we're leaving — a late second submit must not replace twice.
+  const done = useRef(false)
 
   async function submit(pin: string): Promise<string | null> {
+    if (done.current) return null
     if (!picked) return "Pick your name"
     const r = await verifyRosterPin(picked.id, pin)
     if (!r.ok) return r.error
-    await switchStaff(rosterToStaff(r.member))
+    if (done.current) return null
+    done.current = true
+    try {
+      await switchStaff(rosterToStaff(r.member))
+    } catch (err) {
+      done.current = false
+      throw err
+    }
     toast.success(`Selling as ${r.member.name}`)
     router.replace("/pos")
     return null

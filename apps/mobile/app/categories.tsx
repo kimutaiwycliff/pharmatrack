@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { RefreshControl, StyleSheet, View } from "react-native"
 import { FlashList } from "@shopify/flash-list"
 import Ionicons from "@expo/vector-icons/Ionicons"
@@ -48,6 +48,10 @@ export default function Categories() {
   const [parentId, setParentId] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Ref guards: Return-key submit bypasses the Save button's own lock, and a
+  // second tap lands before `submitting` re-renders.
+  const busy = useRef(false)
 
   if (!canView) {
     return (
@@ -76,7 +80,7 @@ export default function Categories() {
   }
 
   async function submit() {
-    if (!form || submitting) return
+    if (!form || busy.current) return
     const invalid = categoryNameError(name)
     if (invalid) {
       setFormError(invalid)
@@ -84,6 +88,7 @@ export default function Categories() {
     }
     const trimmed = name.trim()
     setFormError(null)
+    busy.current = true
     setSubmitting(true)
     try {
       if (form.kind === "create") {
@@ -98,32 +103,40 @@ export default function Categories() {
       setForm(null)
       q.refresh()
     } catch (err) {
-      setFormError(errorMessage(err))
+      setFormError(errorMessage(err, "Couldn't save the category. Please try again."))
     } finally {
+      busy.current = false
       setSubmitting(false)
     }
   }
 
-  function confirmDelete(row: CategoryRow) {
+  // Returned to the trash button, which stays locked through confirm + delete.
+  async function confirmDelete(row: CategoryRow) {
+    if (busy.current) return
     const extra = row.childCount > 0 ? " Move or delete its subcategories first." : " Products in it become uncategorised."
-    void askConfirm({
+    const ok = await askConfirm({
       title: "Delete category",
       message: `Delete “${row.cat.name}”? This cannot be undone.${extra}`,
       confirmLabel: "Delete",
       destructive: true,
-    }).then((ok) => {
-      if (ok) void deleteCategory(row.cat)
     })
+    if (ok) await deleteCategory(row.cat)
   }
 
   async function deleteCategory(cat: Category) {
+    if (busy.current) return
+    busy.current = true
+    setDeletingId(cat.id)
     try {
       if (env.EXPO_PUBLIC_OFFLINE_MODE) await deleteLocalCategory(cat.id)
       else await apiJson(`/api/categories/${cat.id}`, { method: "DELETE" })
       toast.success(`Deleted “${cat.name}”`)
       q.refresh()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, `Couldn't delete “${cat.name}”. Please try again.`))
+    } finally {
+      busy.current = false
+      setDeletingId(null)
     }
   }
 
@@ -144,9 +157,10 @@ export default function Categories() {
     body = <ErrorState message={q.error} onRetry={q.retry} />
   } else {
     body = (
-      <FlashList
+      <FlashList keyboardShouldPersistTaps="handled"
         data={rows}
         keyExtractor={(item) => `${item.kind}-${item.cat.id}`}
+        extraData={deletingId}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} tintColor={theme.green} colors={[theme.green]} />}
         ListHeaderComponent={q.error ? <ErrorState compact message={q.error} onRetry={q.retry} /> : null}
@@ -173,8 +187,8 @@ export default function Categories() {
             trailing={
               canManage ? (
                 <View style={styles.actions}>
-                  <IconButton icon="pencil-outline" size={20} color={theme.textSecondary} accessibilityLabel={`Rename ${item.cat.name}`} onPress={() => openRename(item.cat)} />
-                  <IconButton icon="trash-outline" size={20} color={theme.red} accessibilityLabel={`Delete ${item.cat.name}`} onPress={() => confirmDelete(item)} />
+                  <IconButton icon="pencil-outline" size={20} color={theme.textSecondary} accessibilityLabel={`Rename ${item.cat.name}`} onPress={() => openRename(item.cat)} disabled={deletingId === item.cat.id} />
+                  <IconButton icon="trash-outline" size={20} color={theme.red} accessibilityLabel={`Delete ${item.cat.name}`} onPress={() => confirmDelete(item)} disabled={deletingId !== null} />
                 </View>
               ) : null
             }

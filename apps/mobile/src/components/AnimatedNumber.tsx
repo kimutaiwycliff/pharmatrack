@@ -31,7 +31,12 @@ interface AnimatedNumberProps {
 // always ends on the exact value. Tabular figures so digits don't jitter.
 // Only this <Text> re-renders during a roll (one small JS-driven loop — text
 // content can't be animated on the UI thread without a TextInput hack), and
-// TalkBack only ever hears the final value. Rapid changes (typing) snap.
+// TalkBack only ever hears the final value. Rapid changes (typing, quick
+// repeated taps) snap. To keep the JS thread free for taps during a roll it
+// renders at most every ROLL_STEP_MS (~30 fps — still reads as a smooth roll)
+// and skips frames whose text wouldn't change.
+const ROLL_STEP_MS = 32
+
 export function AnimatedNumber({
   value, format, variant = "bodyStrong", tone = "default", align, animate = true, fromZero, delay = 0, duration = motion.duration.number,
   style, animatedStyle, accessibilityLabel,
@@ -60,12 +65,21 @@ export function AnimatedNumber({
     const start = shownRef.current
     let raf = 0
     let t0 = 0
+    let lastStep = 0
     const timer = setTimeout(() => {
       const tick = (ts: number) => {
         if (!t0) t0 = ts
         const t = (ts - t0) / duration
-        set(rollFrame(start, value, t))
-        if (t < 1) raf = requestAnimationFrame(tick)
+        if (t >= 1) {
+          set(value)
+          return
+        }
+        if (ts - lastStep >= ROLL_STEP_MS) {
+          lastStep = ts
+          const n = rollFrame(start, value, t)
+          if (format(n) !== format(shownRef.current)) set(n)
+        }
+        raf = requestAnimationFrame(tick)
       }
       raf = requestAnimationFrame(tick)
     }, delay)

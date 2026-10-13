@@ -68,6 +68,7 @@ export function SyncStatusBar() {
   return (
     <PressableScale
       onPress={() => router.push("/sync")}
+      pressGuardMs={600}
       scaleTo={0.98}
       style={styles.bar}
       accessibilityRole="button"

@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker"
-import { Platform, Pressable, StyleSheet, View } from "react-native"
+import { Platform, StyleSheet, View } from "react-native"
+import { Pressable } from "react-native-gesture-handler"
 import { formatDay, formatTime } from "../lib/dates"
 import { useTheme } from "../theme/useTheme"
 import { radius, space, TOUCH_TARGET } from "../theme/tokens"

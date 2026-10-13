@@ -73,7 +73,7 @@ export default function InventoryImport() {
       file.write(csv)
       await Sharing.shareAsync(file.uri, { mimeType: "text/csv", UTI: "public.comma-separated-values-text" })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not share the template")
+      toast.error(errorMessage(err, "Couldn't share the template. Please try again."))
     }
   }
 
@@ -111,7 +111,7 @@ export default function InventoryImport() {
       setRows(parsedRows)
       setPreview(buildImportPreview(parsedRows))
     } catch (err) {
-      setParseError(err instanceof Error ? err.message : "Could not read that file")
+      setParseError(errorMessage(err, "Couldn't read that file. Make sure it's a CSV saved from Excel or Google Sheets, then try again."))
     } finally {
       setPicking(false)
     }
@@ -128,7 +128,7 @@ export default function InventoryImport() {
       clearFile()
       if (json.failed === 0) toast.success(`Imported ${json.created} product${json.created === 1 ? "" : "s"}`)
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't import the file. Nothing was saved — check your connection and try again."))
     } finally {
       setImporting(false)
     }

@@ -61,22 +61,22 @@ function AdjustForm({ batch, onClose, onSaved }: { batch: Batch; onClose: () => 
       onSaved()
       onClose()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't adjust the stock. Please try again."))
     } finally {
       setSaving(false)
     }
   }
 
-  function confirm() {
+  // Returned to the Save button, which stays locked through confirm + save.
+  async function confirm() {
     if (!plan.valid) return
     const change = plan.delta > 0 ? `+${plan.delta}` : String(plan.delta)
-    void askConfirm({
+    const ok = await askConfirm({
       title: "Save adjustment?",
       message: `Batch ${batch.batch_number}: ${remaining} → ${plan.newRemaining} (${change}) — ${cfg.label}.`,
       confirmLabel: "Save",
-    }).then((ok) => {
-      if (ok) void save()
     })
+    if (ok) await save()
   }
 
   return (

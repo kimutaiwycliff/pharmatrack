@@ -176,7 +176,7 @@ function StaffScreen() {
         autoCorrect={false}
         returnKeyType="search"
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} style={styles.filterBar}>
+      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} style={styles.filterBar}>
         {FILTERS.map((f) => (
           <Chip key={f.key} label={f.label} selected={status === f.key} onPress={() => setStatus(f.key)} accessibilityLabel={`Show ${f.label.toLowerCase()} staff`} />
         ))}

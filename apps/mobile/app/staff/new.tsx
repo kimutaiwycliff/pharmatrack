@@ -68,7 +68,7 @@ function NewStaffForm() {
       toast.success(OFFLINE ? `${form.name.trim()} can now sign in with their PIN` : `Invitation sent to ${form.email.trim()}`)
       router.back()
     } catch (err) {
-      const msg = errorMessage(err)
+      const msg = errorMessage(err, "Couldn't add the staff member. Please try again.")
       if (!OFFLINE && /email|exist/i.test(msg)) setErrors({ email: msg })
       else toast.error(msg)
     } finally {

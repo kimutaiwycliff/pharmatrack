@@ -54,24 +54,23 @@ interface PrescriptionSheetProps {
   canManage: boolean
   busy: "completed" | "cancelled" | null
   onClose: () => void
-  onStatus: (rx: Prescription, status: "completed" | "cancelled") => void
+  onStatus: (rx: Prescription, status: "completed" | "cancelled") => void | Promise<void>
 }
 
 export function PrescriptionSheet({ rx, canManage, busy, onClose, onStatus }: PrescriptionSheetProps) {
   const theme = useTheme()
   const badge = rx ? rxStatusBadge(rx.status) : null
 
-  function cancel() {
+  async function cancel() {
     if (!rx) return
-    void askConfirm({
+    const ok = await askConfirm({
       title: "Cancel this prescription?",
       message: "It moves out of the active list.",
       cancelLabel: "Keep it",
       confirmLabel: "Cancel prescription",
       destructive: true,
-    }).then((ok) => {
-      if (ok) onStatus(rx, "cancelled")
     })
+    if (ok) await onStatus(rx, "cancelled")
   }
 
   const footer =

@@ -90,7 +90,7 @@ export function ProductDetailView({ productId, onDeleted }: ProductDetailViewPro
       q.setData((d) => (d ? { ...d, product: { ...d.product, is_active: !product.is_active } } : d))
       notifyProductsChanged()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't update the product. Please try again."))
     } finally {
       setToggling(false)
     }
@@ -103,7 +103,7 @@ export function ProductDetailView({ productId, onDeleted }: ProductDetailViewPro
 
   return (
     <>
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} tintColor={theme.green} colors={[theme.green]} />}

@@ -205,7 +205,7 @@ export default function Reports() {
   return (
     <Screen>
       {header}
-      <FlashList
+      <FlashList keyboardShouldPersistTaps="handled"
         data={rows}
         keyExtractor={(r) => r.key}
         getItemType={(r) => r.t}

@@ -103,11 +103,11 @@ export default function Scan() {
         <Text tone="secondary" align="center">
           PharmaTrack uses the camera only to read barcodes on medicine packs. Nothing is recorded or uploaded.
         </Text>
-        {permission.canAskAgain ? <Button title="Allow camera" onPress={() => void requestPermission()} /> : null}
+        {permission.canAskAgain ? <Button title="Allow camera" onPress={() => requestPermission()} /> : null}
         <Button
           title="Open settings"
           variant={permission.canAskAgain ? "secondary" : "primary"}
-          onPress={() => void Linking.openSettings()}
+          onPress={() => Linking.openSettings()}
           leadingIcon={<Ionicons name="settings-outline" size={18} color={permission.canAskAgain ? theme.text : theme.onAccent} />}
         />
         <Button title="Close" variant="ghost" onPress={() => router.back()} />

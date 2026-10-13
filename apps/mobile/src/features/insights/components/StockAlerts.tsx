@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
-import type { ComponentProps } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
+import { useRef, type ComponentProps } from "react"
+import { StyleSheet, View } from "react-native"
+import { Pressable } from "react-native-gesture-handler"
 import { router } from "expo-router"
 import { Text } from "../../../components"
 import { useTheme } from "../../../theme/useTheme"
@@ -25,6 +26,16 @@ function colors(tone: "danger" | "warning", active: boolean, theme: Theme) {
 // without products.view (no Inventory tab) see the counts without the link.
 export function StockAlerts({ alerts, canOpenInventory }: { alerts: DashboardResponse["alerts"]; canOpenInventory: boolean }) {
   const theme = useTheme()
+  // Raw Pressable (not ListRow/Button), so it gets its own double-tap guard.
+  const opening = useRef(false)
+  const open = (status: string) => {
+    if (opening.current) return
+    opening.current = true
+    setTimeout(() => {
+      opening.current = false
+    }, 600)
+    router.push({ pathname: "/inventory", params: { status } })
+  }
   return (
     <View style={styles.row}>
       {ALERTS.map((a) => {
@@ -54,7 +65,7 @@ export function StockAlerts({ alerts, canOpenInventory }: { alerts: DashboardRes
         return (
           <Pressable
             key={a.key}
-            onPress={() => router.push({ pathname: "/inventory", params: { status: a.status } })}
+            onPress={() => open(a.status)}
             accessibilityRole="button"
             accessibilityLabel={label}
             accessibilityHint="Opens Inventory filtered to these products"

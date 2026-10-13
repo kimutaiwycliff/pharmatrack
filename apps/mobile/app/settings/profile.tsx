@@ -58,7 +58,7 @@ function ProfileFormView({ data, onSaved }: { data: SettingsData; onSaved: (patc
       toast.success("Profile updated")
       router.back()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't save your profile. Please try again."))
     } finally {
       setSaving(false)
     }

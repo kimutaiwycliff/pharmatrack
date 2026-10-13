@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
+import { useShallow } from "zustand/react/shallow"
 import { ScrollView, StyleSheet, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useSyncStore } from "../src/store/sync"
-import { refreshSyncState, syncNow } from "../src/lib/sync/engine"
+import { OFFLINE_MESSAGE, refreshSyncState, syncNow } from "../src/lib/sync/engine"
 import { dismissRejected, listOutbox, type OutboxRecord } from "../src/lib/sync/outbox"
 import { countdown, nairobiClock, timeAgo } from "../src/lib/sync/core/format"
 import { lockMessage } from "../src/lib/sync/core/lock"
@@ -35,23 +36,36 @@ const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
 
 export default function SyncScreen() {
   const theme = useTheme()
-  const s = useSyncStore()
+  // Only what this screen shows: progress ticks re-render just the progress line's data.
+  const s = useSyncStore(
+    useShallow((st) => ({
+      device: st.device, status: st.status, online: st.online, lastSyncAt: st.lastSyncAt, deadline: st.deadline, lock: st.lock,
+      lastError: st.lastError, progress: st.progress, lastSummary: st.lastSummary, pendingCount: st.pendingCount,
+      rejectedCount: st.rejectedCount,
+    })),
+  )
   // Bumped after a dismiss/sync so the lists re-read the outbox.
   const [version, setVersion] = useState(0)
   const reload = () => setVersion((v) => v + 1)
-  const { pendingCount, rejectedCount, status: syncStatus } = s
-  const pending = useMemo(() => listOutbox("pending", 100), [version, pendingCount, syncStatus]) // eslint-disable-line react-hooks/exhaustive-deps
-  const rejected = useMemo(() => listOutbox("rejected", 200), [version, rejectedCount, syncStatus]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The outbox is re-read only when its counts change or a run finishes
+  // (retry notes on waiting items) — not on every status/progress update.
+  const { pendingCount, rejectedCount } = s
+  const runAt = s.lastSummary?.at ?? 0
+  const pending = useMemo(() => listOutbox("pending", 100), [version, pendingCount, runAt]) // eslint-disable-line react-hooks/exhaustive-deps
+  const rejected = useMemo(() => listOutbox("rejected", 200), [version, rejectedCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     refreshSyncState()
   }, [])
 
+  // Returns the promise so the button is busy from the tap itself; a second
+  // tap while it runs is ignored (and syncNow would join the same run anyway).
   async function onSync() {
     const r = await syncNow("manual", { force: true })
     if (r.ok) toast.success("All synced")
-    else if (r.outcome === "offline") toast.error("No connection — sales stay safe on this phone")
-    else if (r.message) toast.error(r.message)
+    else if (r.outcome === "offline") toast.error(r.message ?? OFFLINE_MESSAGE)
+    else if (r.outcome === "unregistered") toast.error("Register this phone first — a manager or owner can do it here.")
+    else toast.error(r.message ?? "Sync didn't finish. Your sales are safe on this phone — try again in a moment.")
     reload()
   }
 
@@ -75,7 +89,7 @@ export default function SyncScreen() {
   return (
     <Screen>
       <ScreenHeader title="Sync" />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {!s.device || s.status === "revoked" ? <DeviceGate /> : null}
 
         {s.device ? (

@@ -1,5 +1,6 @@
 import { sqlite } from "../../db/database"
 import { apiFetch } from "../api-fetch"
+import { httpMessage } from "../errors"
 import { getCookie } from "../auth-client"
 import { kvGetSync, kvSetSync } from "../kv"
 
@@ -75,7 +76,7 @@ export async function migrateLegacyQueue(): Promise<void> {
         return // server busy — retry later, keeping order
       } else {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
-        sqlite.runSync("UPDATE queued_sales SET status = 'rejected', error_message = ? WHERE id = ?", [err.error ?? `HTTP ${res.status}`, row.id])
+        sqlite.runSync("UPDATE queued_sales SET status = 'rejected', error_message = ? WHERE id = ?", [httpMessage(res.status, err.error), row.id])
       }
     }
   }

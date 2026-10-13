@@ -120,8 +120,11 @@ function newLine(product: ProductRow, limit: number, sellUnit: CartSellUnit | nu
   }
 }
 
+/** Every line of `productId` gets the fresh limit. Same array back when nothing changed (no store update, no re-render). */
 const withLimit = (items: CartItem[], productId: string, limit: number) =>
-  items.map((i) => (i.productId === productId ? { ...i, stockOnHand: limit } : i))
+  items.some((i) => i.productId === productId && i.stockOnHand !== limit)
+    ? items.map((i) => (i.productId === productId ? { ...i, stockOnHand: limit } : i))
+    : items
 
 function refused(items: CartItem[], line: Pick<CartItem, "productId" | "productName">, limit: number, wantedOnLine: number, key: string): CapResult {
   return {
@@ -160,7 +163,8 @@ export const useCartStore = create<CartState>((set, get) => ({
     const per = sellUnit?.unitCount ?? 1
     const nextBase = (existing?.quantity ?? 0) + count * per
     if (baseQtyInCart(items, product.productId, key) + nextBase > limit) {
-      set({ items })
+      // Refused: only store the fresher limit if it actually moved.
+      if (items !== get().items) set({ items })
       return refused(items, { productId: product.productId, productName: product.name }, limit, nextBase, key)
     }
     set({
@@ -222,7 +226,10 @@ export const useCartStore = create<CartState>((set, get) => ({
     const ids = productIds ?? [...new Set(get().items.map((i) => i.productId))]
     if (ids.length === 0) return
     const limits = currentLimits(ids)
-    set((s) => ({ items: s.items.map((i) => (limits.has(i.productId) ? { ...i, stockOnHand: limits.get(i.productId)! } : i)) }))
+    const items = get().items
+    // Skip the update (and every cart subscriber's re-render) when no limit moved.
+    if (!items.some((i) => limits.has(i.productId) && limits.get(i.productId) !== i.stockOnHand)) return
+    set({ items: items.map((i) => (limits.has(i.productId) ? { ...i, stockOnHand: limits.get(i.productId)! } : i)) })
   },
 
   remove(key) {

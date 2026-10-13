@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
+import { Pressable } from "react-native-gesture-handler"
 import Animated from "react-native-reanimated"
 import { Button, Card, CheckMark, DateField, FormScroll, IconButton, Text, TextField, useFlash } from "../../../components"
 import { useCan } from "../../../hooks/useCan"
@@ -99,7 +100,7 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
       })
     } catch (err) {
       haptics.error()
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't receive the delivery. Nothing was added — please try again."))
     } finally {
       setSaving(false)
     }
@@ -111,7 +112,7 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
       <Button title="Cancel" variant="secondary" onPress={onCancel} disabled={saving} style={styles.flex} />
       <Button
         title="Confirm receipt"
-        onPress={() => void submit()}
+        onPress={() => submit()}
         loading={saving}
         style={styles.grow}
         leadingIcon={<Ionicons name="checkmark-done" size={18} color={theme.onAccent} />}
@@ -131,7 +132,7 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
       <Button
         title="Scan a pack"
         variant="secondary"
-        onPress={() => void scan()}
+        onPress={() => scan()}
         disabled={saving}
         leadingIcon={<Ionicons name="scan-outline" size={18} color={theme.text} />}
       />

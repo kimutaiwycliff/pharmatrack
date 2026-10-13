@@ -47,7 +47,7 @@ export function ForceCloseSheet({ target, onClose, onClosed }: ForceCloseSheetPr
       onClosed(target.id)
     } catch (err) {
       haptics.error()
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't close the shift. Please try again."))
     } finally {
       setPending(false)
     }
@@ -59,7 +59,7 @@ export function ForceCloseSheet({ target, onClose, onClosed }: ForceCloseSheetPr
       onClose={onClose}
       title={target ? `Close ${target.cashierName}'s shift?` : "Close shift"}
       scrollable
-      footer={<Button title="Force close shift" variant="danger" size="lg" loading={pending} onPress={() => void submit()} />}
+      footer={<Button title="Force close shift" variant="danger" size="lg" loading={pending} onPress={() => submit()} />}
     >
       {target ? (
         <Text tone="secondary">

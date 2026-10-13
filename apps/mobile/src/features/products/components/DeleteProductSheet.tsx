@@ -53,7 +53,7 @@ export function DeleteProductSheet({ open, product, onClose, onDone }: DeletePro
       onDone("deactivated")
       onClose()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't deactivate the product. Please try again."))
     } finally {
       setBusy(null)
     }
@@ -69,7 +69,7 @@ export function DeleteProductSheet({ open, product, onClose, onDone }: DeletePro
     } catch (err) {
       const fromServer = err instanceof ApiError && err.status === 409 ? impactFromConflict(err.body) : null
       if (fromServer) setConflict(fromServer)
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't delete the product. Please try again."))
     } finally {
       setBusy(null)
     }

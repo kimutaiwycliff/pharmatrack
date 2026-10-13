@@ -68,7 +68,7 @@ export default function Prescriptions() {
       )
     } catch (err) {
       haptics.error()
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't update the prescription. Please try again."))
     } finally {
       setBusy(null)
     }
@@ -151,7 +151,7 @@ export default function Prescriptions() {
             query ? <IconButton icon="close-circle" accessibilityLabel="Clear search" color={theme.textTertiary} onPress={() => setQuery("")} /> : null
           }
         />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {RX_TABS.map((t) => (
             <Chip key={t.key} label={t.label} selected={tab === t.key} onPress={() => setTab(t.key)} accessibilityLabel={`Show ${t.label.toLowerCase()} prescriptions`} />
           ))}

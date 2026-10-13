@@ -63,7 +63,7 @@ export default function CatalogSeed() {
       toast.success(seedResultMessage(json.seeded, json.updated))
       q.refresh()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't load the catalogue products. Please try again."))
     } finally {
       if (categories) setBusyCategory(null)
       else setSeedingAll(false)
@@ -79,7 +79,7 @@ export default function CatalogSeed() {
       toast.success(unseedResultMessage(json.removed, json.kept))
       q.refresh()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't remove the catalogue products. Please try again."))
     } finally {
       setUnseeding(false)
     }
@@ -93,7 +93,7 @@ export default function CatalogSeed() {
       confirmLabel: "Remove",
       destructive: true,
     })
-    if (ok) void unseed()
+    if (ok) await unseed()
   }
 
   const totals = seedTotals(departments)
@@ -120,7 +120,7 @@ export default function CatalogSeed() {
       <View style={styles.summaryActions}>
         <Button
           title="Seed all"
-          onPress={() => void seed()}
+          onPress={() => seed()}
           loading={seedingAll}
           disabled={anyBusy && !seedingAll}
           style={styles.flex}
@@ -145,7 +145,7 @@ export default function CatalogSeed() {
     body = <ErrorState message={q.error} onRetry={q.retry} />
   } else {
     body = (
-      <FlashList
+      <FlashList keyboardShouldPersistTaps="handled"
         data={departments}
         keyExtractor={(d) => d.category}
         showsVerticalScrollIndicator={false}
@@ -170,7 +170,7 @@ export default function CatalogSeed() {
                     accessibilityLabel={`Seed ${item.category}`}
                     loading={busyCategory === item.category}
                     disabled={anyBusy && busyCategory !== item.category}
-                    onPress={() => void seed([item.category])}
+                    onPress={() => seed([item.category])}
                   />
                 )
               }

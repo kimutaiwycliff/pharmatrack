@@ -50,7 +50,7 @@ export function ReportControls(p: ReportControlsProps) {
         </Text>
       ) : (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presets}>
+          <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presets}>
             {RANGE_PRESETS.map((r) => (
               <Chip key={r.key} label={r.label} selected={p.range === r.key} onPress={() => p.onRange(r.key)} accessibilityLabel={`Date range: ${r.label}`} />
             ))}

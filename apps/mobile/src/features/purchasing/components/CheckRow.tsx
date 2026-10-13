@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import type { ReactNode } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
+import { Pressable } from "react-native-gesture-handler"
 import { Text } from "../../../components"
 import { useTheme } from "../../../theme/useTheme"
 import { space, TOUCH_TARGET } from "../../../theme/tokens"

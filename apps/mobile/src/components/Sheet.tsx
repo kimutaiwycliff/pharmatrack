@@ -3,6 +3,7 @@ import {
 } from "@gorhom/bottom-sheet"
 import { useEffect, useRef, type ReactNode } from "react"
 import { BackHandler, StyleSheet, View } from "react-native"
+import { ReduceMotion } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useTheme } from "../theme/useTheme"
 import { motion, space } from "../theme/tokens"
@@ -41,7 +42,11 @@ export function Sheet({ open, onClose, title, children, snapPoints, scrollable, 
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const ref = useRef<BottomSheetModal>(null)
-  const animationConfigs = useBottomSheetSpringConfigs({ ...motion.spring.sheet, overshootClamping: true })
+  // ReduceMotion.Never: with Android's "Remove animations" on, a reduced-motion
+  // spring can leave present() stuck so the sheet needs a second tap to open
+  // (gorhom/react-native-bottom-sheet#1560). The spring is critically damped
+  // and short, so it's no burden for reduced-motion users.
+  const animationConfigs = useBottomSheetSpringConfigs({ ...motion.spring.sheet, overshootClamping: true, reduceMotion: ReduceMotion.Never })
 
   useEffect(() => {
     if (open) ref.current?.present()
