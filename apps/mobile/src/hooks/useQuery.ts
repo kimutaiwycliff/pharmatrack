@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { apiJson, errorMessage } from "../lib/api"
 
+// Shown when a load fails for a reason with no readable text of its own.
+const LOAD_FAILED = "Couldn't load this. Check your connection and tap Retry."
+
 // R3: tiny data hooks so every online screen gets the same loading / error /
 // retry / pull-to-refresh / paging behaviour without hand-rolling it. State is
 // keyed: when `key` changes (new filter, branch, search) the old data is
@@ -44,7 +47,7 @@ export function useQuery<T>(key: string | null, fetcher: (key: string) => Promis
           if (!cancelled) setState({ key, data, error: null })
         },
         (err: unknown) => {
-          if (!cancelled) setState((s) => ({ key, data: s.key === key ? s.data : undefined, error: errorMessage(err) }))
+          if (!cancelled) setState((s) => ({ key, data: s.key === key ? s.data : undefined, error: errorMessage(err, LOAD_FAILED) }))
         },
       )
       .finally(() => {
@@ -145,7 +148,7 @@ export function usePagedQuery<TItem>(key: string | null, fetchPage: (page: numbe
           if (!cancelled) setS({ key, items: p.items, total: p.total, page: 1, error: null, loaded: true })
         },
         (err: unknown) => {
-          if (!cancelled) setS((prev) => (prev.key === key ? { ...prev, error: errorMessage(err) } : { key, items: [], total: 0, page: 0, error: errorMessage(err), loaded: false }))
+          if (!cancelled) setS((prev) => (prev.key === key ? { ...prev, error: errorMessage(err, LOAD_FAILED) } : { key, items: [], total: 0, page: 0, error: errorMessage(err, LOAD_FAILED), loaded: false }))
         },
       )
       .finally(() => {
@@ -173,7 +176,7 @@ export function usePagedQuery<TItem>(key: string | null, fetchPage: (page: numbe
         },
         (err: unknown) => {
           if (keyRef.current !== forKey) return
-          setS((prev) => (prev.key === forKey ? { ...prev, error: errorMessage(err) } : prev))
+          setS((prev) => (prev.key === forKey ? { ...prev, error: errorMessage(err, LOAD_FAILED) } : prev))
         },
       )
       .finally(() => setLoadingMore(false))

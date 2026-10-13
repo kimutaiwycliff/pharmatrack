@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, like, or } from "drizzle-orm"
 import { db } from "../../db/database"
 import { appointmentServices, appointments, customers, prescriptionItems, prescriptions } from "../../db/schema"
 import type { CustomerHit, Prescription } from "./types"
+import { UserFacingError } from "../../lib/errors"
 
 // Offline Edition only (ADR-014): local reads/writes the clinical screens need
 // beyond src/repo/clinical.ts — customer search, a full prescription list (with
@@ -83,7 +84,7 @@ export interface LocalApptPatch {
  */
 export async function updateLocalAppointment(id: string, patch: LocalApptPatch): Promise<{ nextDue: string | null }> {
   const [existing] = await db.select().from(appointments).where(eq(appointments.id, id)).limit(1)
-  if (!existing) throw new Error("Appointment not found")
+  if (!existing) throw new UserFacingError("That appointment no longer exists. Go back and refresh.")
   await db
     .update(appointments)
     .set({

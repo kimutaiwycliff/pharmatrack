@@ -5,7 +5,7 @@ import Animated from "react-native-reanimated"
 import { useShallow } from "zustand/react/shallow"
 import { useMotion } from "../lib/motion"
 import { useSyncStore } from "../store/sync"
-import { syncNow } from "../lib/sync/engine"
+import { OFFLINE_MESSAGE, syncNow } from "../lib/sync/engine"
 import { performOverride } from "../lib/sync/override"
 import { listRoster, type RosterMember } from "../lib/sync/roster"
 import { lockMessage } from "../lib/sync/core/lock"
@@ -43,11 +43,13 @@ export function SellingLock() {
   if (!lock.reason) return null
   const syncing = status === "syncing"
 
+  // Returns the promise so the button is busy from the tap itself.
   async function onSync() {
     const r = await syncNow("lock-screen", { force: true })
     if (r.ok) toast.success("Synced — selling unlocked")
-    else if (r.outcome === "offline") toast.error("Still offline — check the connection")
-    else if (r.message) toast.error(r.message)
+    else if (r.outcome === "offline") toast.error(r.message ?? OFFLINE_MESSAGE)
+    else if (r.outcome === "unregistered") toast.error("Register this phone first — ask a manager or owner to sign in.")
+    else toast.error(r.message ?? "Sync didn't finish. Your sales are safe on this phone — try again in a moment.")
   }
 
   function startOverride() {

@@ -111,7 +111,7 @@ export function OrderDetail({ id, embedded, onChanged, onDeleted }: OrderDetailP
       toast.success(success)
       onChanged?.()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't update the order. Please try again."))
     } finally {
       setBusy(null)
     }
@@ -128,7 +128,7 @@ export function OrderDetail({ id, embedded, onChanged, onDeleted }: OrderDetailP
       confirmLabel: "Cancel order",
       destructive: true,
     })
-    if (ok) void patch("cancel", "Order cancelled")
+    if (ok) await patch("cancel", "Order cancelled")
   }
 
   async function confirmDelete(o: PurchaseOrderDetail) {
@@ -141,14 +141,16 @@ export function OrderDetail({ id, embedded, onChanged, onDeleted }: OrderDetailP
     })
     if (!ok) return
     setBusy("delete")
-    apiJson(`/api/purchase-orders/${id}`, { method: "DELETE" })
-      .then(() => {
-        toast.success("Draft deleted")
-        onChanged?.()
-        onDeleted?.()
-      })
-      .catch((err: unknown) => toast.error(errorMessage(err)))
-      .finally(() => setBusy(null))
+    try {
+      await apiJson(`/api/purchase-orders/${id}`, { method: "DELETE" })
+      toast.success("Draft deleted")
+      onChanged?.()
+      onDeleted?.()
+    } catch (err) {
+      toast.error(errorMessage(err, "Couldn't delete the draft. Please try again."))
+    } finally {
+      setBusy(null)
+    }
   }
 
   const receivable = canReceive && canReceiveStatus(order.status) && order.items.some((i) => i.product_id)
@@ -163,7 +165,7 @@ export function OrderDetail({ id, embedded, onChanged, onDeleted }: OrderDetailP
   return (
     <View style={styles.flex}>
       {header}
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} colors={[theme.green]} tintColor={theme.green} />}
       >
@@ -191,7 +193,7 @@ export function OrderDetail({ id, embedded, onChanged, onDeleted }: OrderDetailP
               <Button
                 title="Mark as sent"
                 variant="secondary"
-                onPress={() => void patch("send", "Marked as sent")}
+                onPress={() => patch("send", "Marked as sent")}
                 loading={busy === "send"}
                 disabled={!!busy}
                 leadingIcon={<Ionicons name="paper-plane-outline" size={18} color={theme.text} />}

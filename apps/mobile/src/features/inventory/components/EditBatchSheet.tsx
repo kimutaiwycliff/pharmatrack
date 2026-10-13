@@ -57,7 +57,7 @@ function EditForm({ batch, canSeeCost, onClose, onSaved }: { batch: Batch; canSe
       onSaved()
       onClose()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't save the batch. Please try again."))
     } finally {
       setSaving(false)
     }
@@ -81,7 +81,7 @@ function EditForm({ batch, canSeeCost, onClose, onSaved }: { batch: Batch; canSe
       ) : null}
       <View style={styles.actions}>
         <Button title="Cancel" variant="secondary" onPress={onClose} disabled={saving} style={styles.flex} />
-        <Button title="Save changes" onPress={() => void save()} loading={saving} disabled={!!costError || !!batchError} style={styles.flex} />
+        <Button title="Save changes" onPress={() => save()} loading={saving} disabled={!!costError || !!batchError} style={styles.flex} />
       </View>
     </View>
   )

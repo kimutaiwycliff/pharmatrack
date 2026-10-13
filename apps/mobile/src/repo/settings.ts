@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm"
 import { db } from "../db/database"
 import { staff, branches } from "../db/schema"
 import { setLocalStaffPin } from "../lib/local-auth"
+import { UserFacingError } from "../lib/errors"
 
 // ADR-014 — local repo for the Settings screen. Return shape matches the
 // online API's GET /api/settings field-for-field. There's no separate "org"
@@ -18,7 +19,7 @@ export interface LocalSettingsData {
 
 export async function getLocalSettings(staffId: string): Promise<LocalSettingsData> {
   const [s] = await db.select().from(staff).where(eq(staff.id, staffId)).limit(1)
-  if (!s) throw new Error("Staff not found")
+  if (!s) throw new UserFacingError("Your staff record wasn't found on this phone. Sign in again.")
   const [branch] = s.branchId
     ? await db.select().from(branches).where(eq(branches.id, s.branchId)).limit(1)
     : await db.select().from(branches).limit(1)

@@ -54,7 +54,7 @@ export function ShiftDetailView({ shiftId }: { shiftId: string }) {
 
   return (
     <>
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} tintColor={theme.green} colors={[theme.green]} />}
       >

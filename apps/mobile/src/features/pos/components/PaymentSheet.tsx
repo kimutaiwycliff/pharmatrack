@@ -24,16 +24,22 @@ export interface PaymentSheetProps {
   open: boolean
   onClose: () => void
   items: CartItem[]
-  /** Tenant plan + config allow STK push (fetched once by the POS). */
+  /** Tenant plan + config allow STK push (fetched by the POS, retried). */
   mpesaOffered: boolean
+  /** Why M-Pesa prompts / Split aren't offered (null when they are). */
+  mpesaNote?: string | null
   isOnline: boolean
   committing: boolean
   error: string | null
-  onCash: (tenderedCents: number) => void
-  onMpesa: (reference: string | null) => void
-  onTill: (code: string | null) => void
-  onSplit: (cashCents: number, mpesaCents: number, reference: string | null) => void
+  // Each may return a promise: the button pressed then spins and ignores taps
+  // until the commit settles (the POS also holds its own in-flight lock).
+  onCash: (tenderedCents: number) => unknown
+  onMpesa: (reference: string | null) => unknown
+  onTill: (code: string | null) => unknown
+  onSplit: (cashCents: number, mpesaCents: number, reference: string | null) => unknown
 }
+
+const RX_HINT = "Tick “Prescription seen” above to complete the sale."
 
 /** Cash amount being entered: keypad digits (whole KES) or an exact quick-cash amount in cents. */
 interface Tender {
@@ -77,20 +83,30 @@ export function PaymentSheet(p: PaymentSheetProps) {
       return
     }
     setTillError(null)
-    p.onTill(code || null)
+    return p.onTill(code || null)
   }
 
   const cashReady = tendered >= total && total > 0 && rxOk
+  // Say why "Complete sale" is greyed right next to it, not only at the top.
+  const cashHint = !rxOk ? RX_HINT : total > 0 && tendered < total ? `Enter the cash received — at least ${formatKES(total)}.` : null
   const footer =
     method === "cash" ? (
-      <Button
-        title={cashReady ? `Complete · change ${formatKES(Math.max(0, change))}` : "Complete sale"}
-        size="lg"
-        onPress={() => p.onCash(tendered)}
-        loading={p.committing}
-        disabled={!cashReady}
-        leadingIcon={<Ionicons name="checkmark-circle" size={22} color={theme.onAccent} />}
-      />
+      <View style={styles.footer}>
+        {cashHint && !p.committing ? (
+          <Text variant="caption" tone={!rxOk ? "warning" : "secondary"} align="center" accessibilityLiveRegion="polite">
+            {cashHint}
+          </Text>
+        ) : null}
+        <Button
+          title={cashReady ? `Complete · change ${formatKES(Math.max(0, change))}` : "Complete sale"}
+          size="lg"
+          onPress={() => p.onCash(tendered)}
+          loading={p.committing}
+          disabled={!cashReady}
+          accessibilityHint={cashHint ?? undefined}
+          leadingIcon={<Ionicons name="checkmark-circle" size={22} color={theme.onAccent} />}
+        />
+      </View>
     ) : undefined
 
   return (
@@ -130,6 +146,11 @@ export function PaymentSheet(p: PaymentSheetProps) {
           M-Pesa prompts and Split need internet — use Till/Paybill for M-Pesa paid to the shop.
         </Text>
       ) : null}
+      {!OFFLINE_EDITION && !p.mpesaOffered && p.mpesaNote ? (
+        <Text variant="caption" tone="secondary">
+          {p.mpesaNote}
+        </Text>
+      ) : null}
 
       {/* Sections cross-fade when the method changes. */}
       {method === "cash" ? (
@@ -154,7 +175,12 @@ export function PaymentSheet(p: PaymentSheetProps) {
             error={tillError}
             helper="Check the customer's M-Pesa message first. The owner verifies these later."
           />
-          <Button title="Record M-Pesa payment" size="lg" onPress={recordTill} loading={p.committing} disabled={!rxOk} />
+          {!rxOk ? (
+            <Text variant="caption" tone="warning" align="center">
+              {RX_HINT}
+            </Text>
+          ) : null}
+          <Button title="Record M-Pesa payment" size="lg" onPress={recordTill} loading={p.committing} disabled={!rxOk} accessibilityHint={rxOk ? undefined : RX_HINT} />
         </Animated.View>
       ) : null}
 
@@ -163,13 +189,13 @@ export function PaymentSheet(p: PaymentSheetProps) {
           received" / manual code need no network). */}
       {method === "mpesa" ? (
         <Animated.View key="mpesa" entering={m.fadeIn} exiting={m.fadeOut}>
-          {rxOk ? <MpesaFlow amountCents={total} onConfirmed={p.onMpesa} inSheet /> : <Text tone="warning">Tick “Prescription seen” first.</Text>}
+          {rxOk ? <MpesaFlow amountCents={total} onConfirmed={p.onMpesa} committing={p.committing} inSheet /> : <Text tone="warning">Tick “Prescription seen” first.</Text>}
         </Animated.View>
       ) : null}
 
       {method === "split" ? (
         <Animated.View key="split" entering={m.fadeIn} exiting={m.fadeOut}>
-          <SplitEntry total={total} rxOk={rxOk} onConfirmed={p.onSplit} />
+          <SplitEntry total={total} rxOk={rxOk} committing={p.committing} onConfirmed={p.onSplit} />
         </Animated.View>
       ) : null}
 
@@ -308,7 +334,9 @@ function CashEntry({ total, tender, onTender, label }: { total: number; tender: 
   )
 }
 
-function SplitEntry({ total, rxOk, onConfirmed }: { total: number; rxOk: boolean; onConfirmed: PaymentSheetProps["onSplit"] }) {
+function SplitEntry({
+  total, rxOk, committing, onConfirmed,
+}: { total: number; rxOk: boolean; committing: boolean; onConfirmed: PaymentSheetProps["onSplit"] }) {
   const [digits, setDigits] = useState("")
   const cash = keypadNumber(digits) * 100
   const mpesa = total - cash
@@ -336,13 +364,14 @@ function SplitEntry({ total, rxOk, onConfirmed }: { total: number; rxOk: boolean
       <NumericKeypad value={digits} onChange={setDigits} />
       {cash >= total ? <Text tone="danger">The cash part must be less than the total — use Cash instead.</Text> : null}
       {ready && !rxOk ? <Text tone="warning">Tick “Prescription seen” first.</Text> : null}
-      {ready && rxOk ? <MpesaFlow amountCents={mpesa} onConfirmed={(ref) => onConfirmed(cash, mpesa, ref)} inSheet /> : null}
+      {ready && rxOk ? <MpesaFlow amountCents={mpesa} onConfirmed={(ref) => onConfirmed(cash, mpesa, ref)} committing={committing} inSheet /> : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  footer: { gap: space.xs },
   totalBox: { paddingVertical: space.sm, gap: space.xxs },
   rxBox: {
     flexDirection: "row",

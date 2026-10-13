@@ -5,6 +5,7 @@ import { Button, FormScroll, IconButton, NeedsInternet, Screen, ScreenHeader, Te
 import { hasErrors, validatePasswordForm, type FieldErrors, type PasswordForm } from "../../src/features/settings/logic/forms"
 import { authClient } from "../../src/lib/auth-client"
 import { errorMessage } from "../../src/lib/api"
+import { httpMessage } from "../../src/lib/errors"
 import { toast } from "../../src/lib/toast"
 import { space } from "../../src/theme/tokens"
 
@@ -41,13 +42,19 @@ function PasswordFormView() {
     setSaving(true)
     try {
       const { error } = await authClient.changePassword({ currentPassword: form.current, newPassword: form.next, revokeOtherSessions: true })
-      if (error) throw new Error(error.message)
+      if (error) {
+        // Better Auth's own text ("Invalid password") is shown as plain wording.
+        if (error.code === "INVALID_PASSWORD" || /current|invalid password|incorrect/i.test(error.message ?? "")) {
+          setErrors({ current: "Current password is wrong. Check it and try again." })
+        } else {
+          toast.error(httpMessage(error.status || 400, error.message))
+        }
+        return
+      }
       toast.success("Password changed successfully")
       router.back()
     } catch (err) {
-      const msg = errorMessage(err)
-      if (/current|invalid password|incorrect/i.test(msg)) setErrors({ current: msg })
-      else toast.error(msg)
+      toast.error(errorMessage(err, "Couldn't change your password. Check your connection and try again."))
     } finally {
       setSaving(false)
     }

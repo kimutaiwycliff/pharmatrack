@@ -1,4 +1,5 @@
 import { apiJson } from "../../lib/api"
+import { UserFacingError } from "../../lib/errors"
 import { env } from "../../lib/env"
 import { getCurrentStaffId } from "../../lib/local-auth"
 import { getLocalSettings, updateLocalOrg, updateLocalPin, updateLocalProfile } from "../../repo/settings"
@@ -36,7 +37,7 @@ const OFFLINE = env.EXPO_PUBLIC_OFFLINE_MODE
 async function loadSettings(): Promise<SettingsData> {
   if (OFFLINE) {
     const id = await getCurrentStaffId()
-    if (!id) throw new Error("Not signed in")
+    if (!id) throw new UserFacingError("You're not signed in. Sign in again to continue.")
     const local = await getLocalSettings(id)
     return { ...local, profile: { ...local.profile, id }, staffId: id }
   }
@@ -55,7 +56,7 @@ export function useSettingsData() {
 }
 
 function requireStaff(data: SettingsData): string {
-  if (!data.staffId) throw new Error("Not signed in")
+  if (!data.staffId) throw new UserFacingError("You're not signed in. Sign in again to continue.")
   return data.staffId
 }
 
@@ -79,7 +80,7 @@ export async function savePin(data: SettingsData, pin: string, password: string)
 export async function saveOrg(data: SettingsData, body: OrgPayload): Promise<void> {
   if (OFFLINE) {
     const branchId = data.org_branch_id
-    if (!branchId) throw new Error("No branch found")
+    if (!branchId) throw new UserFacingError("No branch found on this phone. Restart the app and try again.")
     await updateLocalOrg(branchId, body)
     return
   }

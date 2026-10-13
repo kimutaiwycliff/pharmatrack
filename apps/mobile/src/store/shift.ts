@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { kvGet, kvSet, kvDelete } from "../lib/kv"
 import { env } from "../lib/env"
+import { errorMessage } from "../lib/api"
 import { getCurrentStaffId } from "../lib/local-auth"
 import { getActiveLocalShift, clockInLocal, clockOutLocal } from "../repo/sales"
 import { closeShift, getOpenShiftFor, getShift, openShift } from "../lib/sync/shifts"
@@ -38,7 +39,9 @@ interface ShiftState {
   error: string | null
   stale: boolean
   loadActiveShift: () => Promise<void>
-  clockIn: (openingFloat: number, branchId: string) => Promise<void>
+  /** Resolves true once the shift is open; on failure `error` says why. Never rejects. */
+  clockIn: (openingFloat: number, branchId: string) => Promise<boolean>
+  /** Null on failure (with `error` set). Never rejects. */
   clockOut: (closingCash: number, notes?: string) => Promise<{ shift: ShiftResponse; variance: number | null } | null>
   // Used when switching the active till user offline (src/lib/device-users.ts)
   // — the incoming cashier's shift is unknown until back online, so this
@@ -70,7 +73,20 @@ function localToResponse(row: LocalShiftRow, varianceCents: number | null): Shif
   }
 }
 
-const errMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+// The kv copy is only a cache of the shift table — failing to write it must
+// not turn a successful clock-in/out into an error.
+async function cacheActive(active: ActiveShift | null): Promise<void> {
+  try {
+    if (active) await kvSet(CACHE_KEY, active)
+    else await kvDelete(CACHE_KEY)
+  } catch {
+    // best effort
+  }
+}
+
+// Readable text only — SQLite/constraint messages never reach the till.
+const clockInFailed = (err: unknown) => errorMessage(err, "Couldn't start your shift. Please try again.")
+const clockOutFailed = (err: unknown) => errorMessage(err, "Couldn't end your shift. Please try again.")
 
 // ONLINE build (R1 rule 5): shifts are device-local (lib/sync/shifts.ts) and
 // upload through the sync outbox as shift_open/shift_close, so clock-in and
@@ -83,52 +99,61 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
   error: null,
   stale: false,
   async loadActiveShift() {
-    set({ error: null })
-    if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-      // Re-derive from the local table (source of truth) rather than trusting
-      // the kv cache alone — a prior clock-out elsewhere must be reflected.
-      const staffId = await getCurrentStaffId()
-      const branch = await kvGet<{ branchId: string | null }>("session")
-      if (staffId && branch?.branchId) {
+    // One set per load (not error-reset + result): every subscriber re-renders per set.
+    try {
+      let active: ActiveShift | null = null
+      if (env.EXPO_PUBLIC_OFFLINE_MODE) {
+        // Re-derive from the local table (source of truth) rather than trusting
+        // the kv cache alone — a prior clock-out elsewhere must be reflected.
+        const staffId = await getCurrentStaffId()
+        const branch = await kvGet<{ branchId: string | null }>("session")
+        if (!staffId || !branch?.branchId) {
+          // No staff/branch yet: nothing cached to reconcile.
+          set({ activeShift: null, loaded: true, stale: false, error: null })
+          return
+        }
         const row = await getActiveLocalShift(branch.branchId, staffId)
-        const active = row ? { id: row.id, openingFloat: row.openingFloatCents / 100, clockedInAt: new Date(row.openedAt).toISOString() } : null
-        set({ activeShift: active, loaded: true, stale: false })
-        if (active) await kvSet(CACHE_KEY, active)
-        else await kvDelete(CACHE_KEY)
+        active = row ? { id: row.id, openingFloat: row.openingFloatCents / 100, clockedInAt: new Date(row.openedAt).toISOString() } : null
       } else {
-        set({ activeShift: null, loaded: true, stale: false })
+        const current = useStaffStore.getState().current
+        const row = current ? getOpenShiftFor(current.id) : null
+        active = row ? fromLocal(row) : null
       }
-      return
+      set({ activeShift: active, loaded: true, stale: false, error: null })
+      await cacheActive(active)
+    } catch (err) {
+      set({ error: errorMessage(err, "Couldn't load your shift. Please try again.") })
     }
-    const current = useStaffStore.getState().current
-    const row = current ? getOpenShiftFor(current.id) : null
-    const active = row ? fromLocal(row) : null
-    set({ activeShift: active, loaded: true, stale: false })
-    if (active) await kvSet(CACHE_KEY, active)
-    else await kvDelete(CACHE_KEY)
   },
   async clockIn(openingFloat, branchId) {
     set({ error: null })
     if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-      const staffId = (await getCurrentStaffId()) ?? "unknown"
-      const { id } = await clockInLocal(branchId, staffId, Math.round(openingFloat * 100))
-      const active = { id, openingFloat, clockedInAt: new Date().toISOString() }
-      set({ activeShift: active, stale: false })
-      await kvSet(CACHE_KEY, active)
-      return
+      try {
+        const staffId = (await getCurrentStaffId()) ?? "unknown"
+        const { id } = await clockInLocal(branchId, staffId, Math.round(openingFloat * 100))
+        const active = { id, openingFloat, clockedInAt: new Date().toISOString() }
+        set({ activeShift: active, stale: false })
+        await cacheActive(active)
+        return true
+      } catch (err) {
+        set({ error: clockInFailed(err) })
+        return false
+      }
     }
     const current = useStaffStore.getState().current
     if (!current) {
       set({ error: "Choose who is selling first" })
-      return
+      return false
     }
     try {
       const row = openShift({ cashierId: current.id, cashierName: current.name, openingFloatCents: Math.round(openingFloat * 100) })
       const active = fromLocal(row)
       set({ activeShift: active, stale: false })
-      await kvSet(CACHE_KEY, active)
+      await cacheActive(active)
+      return true
     } catch (err) {
-      set({ error: errMessage(err) })
+      set({ error: clockInFailed(err) })
+      return false
     }
   },
   async clockOut(closingCash, notes) {
@@ -139,25 +164,30 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       return null
     }
     if (env.EXPO_PUBLIC_OFFLINE_MODE) {
-      const { varianceCents } = await clockOutLocal(active.id, Math.round(closingCash * 100), notes ?? null)
-      set({ activeShift: null })
-      await kvDelete(CACHE_KEY)
-      return {
-        shift: {
-          id: active.id, branch_id: "", staff_id: "", opening_float: active.openingFloat,
-          closing_cash: closingCash, variance: varianceCents / 100, clocked_in_at: active.clockedInAt,
-          clocked_out_at: new Date().toISOString(), notes: notes ?? null, created_at: active.clockedInAt,
-        },
-        variance: varianceCents / 100,
+      try {
+        const { varianceCents } = await clockOutLocal(active.id, Math.round(closingCash * 100), notes ?? null)
+        set({ activeShift: null })
+        await cacheActive(null)
+        return {
+          shift: {
+            id: active.id, branch_id: "", staff_id: "", opening_float: active.openingFloat,
+            closing_cash: closingCash, variance: varianceCents / 100, clocked_in_at: active.clockedInAt,
+            clocked_out_at: new Date().toISOString(), notes: notes ?? null, created_at: active.clockedInAt,
+          },
+          variance: varianceCents / 100,
+        }
+      } catch (err) {
+        set({ error: clockOutFailed(err) })
+        return null
       }
     }
     try {
       const { shift, varianceCents } = closeShift({ clientId: active.id, closingCashCents: Math.round(closingCash * 100), notes: notes ?? null })
       set({ activeShift: null })
-      await kvDelete(CACHE_KEY)
+      await cacheActive(null)
       return { shift: localToResponse(shift, varianceCents), variance: varianceCents == null ? null : varianceCents / 100 }
     } catch (err) {
-      set({ error: errMessage(err) })
+      set({ error: clockOutFailed(err) })
       return null
     }
   },
@@ -174,7 +204,7 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       if (get().activeShift?.id === clientId) set({ activeShift: null })
       return true
     } catch (err) {
-      set({ error: errMessage(err) })
+      set({ error: errorMessage(err, "Couldn't close that shift. Please try again.") })
       return false
     }
   },

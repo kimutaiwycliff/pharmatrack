@@ -50,14 +50,14 @@ export function StaffDetail({ member, branches, inSheet, onChanged, onRemoved }:
     try {
       await fn()
     } catch (err) {
-      setError(errorMessage(err))
+      setError(errorMessage(err, "Couldn't save that change. Please try again."))
     } finally {
       setPending(null)
     }
   }
 
   function patch(label: string, body: StaffPatch, done?: string) {
-    void run(label, async () => {
+    return run(label, async () => {
       await patchStaff(member.id, body)
       if (done) toast.success(done)
       onChanged()
@@ -69,12 +69,12 @@ export function StaffDetail({ member, branches, inSheet, onChanged, onRemoved }:
     setPinErr(err)
     if (err) return
     setPending("pin")
-    setStaffPin(member.id, pin)
+    return setStaffPin(member.id, pin)
       .then(() => {
         setPin("")
         toast.success("PIN updated")
       })
-      .catch((e: unknown) => setPinErr(errorMessage(e)))
+      .catch((e: unknown) => setPinErr(errorMessage(e, "Couldn't set the PIN. Please try again.")))
       .finally(() => setPending(null))
   }
 
@@ -82,11 +82,11 @@ export function StaffDetail({ member, branches, inSheet, onChanged, onRemoved }:
     const err = phoneError(phone, { required: true })
     setPhoneErr(err)
     if (err) return
-    patch("phone", { phone: normalizeKePhone(phone) }, "Phone number saved")
+    return patch("phone", { phone: normalizeKePhone(phone) }, "Phone number saved")
   }
 
   function onResend() {
-    void run("resend", async () => {
+    return run("resend", async () => {
       const email = await resendInvite(member.id)
       toast.success(email ? `Invite resent to ${email}` : "Invite resent")
     })
@@ -100,7 +100,7 @@ export function StaffDetail({ member, branches, inSheet, onChanged, onRemoved }:
       destructive: true,
     })
     if (!ok) return
-    void run("remove", async () => {
+    await run("remove", async () => {
       const note = await removeStaff(member.id)
       toast.success(note ?? "Staff member removed")
       onRemoved()

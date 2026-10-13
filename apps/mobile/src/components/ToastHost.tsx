@@ -1,10 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { memo, useEffect, useMemo, useRef } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
-import { Gesture, GestureDetector } from "react-native-gesture-handler"
+import { StyleSheet, View } from "react-native"
+import { Pressable } from "react-native-gesture-handler"
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { scheduleOnRN } from "react-native-worklets"
 import { useMotion } from "../lib/motion"
 import { toastLabel, type ToastItem } from "../lib/toastQueue"
 import { useToastStore, type ToastVariant } from "../store/toast"
@@ -12,16 +11,18 @@ import { useTheme } from "../theme/useTheme"
 import { elevation, motion, radius, space, TOUCH_TARGET, type Theme } from "../theme/tokens"
 import { Text } from "./Text"
 
-const SWIPE_DISMISS_PX = 28
-const SWIPE_DISMISS_VELOCITY = 600
-
 // Mounted once at the app root (app/_layout.tsx), mirrors sonner's <Toaster/>
 // on web — a single host renders whatever's queued in useToastStore, and
 // ../lib/toast.ts's toast.success/error/info() is the imperative API used to
 // queue one from anywhere (components or plain modules like store/cart.ts).
-// Each toast is a live region so TalkBack reads it; tap or swipe up dismisses
-// it. Motion: drops in from the top (critically-damped spring), fades up and
-// out, the others re-flow (LinearTransition); a collapsed duplicate bumps.
+// Each toast is a live region so TalkBack reads it, and leaves on its own timer.
+//
+// Toasts sit over the screen header (the till's scan/menu buttons and search),
+// so they never take a tap: touches fall through to whatever is underneath and
+// only an action button (e.g. Undo) is pressable. Previously a tap aimed at the
+// header just dismissed the toast — one of the "tap twice" causes.
+// Motion: drops in from the top (critically-damped spring), fades up and out,
+// the others re-flow (LinearTransition); a collapsed duplicate bumps.
 export function ToastHost() {
   const insets = useSafeAreaInsets()
   const toasts = useToastStore((s) => s.toasts)
@@ -40,8 +41,6 @@ const Toast = memo(function Toast({ toast: t, onDismiss }: { toast: ToastItem; o
   const theme = useTheme()
   const m = useMotion()
   const look = useMemo(() => variantLook(t.variant, theme), [t.variant, theme])
-  const translateY = useSharedValue(0)
-  const fade = useSharedValue(1)
   const bump = useSharedValue(1)
 
   // A duplicate was folded into this toast: a small, non-wobbly bump.
@@ -56,71 +55,44 @@ const Toast = memo(function Toast({ toast: t, onDismiss }: { toast: ToastItem; o
     )
   }, [t.count, m.reduced, bump])
 
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: bump.value }] }))
+
   const id = t.id
-  const pan = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetY(-8)
-        .failOffsetY(12)
-        .failOffsetX([-24, 24])
-        .onUpdate((e) => {
-          translateY.set(Math.min(0, e.translationY))
-        })
-        .onEnd((e) => {
-          if (translateY.get() < -SWIPE_DISMISS_PX || e.velocityY < -SWIPE_DISMISS_VELOCITY) {
-            fade.set(withTiming(0, { duration: motion.duration.fast }))
-            translateY.set(
-              withTiming(-80, { duration: motion.duration.fast }, () => {
-                scheduleOnRN(onDismiss, id)
-              }),
-            )
-          } else {
-            translateY.set(withSpring(0, { ...motion.spring.snappy }))
-          }
-        }),
-    [id, onDismiss, translateY, fade],
-  )
-
-  const style = useAnimatedStyle(() => ({
-    opacity: fade.value,
-    transform: [{ translateY: translateY.value }, { scale: bump.value }],
-  }))
-
   const label = toastLabel(t)
   return (
-    <GestureDetector gesture={pan}>
-      <Animated.View entering={m.toastIn} exiting={m.toastOut} layout={m.layout} style={style}>
-        <Pressable
-          onPress={() => onDismiss(id)}
-          accessibilityRole="alert"
-          accessibilityLabel={label}
-          accessibilityHint={t.action ? undefined : "Tap or swipe up to dismiss"}
-          accessibilityLiveRegion={t.variant === "error" ? "assertive" : "polite"}
-          style={[styles.toast, look.container]}
-        >
+    <Animated.View entering={m.toastIn} exiting={m.toastOut} layout={m.layout} style={style} pointerEvents="box-none">
+      <View
+        pointerEvents="box-none"
+        accessible
+        accessibilityRole="alert"
+        accessibilityLabel={label}
+        accessibilityLiveRegion={t.variant === "error" ? "assertive" : "polite"}
+        style={[styles.toast, look.container]}
+      >
+        <View pointerEvents="none" style={styles.message}>
           <Ionicons name={look.icon} size={20} color={look.fg} />
           <Text variant="label" style={[styles.text, { color: look.fg }]} numberOfLines={3}>
             {label}
           </Text>
-          {t.action ? (
-            <Pressable
-              onPress={() => {
-                t.action?.onPress()
-                onDismiss(id)
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={t.action.label}
-              hitSlop={8}
-              style={({ pressed }) => [styles.action, { borderColor: look.fg }, pressed && styles.actionPressed]}
-            >
-              <Text variant="label" style={{ color: look.fg }}>
-                {t.action.label}
-              </Text>
-            </Pressable>
-          ) : null}
-        </Pressable>
-      </Animated.View>
-    </GestureDetector>
+        </View>
+        {t.action ? (
+          <Pressable
+            onPress={() => {
+              t.action?.onPress()
+              onDismiss(id)
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={t.action.label}
+            hitSlop={8}
+            style={({ pressed }) => [styles.action, { borderColor: look.fg }, pressed && styles.actionPressed]}
+          >
+            <Text variant="label" style={{ color: look.fg }}>
+              {t.action.label}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </Animated.View>
   )
 })
 
@@ -150,6 +122,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md + 2,
     ...elevation.md,
   },
+  message: { flex: 1, flexDirection: "row", alignItems: "center", gap: space.sm },
   text: { flex: 1 },
   action: {
     minHeight: 36,

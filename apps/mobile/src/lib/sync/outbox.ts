@@ -26,8 +26,17 @@ const SELECT = `SELECT seq, client_id AS clientId, type, payload, summary, statu
   error_message AS errorMessage, server_id AS serverId, flags, attempts, created_at AS createdAt, synced_at AS syncedAt
   FROM outbox`
 
+// Cache for pendingSaleQuantities(), keyed on a fingerprint of the pending
+// sales (count, highest seq, sum of seqs). Payloads are never edited and seqs
+// only grow, so any sale added or leaving "pending" changes the fingerprint —
+// it's derived from the table itself, so no write path can forget to bump it.
+let pendingCache: { key: string; quantities: Map<string, number> } | null = null
+
 /** Must be called inside a transaction together with the write it records. */
 export function enqueue(rowKey: string, item: PushItemPayload, summary: string): void {
+  // A rolled-back enqueue frees its seq for reuse, so the fingerprint alone
+  // could match different contents — drop the cache on every enqueue.
+  pendingCache = null
   sqlite.runSync(
     "INSERT INTO outbox (client_id, type, payload, summary, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
     [rowKey, item.type, JSON.stringify(item), summary, Date.now()],
@@ -69,6 +78,12 @@ export function outboxCounts(): OutboxCounts {
 
 /** Base units per product still waiting to upload (the server hasn't subtracted them yet). */
 export function pendingSaleQuantities(): Map<string, number> {
+  const f = sqlite.getFirstSync<{ n: number; maxSeq: number | null; sumSeq: number | null }>(
+    "SELECT count(*) AS n, max(seq) AS maxSeq, sum(seq) AS sumSeq FROM outbox WHERE status = 'pending' AND type = 'sale'",
+  )
+  const key = `${f?.n ?? 0}:${f?.maxSeq ?? 0}:${f?.sumSeq ?? 0}`
+  if (pendingCache?.key === key) return new Map(pendingCache.quantities)
+
   const rows = sqlite.getAllSync<{ payload: string }>("SELECT payload FROM outbox WHERE status = 'pending' AND type = 'sale'")
   const sales: SalePayload[] = []
   for (const r of rows) {
@@ -78,7 +93,9 @@ export function pendingSaleQuantities(): Map<string, number> {
       // unreadable payload — it will surface as rejected when pushed
     }
   }
-  return quantitiesByProduct(sales)
+  const quantities = quantitiesByProduct(sales)
+  pendingCache = { key, quantities }
+  return new Map(quantities)
 }
 
 export function markSynced(seq: number, serverId: string | null, flags: string[]): void {

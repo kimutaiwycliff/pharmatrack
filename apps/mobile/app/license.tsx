@@ -7,6 +7,7 @@ import { verifyLicenseRaw, storeLicenseRaw } from "../src/lib/license"
 import { useTheme } from "../src/theme/useTheme"
 import { space } from "../src/theme/tokens"
 import { Button, FormScroll, Screen, Text } from "../src/components"
+import { errorMessage } from "../src/lib/api"
 
 // ADR-014, Phase 3 — shown by app/index.tsx's OfflineIndex before ANYTHING
 // else (even the first-run /setup wizard) when no valid license is stored,
@@ -34,7 +35,7 @@ export default function License() {
       await storeLicenseRaw(raw)
       router.replace("/")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read that file")
+      setError(errorMessage(err, "Couldn't read that licence file. Make sure you picked the file you were sent, then try again."))
     } finally {
       setPending(false)
     }

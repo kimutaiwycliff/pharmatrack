@@ -14,6 +14,7 @@ import type { ProductBody } from "./logic/form"
 import type { PackSizeBody } from "./logic/units"
 import { searchCatalogRows } from "./logic/list"
 import type { CatalogItem, Category, DeleteImpact, PackSize, ProductDetail, ProductDetailResponse, ProductListItem, Supplier } from "./types"
+import { UserFacingError } from "../../lib/errors"
 
 // Every read/write the Products screens make, in one place, with the Offline
 // Edition (ADR-014, env.EXPO_PUBLIC_OFFLINE_MODE) routed to src/repo/* and the
@@ -185,7 +186,7 @@ export async function pickProductImage(): Promise<string | null> {
     await file.copy(dest, { overwrite: true })
     return dest.uri
   }
-  if (file.size > 5 * 1024 * 1024) throw new Error("Image must be 5 MB or smaller")
+  if (file.size > 5 * 1024 * 1024) throw new UserFacingError("Image must be 5 MB or smaller")
   const type = file.type || "image/jpeg"
   const fd = new FormData()
   // React Native's FormData takes a { uri, name, type } descriptor for files.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
@@ -37,6 +37,7 @@ import {
 import { Divider, FigureRow, VarianceSummary } from "../../src/features/shifts/components/Figures"
 import { OtherOpenShifts } from "../../src/features/shifts/components/OtherOpenShifts"
 import { confirm as askConfirm } from "../../src/lib/confirm"
+import { errorMessage } from "../../src/lib/api"
 
 // Till session for whoever is selling on this phone. Online build (R1 rule 5):
 // shifts are device-local (lib/sync/shifts.ts via store/shift.ts) and upload as
@@ -68,6 +69,9 @@ export default function Shifts() {
   const [result, setResult] = useState<ClosedResult | null>(null)
   // R1 rule 5: clock-out forces an upload; null = not started / not applicable.
   const [upload, setUpload] = useState<"running" | SyncResult | null>(null)
+  // Ref guard for clock-in/out: a queued second "End shift" tap would
+  // otherwise run against a shift that's already closed.
+  const busy = useRef(false)
 
   useEffect(() => {
     loadActiveShift()
@@ -79,27 +83,42 @@ export default function Shifts() {
 
   async function runUpload() {
     setUpload("running")
-    setUpload(await syncNow("clock-out", { force: true }))
+    try {
+      setUpload(await syncNow("clock-out", { force: true }))
+    } catch (err) {
+      const message = errorMessage(err, "Couldn't upload the shift. It's saved on this phone — try again in a moment.")
+      setUpload({ ok: false, outcome: "error", pushed: 0, rejected: 0, productsUpdated: 0, deleted: 0, message })
+    }
   }
 
+  // The store never rejects: on failure it sets `error` (shown below) and
+  // returns false/null, so success feedback only fires on success.
   async function handleClockIn() {
+    if (busy.current) return
     setFormError(null)
     // Online build: shifts belong to the device + current staff, no branch needed.
     if (OFFLINE_EDITION && !branchId) {
       setFormError("Session still loading — try again in a moment")
       return
     }
+    busy.current = true
     setPending(true)
     try {
-      await clockIn(amountCents / 100, branchId ?? "")
-      setDigits("")
-      haptics.success()
+      if (await clockIn(amountCents / 100, branchId ?? "")) {
+        setDigits("")
+        haptics.success()
+      } else {
+        haptics.error()
+      }
     } finally {
+      busy.current = false
       setPending(false)
     }
   }
 
   async function doClockOut() {
+    if (busy.current) return
+    busy.current = true
     setPending(true)
     try {
       const out = await clockOut(amountCents / 100, notes.trim() || undefined)
@@ -110,29 +129,32 @@ export default function Shifts() {
         setDigits("")
         setNotes("")
         if (!OFFLINE_EDITION) void runUpload()
+      } else {
+        haptics.error()
       }
     } finally {
+      busy.current = false
       setPending(false)
     }
   }
 
-  function handleClockOut() {
+  // Returned to the End shift button, which stays locked through confirm + close.
+  async function handleClockOut() {
+    if (busy.current) return
     setFormError(null)
     if (digits === "") {
       // The keypad can't type a lone 0, so an empty count is either "the
       // drawer really is empty" or a slip — ask instead of guessing.
-      void askConfirm({
+      const ok = await askConfirm({
         title: "Close with KES 0 counted?",
         message: "Nothing was entered for the cash in the drawer.",
         cancelLabel: "Enter amount",
         confirmLabel: "Close with KES 0",
         destructive: true,
-      }).then((ok) => {
-        if (ok) void doClockOut()
       })
-      return
+      if (!ok) return
     }
-    void doClockOut()
+    await doClockOut()
   }
 
   function openClosingForm() {
@@ -181,7 +203,7 @@ export default function Shifts() {
           }
         >
           <ClosedSummary result={result} />
-          {OFFLINE_EDITION ? null : <UploadStatus upload={upload} onRetry={() => void runUpload()} />}
+          {OFFLINE_EDITION ? null : <UploadStatus upload={upload} onRetry={runUpload} />}
         </FormScroll>
         </Animated.View>
       </Screen>
@@ -304,7 +326,7 @@ export default function Shifts() {
             size="lg"
             loading={pending}
             leadingIcon={<Ionicons name="time-outline" size={20} color={theme.onAccent} />}
-            onPress={() => void handleClockIn()}
+            onPress={handleClockIn}
             accessibilityHint={`Starts your shift with ${formatKES(amountCents)} in the drawer`}
           />
         }
@@ -369,7 +391,7 @@ function ClosedSummary({ result }: { result: ClosedResult }) {
   )
 }
 
-function UploadStatus({ upload, onRetry }: { upload: "running" | SyncResult | null; onRetry: () => void }) {
+function UploadStatus({ upload, onRetry }: { upload: "running" | SyncResult | null; onRetry: () => Promise<void> }) {
   const theme = useTheme()
   const progress = useSyncStore((st) => st.progress)
   if (!upload) return null

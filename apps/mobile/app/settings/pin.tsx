@@ -62,7 +62,7 @@ function PinFormView({ data, onSaved }: { data: SettingsData; onSaved: () => voi
       toast.success(data.has_pin ? "PIN updated" : "PIN set — you can now sign in with it")
       router.back()
     } catch (err) {
-      const msg = errorMessage(err)
+      const msg = errorMessage(err, "Couldn't save your PIN. Please try again.")
       // The server's wrong-password answer belongs under the password field.
       if (/password/i.test(msg)) setErrors({ password: msg })
       else toast.error(msg)

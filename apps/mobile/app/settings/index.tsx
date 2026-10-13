@@ -53,7 +53,7 @@ export default function Settings() {
   return (
     <Screen>
       <ScreenHeader title="Settings" />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         <SettingsSection title="Profile">
           <ListRow
             title={staff?.name ?? "My profile"}

@@ -151,7 +151,7 @@ export function BatchesView({ productId, productName, variant }: BatchesViewProp
       ) : q.error && !q.data ? (
         <ErrorState message={q.error} onRetry={q.retry} />
       ) : (
-        <FlashList
+        <FlashList keyboardShouldPersistTaps="handled"
           data={batches}
           keyExtractor={(b) => b.id}
           ListHeaderComponent={header}

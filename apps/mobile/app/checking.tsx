@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import NetInfo from "@react-native-community/netinfo"
@@ -11,6 +11,7 @@ import { syncNow, type SyncResult } from "../src/lib/sync/engine"
 import { outboxCounts } from "../src/lib/sync/outbox"
 import { getRosterMember } from "../src/lib/sync/roster"
 import { adoptSignedInUser } from "../src/lib/sync/staff-session"
+import { userMessage } from "../src/lib/errors"
 import { useTheme } from "../src/theme/useTheme"
 import { space } from "../src/theme/tokens"
 import { Button, Card, CheckMark, ProgressBar, Screen, Text } from "../src/components"
@@ -42,6 +43,7 @@ export default function Checking() {
   const [verify, setVerify] = useState<StepState>("waiting")
   const [checks, setChecks] = useState<Check[]>([])
   const [result, setResult] = useState<SyncResult | null>(null)
+  const [failure, setFailure] = useState<string | null>(null)
   const started = useRef(false)
 
   // Step ticks follow the engine's live progress until the run settles.
@@ -53,10 +55,11 @@ export default function Checking() {
     started.current = true
     void (async () => {
       // Signed in online but nobody chosen yet (e.g. first run after the R1
-      // update): the signed-in user is the one selling.
-      if (!useStaffStore.getState().current) await adoptSignedInUser()
-      const net = await NetInfo.fetch()
-      if (!useSyncStore.getState().device || !net.isConnected || net.isInternetReachable === false) {
+      // update): the signed-in user is the one selling. A failure here only
+      // means "choose who is selling" later, so it never blocks the check.
+      if (!useStaffStore.getState().current) await adoptSignedInUser().catch(() => undefined)
+      const net = await NetInfo.fetch().catch(() => null)
+      if (!useSyncStore.getState().device || !net?.isConnected || net.isInternetReachable === false) {
         router.replace(nextRoute())
         return
       }
@@ -86,11 +89,18 @@ export default function Checking() {
       ]
       setChecks(list)
       setVerify(list.every((c) => c.ok) ? "done" : "failed")
-    })()
+    })().catch((err: unknown) => {
+      // Never leave the cashier on a spinner: say what happened and offer Continue.
+      console.warn("[checking] failed", err)
+      setFailure(userMessage(err, "Couldn't finish checking this phone. Your sales are safe — you can continue and sync later."))
+      setFinal((f) => f ?? { push: "failed", pull: "failed" })
+      setVerify("failed")
+    })
   }, [])
 
   const finished = verify === "done" || verify === "failed"
-  const needsAttention = outboxCounts().rejected
+  // Read once the run settles, not on every progress tick.
+  const needsAttention = useMemo(() => (finished ? outboxCounts().rejected : 0), [finished])
 
   return (
     <Screen style={styles.container}>
@@ -128,6 +138,14 @@ export default function Checking() {
           </Animated.View>
         ))}
       </Card>
+
+      {failure ? (
+        <Card style={styles.card}>
+          <Text tone="danger" accessibilityLiveRegion="polite">
+            {failure}
+          </Text>
+        </Card>
+      ) : null}
 
       {finished && result ? (
         <Animated.View entering={m.riseIn}>

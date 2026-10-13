@@ -3,6 +3,13 @@ import { drizzle } from "drizzle-orm/expo-sqlite"
 import * as schema from "./schema"
 
 const sqliteDb = openDatabaseSync("pharmatrack.db")
+// WAL (recommended by the expo-sqlite docs): a commit appends to the log
+// instead of rewriting the journal, so the sale commit and the after-sale pull
+// — both synchronous on the JS thread — finish sooner. It persists in the file
+// and needs no other change: everything uses this one connection. `synchronous`
+// stays at the default FULL on purpose — NORMAL would be faster still, but a
+// power cut could then lose the last committed sale.
+sqliteDb.execSync("PRAGMA journal_mode = WAL")
 
 export const db = drizzle(sqliteDb, { schema })
 

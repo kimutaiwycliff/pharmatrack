@@ -3,6 +3,7 @@ import { fromCents } from "@pharmatrack/core"
 import { db } from "../../db/database"
 import { queuedSales } from "../../db/schema"
 import { apiFetch } from "../api-fetch"
+import { httpMessage } from "../errors"
 import type { CartItem } from "../../store/cart"
 
 // Mirrors apps/web/app/api/sales/route.ts's saleSchema/cartItemSchema exactly
@@ -185,7 +186,7 @@ export async function syncQueuedSales(): Promise<{ synced: number; rejected: num
     const errorBody = await response.json().catch(() => ({}))
     await db
       .update(queuedSales)
-      .set({ status: "rejected", errorMessage: (errorBody as { error?: string }).error ?? `HTTP ${response.status}` })
+      .set({ status: "rejected", errorMessage: httpMessage(response.status, (errorBody as { error?: string }).error) })
       .where(eq(queuedSales.id, sale.id))
     rejected++
   }

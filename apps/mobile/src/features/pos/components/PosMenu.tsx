@@ -1,9 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
-import type { ComponentProps } from "react"
+import { useRef, type ComponentProps } from "react"
 import { StyleSheet, View } from "react-native"
 import { Chip, ListRow, Sheet, Text } from "../../../components"
 import { useTheme, useThemeMode, type ThemeMode } from "../../../theme/useTheme"
 import { space } from "../../../theme/tokens"
+import { createTapGuard } from "../logic/tapGuard"
 
 type IconName = ComponentProps<typeof Ionicons>["name"]
 
@@ -24,6 +25,9 @@ const MODES: { mode: ThemeMode; label: string; icon: IconName }[] = [
 export function PosMenu({ open, onClose, actions }: { open: boolean; onClose: () => void; actions: PosMenuAction[] }) {
   const theme = useTheme()
   const { mode, setMode } = useThemeMode()
+  // One action per open: a double tap while the sheet slides away must not
+  // push the same screen twice (or sign out twice).
+  const guard = useRef(createTapGuard(800)).current
   return (
     <Sheet open={open} onClose={onClose} title="Menu">
       <Text variant="label" tone="secondary">
@@ -49,6 +53,7 @@ export function PosMenu({ open, onClose, actions }: { open: boolean; onClose: ()
             title={a.label}
             leading={<Ionicons name={a.icon} size={22} color={a.danger ? theme.red : theme.text} />}
             onPress={() => {
+              if (!guard()) return
               onClose()
               a.onPress()
             }}

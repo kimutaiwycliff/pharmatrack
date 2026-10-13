@@ -13,6 +13,7 @@ import { fetchShiftsPage, type ShiftListRow } from "../api"
 import { remoteOpenShifts } from "../logic/shifts"
 import { ForceCloseSheet, type ForceCloseTarget } from "./ForceCloseSheet"
 import { confirm as askConfirm } from "../../../lib/confirm"
+import { toast } from "../../../lib/toast"
 
 // R3: what a manager with shifts.close_others sees under their own shift on
 // the Shifts tab (online build only — the caller hides it in the Offline
@@ -70,6 +71,11 @@ export function OtherOpenShifts({ currentStaffId, activeShiftId }: Props) {
     if (await forceCloseLocal(sh.clientId)) {
       setLocalVersion((v) => v + 1)
       scheduleSoonSync()
+      toast.success(`${name}'s shift closed`)
+    } else {
+      // The store keeps the reason in `error`; a missing staff/shift leaves none.
+      toast.error(useShiftStore.getState().error ?? "Couldn't close that shift — it may already be closed.")
+      setLocalVersion((v) => v + 1)
     }
   }
 
@@ -93,6 +99,7 @@ export function OtherOpenShifts({ currentStaffId, activeShiftId }: Props) {
                   title="Force close"
                   size="sm"
                   variant="danger"
+                  // Returning the promise keeps the button busy through confirm + close.
                   onPress={() => confirmLocal(sh)}
                   accessibilityLabel={`Force close ${sh.cashierName ?? "this"} shift`}
                 />

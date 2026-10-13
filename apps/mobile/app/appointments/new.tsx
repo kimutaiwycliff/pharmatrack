@@ -24,6 +24,7 @@ import { useBranchScope } from "../../src/store/branchScope"
 import { useSessionStore } from "../../src/store/session"
 import { useTheme } from "../../src/theme/useTheme"
 import { radius, space } from "../../src/theme/tokens"
+import { UserFacingError } from "../../src/lib/errors"
 
 // Book / reschedule an appointment — mirrors apps/web/components/appointments/
 // BookAppointmentDialog.tsx and the createSchema / updateSchema in
@@ -121,8 +122,8 @@ export default function BookAppointment() {
         await updateAppointment(p.id, { scheduled_at: when.toISOString(), duration_minutes: Number(duration), notes: notes.trim() || null })
         toast.success("Appointment updated")
       } else {
-        if (!branchId) throw new Error("No branch selected — try again once your session has loaded")
-        if (!chosen) throw new Error("Choose a service")
+        if (!branchId) throw new UserFacingError("No branch selected — try again once your session has loaded")
+        if (!chosen) throw new UserFacingError("Choose a service")
         await createAppointment({
           customer_id: customer.customerId,
           customer_name: customer.name.trim(),
@@ -144,7 +145,7 @@ export default function BookAppointment() {
       router.back()
     } catch (err) {
       haptics.error()
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't save the appointment. Please try again."))
     } finally {
       setSaving(false)
     }

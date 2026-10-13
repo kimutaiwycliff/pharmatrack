@@ -138,7 +138,7 @@ export default function Inventory() {
           query ? <IconButton icon="close-circle" accessibilityLabel="Clear search" color={theme.textTertiary} onPress={() => setQuery("")} /> : null
         }
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {STATUS_FILTERS.map((f) => {
           const n = countFor(summary, f.key)
           return (

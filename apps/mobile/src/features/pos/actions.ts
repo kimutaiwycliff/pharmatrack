@@ -5,10 +5,11 @@ import { env } from "../../lib/env"
 import { haptics } from "../../lib/haptics"
 import { requestTopUp } from "../../lib/sync/engine"
 import { toast } from "../../lib/toast"
-import { LIMIT_SCOPE, limitMessage, useCartStore, type AddOptions, type CapResult, type CartSellUnit } from "../../store/cart"
+import { useCartStore, type AddOptions, type CapResult, type CartSellUnit } from "../../store/cart"
 import { useSyncStore } from "../../store/sync"
 import { findScanTarget } from "./data"
 import { baseQtyInCart } from "./logic/cart"
+import { refusalMessage, type TopUpOutcome } from "./logic/topUp"
 
 // The POS's write actions, shared by the search list, quick-add tiles, the
 // cart lines and the camera scanner, so all of them treat the stock/allowance
@@ -16,55 +17,90 @@ import { baseQtyInCart } from "./logic/cart"
 
 const OFFLINE_EDITION = env.EXPO_PUBLIC_OFFLINE_MODE
 
+// Top-ups in flight, per product. A repeat tap while the server is being
+// asked is ignored (it would only send another request), not refused.
+const topUpsInFlight = new Map<string, Promise<TopUpOutcome>>()
+const BUSY = Symbol("busy")
+
 /**
  * Online build, connected: ask the server for `need` more units of this
- * product's allowance (R1 rule 2) and re-read the caps. False when offline,
- * in the Offline Edition, or nothing was granted.
+ * product's allowance (R1 rule 2) and re-read the caps. Says what happened so
+ * the cashier hears "no connection" vs. "none left" (logic/topUp.ts).
+ * A "Checking stock…" toast covers the wait (the request can take seconds).
  */
-export async function topUpAllowance(productId: string, need: number): Promise<boolean> {
-  if (OFFLINE_EDITION || need <= 0 || !useSyncStore.getState().online) return false
+export async function requestMoreAllowance(productId: string, need: number, productName?: string): Promise<TopUpOutcome> {
+  if (OFFLINE_EDITION || need <= 0) return "skipped"
+  if (!useSyncStore.getState().online) return "offline"
+  const running = topUpsInFlight.get(productId)
+  if (running) return running
+  const checking = toast.info(productName ? `Checking stock for ${productName}…` : "Checking stock…")
+  const run = (async (): Promise<TopUpOutcome> => {
+    let granted = 0
+    try {
+      granted = await requestTopUp(productId, need)
+    } catch {
+      return "network"
+    }
+    if (granted > 0) {
+      useCartStore.getState().refreshLimits([productId])
+      return "granted"
+    }
+    // requestTopUp() throws on a connection failure (caught above), so 0 here
+    // means the branch really has none to spare.
+    return "none"
+  })()
+  topUpsInFlight.set(productId, run)
   try {
-    const granted = await requestTopUp(productId, need)
-    if (granted <= 0) return false
-  } catch {
-    return false
+    return await run
+  } finally {
+    topUpsInFlight.delete(productId)
+    toast.dismiss(checking)
   }
-  useCartStore.getState().refreshLimits([productId])
-  return true
 }
 
-/** Tell the cashier how much is left (base units not already in the cart). */
-function refuse(r: Extract<CapResult, { ok: false }>): false {
+/** Boolean form for the checkout retry in the POS screen: true when more was granted. */
+export async function topUpAllowance(productId: string, need: number): Promise<boolean> {
+  return (await requestMoreAllowance(productId, need)) === "granted"
+}
+
+/** Tell the cashier how much is left (base units not already in the cart) and why. */
+function refuse(r: Extract<CapResult, { ok: false }>, outcome: TopUpOutcome): false {
   haptics.error()
   const inCart = baseQtyInCart(useCartStore.getState().items, r.productId)
-  toast.error(limitMessage(LIMIT_SCOPE, r.productName, Math.max(0, r.limit - inCart)))
+  toast.error(refusalMessage({ offlineEdition: OFFLINE_EDITION, outcome, name: r.productName, available: Math.max(0, r.limit - inCart) }))
   return false
 }
 
 /** Try a capped change; on refusal top up once (online) and retry. */
-async function withTopUp(attempt: () => CapResult): Promise<CapResult> {
+async function withTopUp(attempt: () => CapResult): Promise<{ r: CapResult; outcome: TopUpOutcome } | typeof BUSY> {
   const first = attempt()
-  if (first.ok) return first
-  return (await topUpAllowance(first.productId, first.wanted - first.limit)) ? attempt() : first
+  if (first.ok) return { r: first, outcome: "skipped" }
+  // Another tap on this product is already waiting for the server.
+  if (topUpsInFlight.has(first.productId)) return BUSY
+  const outcome = await requestMoreAllowance(first.productId, first.wanted - first.limit, first.productName)
+  return { r: outcome === "granted" ? attempt() : first, outcome }
 }
 
 /** Add one sell unit (or `opts.count`). `quiet` skips the "added" haptic (the scanner gives its own). */
 export async function addToCart(product: ProductRow, opts?: AddOptions, quiet = false): Promise<boolean> {
-  const r = await withTopUp(() => useCartStore.getState().add(product, opts))
-  if (!r.ok) return refuse(r)
+  const res = await withTopUp(() => useCartStore.getState().add(product, opts))
+  if (res === BUSY) return false
+  if (!res.r.ok) return refuse(res.r, res.outcome)
   if (!quiet) haptics.add()
   return true
 }
 
 export async function setLineQty(key: string, qty: number): Promise<boolean> {
-  const r = await withTopUp(() => useCartStore.getState().setSellQty(key, qty))
-  return r.ok ? true : refuse(r)
+  const res = await withTopUp(() => useCartStore.getState().setSellQty(key, qty))
+  if (res === BUSY) return false
+  return res.r.ok ? true : refuse(res.r, res.outcome)
 }
 
 /** Switch a line between the base unit and a pack size (tops up once if the packs don't fit). */
 export async function setLineUnit(key: string, sellUnit: CartSellUnit | null): Promise<boolean> {
-  const r = await withTopUp(() => useCartStore.getState().setSellUnit(key, sellUnit))
-  if (!r.ok) return refuse(r)
+  const res = await withTopUp(() => useCartStore.getState().setSellUnit(key, sellUnit))
+  if (res === BUSY) return false
+  if (!res.r.ok) return refuse(res.r, res.outcome)
   haptics.tick()
   return true
 }

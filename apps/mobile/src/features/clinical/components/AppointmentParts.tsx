@@ -75,7 +75,7 @@ interface AppointmentSheetProps {
   canManage: boolean
   busy: AppointmentAction | null
   onClose: () => void
-  onAction: (appt: Appointment, action: AppointmentAction) => void
+  onAction: (appt: Appointment, action: AppointmentAction) => void | Promise<void>
 }
 
 export function AppointmentSheet({ appt, canManage, busy, onClose, onAction }: AppointmentSheetProps) {
@@ -83,21 +83,21 @@ export function AppointmentSheet({ appt, canManage, busy, onClose, onAction }: A
   const actions = appt && canManage ? availableActions(appt.status) : []
   const badge = appt ? statusBadge(appt.status) : null
 
-  function run(action: AppointmentAction) {
+  // Returns the action's promise so the pressed button stays locked until it settles.
+  async function run(action: AppointmentAction) {
     if (!appt) return
     if (action === "cancel") {
-      void askConfirm({
+      const ok = await askConfirm({
         title: "Cancel this appointment?",
         message: "Pending reminders won't be sent.",
         cancelLabel: "Keep it",
         confirmLabel: "Cancel appointment",
         destructive: true,
-      }).then((ok) => {
-        if (ok) onAction(appt, "cancel")
       })
+      if (ok) await onAction(appt, "cancel")
       return
     }
-    onAction(appt, action)
+    await onAction(appt, action)
   }
 
   return (

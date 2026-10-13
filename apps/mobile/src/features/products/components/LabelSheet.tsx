@@ -2,6 +2,7 @@ import { useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { Button, QuantityStepper, Sheet, Text } from "../../../components"
 import { printLabel, shareLabelPDF, type LabelInput } from "../../../lib/labels/printLabel"
+import { errorMessage } from "../../../lib/api"
 import { toast } from "../../../lib/toast"
 import { space } from "../../../theme/tokens"
 
@@ -19,7 +20,7 @@ export function LabelSheet({ label, onClose }: { label: Omit<LabelInput, "copies
       if (kind === "print") await printLabel({ ...label, copies })
       else await shareLabelPDF({ ...label, copies })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not print the label")
+      toast.error(errorMessage(err, "Couldn't print the label. Check the printer and try again."))
     } finally {
       setBusy(null)
     }

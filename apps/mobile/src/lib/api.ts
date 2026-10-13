@@ -1,9 +1,11 @@
-import { apiFetch } from "./api-fetch"
+import { apiFetch, REQUEST_TIMEOUT_MS } from "./api-fetch"
+import { httpMessage, NETWORK_ERROR, TIMEOUT_ERROR, userMessage, withTimeout } from "./errors"
 
 // R3: JSON helpers over apiFetch for the online back-office screens. Every web
 // route answers errors as `{ error: string }` (Zod's first issue, or a
 // sentence written for people), so that's what we surface; a thrown fetch
-// (no network, DNS, TLS) becomes one plain "can't reach the server" message.
+// (no network, DNS, TLS) becomes one plain "can't reach the server" message,
+// a slow one a "taking too long" message (lib/errors.ts has the wording).
 
 export class ApiError extends Error {
   constructor(
@@ -16,7 +18,7 @@ export class ApiError extends Error {
   }
 }
 
-export const NETWORK_ERROR = "Could not reach the server. Check your connection and try again."
+export { NETWORK_ERROR }
 
 interface JsonInit {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"
@@ -30,29 +32,34 @@ export async function apiJson<T>(path: string, init: JsonInit = {}): Promise<T> 
       method: init.method ?? "GET",
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     })
-  } catch {
-    throw new ApiError(0, NETWORK_ERROR)
+  } catch (err) {
+    throw new ApiError(0, err instanceof Error && err.name === "TimeoutError" ? TIMEOUT_ERROR : NETWORK_ERROR)
   }
   let json: unknown = null
   try {
-    json = await res.json()
-  } catch {
+    json = await withTimeout(res.json() as Promise<unknown>, REQUEST_TIMEOUT_MS)
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") throw new ApiError(0, TIMEOUT_ERROR)
     json = null
   }
   if (!res.ok) {
-    const msg =
+    const serverText =
       json && typeof json === "object" && "error" in json && typeof (json as { error: unknown }).error === "string"
         ? (json as { error: string }).error
-        : `Something went wrong (HTTP ${res.status})`
-    throw new ApiError(res.status, msg, json)
+        : null
+    throw new ApiError(res.status, httpMessage(res.status, serverText), json)
   }
   return json as T
 }
 
-/** Message to show for anything thrown by apiJson (or elsewhere). */
-export function errorMessage(err: unknown): string {
-  if (err instanceof Error && err.message) return err.message
-  return "Something went wrong. Please try again."
+/**
+ * Message to show for anything thrown by apiJson (or elsewhere). Raw technical
+ * text (SQLite errors, "Network request failed", HTTP codes) never reaches the
+ * user — see lib/errors.ts. The original is logged in development.
+ */
+export function errorMessage(err: unknown, fallback?: string): string {
+  if (__DEV__ && !(err instanceof ApiError)) console.warn("[errorMessage]", err)
+  return userMessage(err, fallback)
 }
 
 /** Builds `path?a=1&b=2`, skipping undefined/null/"" values. */

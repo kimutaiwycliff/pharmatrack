@@ -95,7 +95,7 @@ function IssueList({ branchId, isAll }: { branchId: string | undefined; isAll: b
           <ErrorState message={q.error} onRetry={q.retry} />
         </>
       ) : (
-        <FlashList
+        <FlashList keyboardShouldPersistTaps="handled"
           data={issues}
           keyExtractor={(i) => i.id}
           ListHeaderComponent={header}

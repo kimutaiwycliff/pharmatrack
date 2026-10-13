@@ -60,7 +60,7 @@ function ShiftList({ branchId, isAll }: { branchId: string | undefined; isAll: b
   return (
     <View style={styles.flex}>
       {q.error ? <ErrorState compact message={q.error} onRetry={q.retry} /> : null}
-      <FlashList
+      <FlashList keyboardShouldPersistTaps="handled"
         data={q.items}
         keyExtractor={(s) => s.id}
         renderItem={({ item }) => (

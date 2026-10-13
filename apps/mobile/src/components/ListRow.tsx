@@ -25,6 +25,7 @@ export function ListRow({ title, subtitle, leading, trailing, meta, onPress, dis
   return (
     <PressableScale
       onPress={onPress}
+      pressGuardMs={600}
       scaleTo={motion.rowPressScale}
       disabled={disabled || !onPress}
       accessibilityRole={onPress ? "button" : undefined}

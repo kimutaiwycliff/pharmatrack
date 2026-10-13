@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useState } from "react"
-import { Pressable, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
+import { Pressable } from "react-native-gesture-handler"
 import { ListRow, Sheet, Text, TextField } from "../../../components"
 import { useTheme } from "../../../theme/useTheme"
 import { radius, space, TOUCH_TARGET } from "../../../theme/tokens"

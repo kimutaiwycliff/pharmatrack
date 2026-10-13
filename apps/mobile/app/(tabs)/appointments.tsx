@@ -106,7 +106,7 @@ export default function Appointments() {
       if (next === "completed" && res.nextDue) setNextDose({ appt, due: res.nextDue })
     } catch (err) {
       haptics.error()
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't update the appointment. Please try again."))
     } finally {
       setBusy(null)
     }
@@ -244,7 +244,7 @@ export default function Appointments() {
             />
           ))}
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {STATUS_FILTERS.map((f) => (
             <Chip
               key={f.key}

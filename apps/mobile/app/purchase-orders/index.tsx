@@ -78,7 +78,7 @@ function OrdersList() {
 
   const list = (
     <View style={styles.flex}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={styles.chipBar}>
+      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={styles.chipBar}>
         {PO_FILTERS.map((f) => (
           <Chip key={f.key} label={f.label} selected={filter === f.key} onPress={() => setFilter(f.key)} accessibilityLabel={`Show ${f.label.toLowerCase()} orders`} />
         ))}
@@ -88,7 +88,7 @@ function OrdersList() {
       ) : q.error && !q.data ? (
         <ErrorState message={q.error} onRetry={q.retry} />
       ) : (
-        <FlashList
+        <FlashList keyboardShouldPersistTaps="handled"
           data={orders}
           keyExtractor={(o) => o.id}
           refreshing={q.refreshing}

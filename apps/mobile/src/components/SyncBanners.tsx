@@ -66,6 +66,7 @@ export function SyncBanners() {
         <Animated.View key={b.key} entering={m.riseIn} exiting={m.fadeOut} layout={m.layout}>
           <PressableScale
             onPress={() => router.push("/sync")}
+            pressGuardMs={600}
             scaleTo={0.985}
             style={[styles.banner, b.tone === "danger" ? styles.danger : styles.warn]}
             accessibilityRole="button"

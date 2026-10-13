@@ -44,7 +44,7 @@ export default function More() {
   return (
     <Screen>
       <ScreenHeader title="More" hideBack subtitle={who ? `${who}${role ? ` · ${ROLE_LABEL[role] ?? role}` : ""}` : role ? ROLE_LABEL[role] : null} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {SECTIONS.map((section) => {
           const rows = items.filter((i) => i.section === section)
           if (rows.length === 0) return null

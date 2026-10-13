@@ -23,7 +23,7 @@ export function ImageField({ value, onChange }: { value: string | null; onChange
       const url = await pickProductImage()
       if (url) onChange(url)
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't add the photo. Please try again."))
     } finally {
       setBusy(false)
     }

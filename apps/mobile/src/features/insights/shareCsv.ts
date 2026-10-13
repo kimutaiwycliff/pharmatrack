@@ -14,6 +14,6 @@ export async function shareCsv({ filename, csv }: CsvFile): Promise<void> {
     file.write(csv)
     await Sharing.shareAsync(file.uri, { mimeType: "text/csv", UTI: "public.comma-separated-values-text", dialogTitle: filename })
   } catch (err) {
-    toast.error(`Could not export the CSV. ${errorMessage(err)}`)
+    toast.error(errorMessage(err, "Couldn't export the CSV. Please try again."))
   }
 }

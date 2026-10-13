@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { useShallow } from "zustand/react/shallow"
 import { router, Tabs, useSegments } from "expo-router"
 import { ActivityIndicator, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
@@ -24,10 +25,18 @@ const ACTIVE_STATUSES = ["trialing", "active"]
 // /inventory, /appointments, and /more resolve exactly as before.
 export default function TabsLayout() {
   const theme = useTheme()
-  const { loaded, error, subStatus, role, contact, loadMe } = useSessionStore()
+  // Only the fields the gate reads — a branch switch or permissions refresh
+  // must not re-render the whole tab navigator.
+  const { loaded, error, subStatus, role, contact, loadMe } = useSessionStore(
+    useShallow((s) => ({ loaded: s.loaded, error: s.error, subStatus: s.subStatus, role: s.role, contact: s.contact, loadMe: s.loadMe })),
+  )
 
   useEffect(() => {
-    loadMe()
+    // Sign-in (adoptSignedInUser) has usually just loaded the session; only
+    // fetch here on a cold start or when showing a stale offline copy.
+    // Overlapping calls (the POS screen loads too) share one request.
+    const s = useSessionStore.getState()
+    if (!s.loaded || s.stale) void loadMe()
   }, [loadMe])
 
   if (!loaded) {

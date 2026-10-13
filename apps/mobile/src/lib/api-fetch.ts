@@ -1,5 +1,30 @@
 import { getCookie } from "./auth-client"
 import { env } from "./env"
+import { TimeoutError, UserFacingError } from "./errors"
+
+// Every request has a time limit, so a button never spins forever on a weak
+// connection. The limit covers getting the response headers; apiJson() also
+// limits reading the body.
+export const REQUEST_TIMEOUT_MS = 20_000
+export const UPLOAD_TIMEOUT_MS = 60_000
+const OFFLINE_BUILD = "This needs the online version of PharmaTrack."
+
+async function timedFetch(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, ms)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (timedOut) throw new TimeoutError()
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 // For business API routes (/api/products/search, /api/sales — not /api/auth/*,
 // so Better Auth's origin-trust check doesn't apply here). Attaches the same
@@ -11,17 +36,22 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   // screen not yet ported to the local repo layer is caught immediately
   // instead of surfacing as a confusing network error.
   if (!env.EXPO_PUBLIC_API_URL) {
-    throw new Error(`apiFetch(${path}) called in an offline build with no API URL configured`)
+    if (__DEV__) console.warn(`apiFetch(${path}) called in an offline build with no API URL configured`)
+    throw new UserFacingError(OFFLINE_BUILD)
   }
   const cookie = getCookie()
-  return fetch(`${env.EXPO_PUBLIC_API_URL}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.headers ?? {}),
-      ...(cookie ? { cookie } : {}),
-      "Content-Type": "application/json",
+  return timedFetch(
+    `${env.EXPO_PUBLIC_API_URL}${path}`,
+    {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        ...(cookie ? { cookie } : {}),
+        "Content-Type": "application/json",
+      },
     },
-  })
+    REQUEST_TIMEOUT_MS,
+  )
 }
 
 // For multipart uploads (e.g. POST /api/uploads/product-image) — apiFetch()
@@ -31,16 +61,21 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 // the same session cookie but leaves Content-Type unset entirely.
 export async function apiFetchFormData(path: string, formData: FormData, init?: RequestInit): Promise<Response> {
   if (!env.EXPO_PUBLIC_API_URL) {
-    throw new Error(`apiFetchFormData(${path}) called in an offline build with no API URL configured`)
+    if (__DEV__) console.warn(`apiFetchFormData(${path}) called in an offline build with no API URL configured`)
+    throw new UserFacingError(OFFLINE_BUILD)
   }
   const cookie = getCookie()
-  return fetch(`${env.EXPO_PUBLIC_API_URL}${path}`, {
-    ...init,
-    method: init?.method ?? "POST",
-    body: formData,
-    headers: {
-      ...(init?.headers ?? {}),
-      ...(cookie ? { cookie } : {}),
+  return timedFetch(
+    `${env.EXPO_PUBLIC_API_URL}${path}`,
+    {
+      ...init,
+      method: init?.method ?? "POST",
+      body: formData,
+      headers: {
+        ...(init?.headers ?? {}),
+        ...(cookie ? { cookie } : {}),
+      },
     },
-  })
+    UPLOAD_TIMEOUT_MS,
+  )
 }

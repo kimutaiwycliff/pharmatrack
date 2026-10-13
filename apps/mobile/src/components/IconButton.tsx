@@ -33,6 +33,7 @@ export function IconButton({
   return (
     <PressableScale
       onPress={onPress}
+      pressGuardMs={400}
       scaleTo={0.9}
       disabled={disabled}
       accessibilityRole="button"

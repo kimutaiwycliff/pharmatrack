@@ -18,6 +18,7 @@ import { formatDay } from "../src/lib/dates"
 import { toast } from "../src/lib/toast"
 import { useTheme } from "../src/theme/useTheme"
 import { radius, space } from "../src/theme/tokens"
+import { UserFacingError } from "../src/lib/errors"
 
 // Mirrors apps/web/components/settings/BillingPanel.tsx: subscription status
 // (the server's effective status), plan, trial / paid-until date with a
@@ -59,12 +60,12 @@ function BillingBody() {
     setPaying(true)
     try {
       const json = await apiJson<{ authorization_url?: string }>("/api/billing/checkout", { method: "POST" })
-      if (!json.authorization_url) throw new Error("Could not start payment")
+      if (!json.authorization_url) throw new UserFacingError("Couldn't start the payment. Please try again in a moment.")
       await WebBrowser.openBrowserAsync(json.authorization_url)
       // Back from the browser — the webhook may have activated the plan.
       q.refresh()
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(errorMessage(err, "Couldn't open the payment page. Please try again."))
     } finally {
       setPaying(false)
     }

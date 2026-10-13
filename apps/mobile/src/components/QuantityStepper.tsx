@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { StyleSheet, Text, View } from "react-native"
+import { Pressable } from "react-native-gesture-handler"
 import { haptics } from "../lib/haptics"
 import { keypadNumber } from "../lib/keypad"
 import { useTheme } from "../theme/useTheme"

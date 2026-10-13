@@ -138,7 +138,7 @@ export function InventorySummary({
   return (
     <View style={styles.stack}>
       <KpiGrid items={kpis} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {INVENTORY_FILTERS.map((f) => (
           <Chip
             key={f.key}

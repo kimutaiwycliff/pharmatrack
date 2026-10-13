@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { router } from "expo-router"
-import { useState, type ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { StyleSheet, View } from "react-native"
 import { Button, Card, FormScroll, IconButton, Text, TextField } from "../../../components"
 import { useCan } from "../../../hooks/useCan"
@@ -100,7 +100,13 @@ export function ProductForm(props: ProductFormProps) {
     }
   }
 
+  // `busy` blocks a second save while one runs; `saved` stays set once the
+  // product exists, so a tap during the navigation can't create it twice.
+  const busy = useRef(false)
+  const saved = useRef(false)
+
   async function save() {
+    if (busy.current || saved.current) return
     setFormError(null)
     const r = validateProductForm(values, { mode: props.mode, costVisible: showCost })
     if (!r.ok) {
@@ -108,15 +114,18 @@ export function ProductForm(props: ProductFormProps) {
       toast.error("Check the highlighted fields")
       return
     }
+    busy.current = true
     setSaving(true)
     try {
       if (editing) {
         await updateProduct(editing.id, r.body)
+        saved.current = true
         notifyProductsChanged()
         toast.success("Product saved")
         router.back()
       } else {
         const id = await createProduct(r.body)
+        saved.current = true
         notifyProductsChanged()
         toast.success(`${r.body.name} added`)
         router.replace({ pathname: "/products/[id]", params: { id } })
@@ -130,9 +139,10 @@ export function ProductForm(props: ProductFormProps) {
           },
         )
       } else {
-        setFormError(errorMessage(err))
+        setFormError(errorMessage(err, "Couldn't save the product. Please try again."))
       }
     } finally {
+      busy.current = false
       setSaving(false)
     }
   }

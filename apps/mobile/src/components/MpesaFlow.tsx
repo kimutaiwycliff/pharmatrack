@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { StyleSheet, View } from "react-native"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import Animated, { cancelAnimation, Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated"
@@ -23,7 +23,13 @@ interface MpesaFlowProps {
   // M-Pesa portion for a Split sale. Converted to decimal only at the API
   // boundary (POST /api/mpesa), never floated in between.
   amountCents: Cents
-  onConfirmed: (mpesaReference: string | null) => void
+  /**
+   * Commits the sale. May return a promise: the confirm button then spins and
+   * ignores taps until it settles, so one payment can't be recorded twice.
+   */
+  onConfirmed: (mpesaReference: string | null) => unknown
+  /** The sale is being committed (from the POS) — confirm buttons show busy. */
+  committing?: boolean
   /** Rendered inside a <Sheet> (the POS payment sheet) — keeps inputs above the keyboard. */
   inSheet?: boolean
 }
@@ -43,7 +49,11 @@ interface MpesaFlowProps {
 //  - The M-Pesa code is always optional; a non-empty value must match
 //    /^[A-Z0-9]{10}$/i or the confirm action is blocked (verified directly
 //    against apps/web/components/pos/MpesaModal.tsx's `disabled={codeBlocks}`).
-export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps) {
+//
+// Taps: send and confirm each hold an in-flight ref (refs, not state — a
+// second tap can land before React re-renders), so a double tap can't fire
+// two STK pushes or commit the same payment twice.
+export function MpesaFlow({ amountCents, onConfirmed, committing = false, inSheet }: MpesaFlowProps) {
   const theme = useTheme()
   const m = useMotion()
   const styles = useMemo(() => createStyles(theme), [theme])
@@ -62,17 +72,39 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
   const codeValid = CODE_RE.test(trimmedCode)
   const codeBlocks = trimmedCode.length > 0 && !codeValid
 
+  const sendingRef = useRef(false)
   async function send() {
+    if (sendingRef.current) return
+    sendingRef.current = true
     setError(null)
     setSending(true)
-    const result = await sendStkPush(phone, amount)
-    setSending(false)
-    if (!result.ok) {
-      setError(result.error ?? "Could not send the M-Pesa prompt. Check the number and try again.")
-      return
+    try {
+      const result = await sendStkPush(phone, amount)
+      if (!result.ok) {
+        setError(result.error ?? "Could not send the M-Pesa prompt. Check the number and try again.")
+        return
+      }
+      setSentAt(Date.now())
+      setPhase("waiting")
+    } finally {
+      sendingRef.current = false
+      setSending(false)
     }
-    setSentAt(Date.now())
-    setPhase("waiting")
+  }
+
+  const confirmingRef = useRef(false)
+  const [confirming, setConfirming] = useState(false)
+  const busy = committing || confirming
+  async function confirmPaid(reference: string | null) {
+    if (confirmingRef.current || committing) return
+    confirmingRef.current = true
+    setConfirming(true)
+    try {
+      await onConfirmed(reference)
+    } finally {
+      confirmingRef.current = false
+      setConfirming(false)
+    }
   }
 
   function enterManual(from: "phone" | "waiting") {
@@ -136,12 +168,14 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
               variant="secondary"
               onPress={send}
               loading={sending}
+              disabled={busy}
               icon={<Ionicons name="refresh-outline" size={16} color={theme.text} />}
             />
-            <Button title="Enter code manually" variant="secondary" onPress={() => enterManual("waiting")} />
+            <Button title="Enter code manually" variant="secondary" onPress={() => enterManual("waiting")} disabled={busy} />
             <Button
               title="Confirm received"
-              onPress={() => onConfirmed(null)}
+              onPress={() => confirmPaid(null)}
+              loading={busy}
               icon={<Ionicons name="checkmark-circle-outline" size={18} color={theme.onAccent} />}
             />
           </View>
@@ -171,7 +205,8 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
           />
           <Button
             title={trimmedCode ? "Confirm payment" : "Confirm — customer paid"}
-            onPress={() => onConfirmed(trimmedCode || null)}
+            onPress={() => confirmPaid(trimmedCode || null)}
+            loading={busy}
             disabled={codeBlocks}
             icon={<Ionicons name="checkmark-circle-outline" size={18} color={theme.onAccent} />}
           />
@@ -179,6 +214,7 @@ export function MpesaFlow({ amountCents, onConfirmed, inSheet }: MpesaFlowProps)
             title="Back"
             variant="secondary"
             onPress={() => setPhase(returnPhase)}
+            disabled={busy}
             icon={<Ionicons name="arrow-back-outline" size={18} color={theme.text} />}
           />
         </Animated.View>
