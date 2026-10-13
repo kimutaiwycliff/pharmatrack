@@ -7,6 +7,7 @@ import Animated from "react-native-reanimated"
 import { Button, Card, CheckMark, DateField, FormScroll, IconButton, Text, TextField, useFlash } from "../../../components"
 import { useCan } from "../../../hooks/useCan"
 import { apiJson, errorMessage } from "../../../lib/api"
+import { useIdempotencyKey } from "../../../lib/useIdempotencyKey"
 import { nairobiToday, parseISODate, toISODate } from "../../../lib/dates"
 import { haptics } from "../../../lib/haptics"
 import { useMotion } from "../../../lib/motion"
@@ -80,6 +81,9 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
     toast.success(`Matched ${item.product_name}${fields.batchNumber ? ` · batch ${fields.batchNumber}` : ""}`)
   }
 
+  // Same delivery retried (e.g. after a timeout) → same key → booked in once.
+  const idem = useIdempotencyKey()
+
   async function submit() {
     setAttempted(true)
     if (!result.payload) {
@@ -91,8 +95,9 @@ export function ReceiveDelivery({ order, onCancel, onDone }: ReceiveDeliveryProp
     try {
       const res = await apiJson<{ order: PurchaseOrderDetail; batches: number; complete: boolean }>(
         `/api/purchase-orders/${order.id}/receive`,
-        { method: "POST", body: result.payload },
+        { method: "POST", body: result.payload, headers: idem.headerFor({ order: order.id, body: result.payload }) },
       )
+      idem.reset()
       haptics.success()
       setReceived({
         order: res.order,

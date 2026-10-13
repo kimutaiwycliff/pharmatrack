@@ -10,6 +10,7 @@ import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
 import { formatKES } from "@/lib/store/cartStore"
 import { useCan } from "@/lib/store/sessionStore"
 import type { PurchaseOrderDetail } from "@/lib/purchasing/load"
+import { useIdempotencyKey } from "@/lib/api/useIdempotencyKey"
 
 interface BatchDraft {
   batch_number: string
@@ -110,18 +111,23 @@ export function ReceiveDeliveryPanel({ order, onDone, onCancel }: {
     return i.quantity_received + qty < i.quantity_ordered
   })
 
+  // Same delivery retried (e.g. after a timeout) → same key → booked in once.
+  const idem = useIdempotencyKey()
+
   async function submit() {
     if (receivingCount === 0) { toast.error("Tick at least one item that arrived"); return }
     if (problems.length > 0) { toast.error(problems[0]!); return }
     setSaving(true)
     try {
+      const body = { lines: payload, close: closeOrder }
       const res = await fetch(`/api/purchase-orders/${order.id}/receive`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lines: payload, close: closeOrder }),
+        headers: { "Content-Type": "application/json", ...idem.headerFor({ order: order.id, body }) },
+        body: JSON.stringify(body),
       })
       const json = (await res.json()) as { error?: string; batches?: number; complete?: boolean }
       if (!res.ok) throw new Error(json.error ?? "Failed to receive delivery")
+      idem.reset()
       toast.success(`${json.batches} batch${json.batches === 1 ? "" : "es"} added to stock${json.complete ? " — order complete" : " — order still has items outstanding"}`)
       void qc.invalidateQueries({ queryKey: ["purchase-order", order.id] })
       void qc.invalidateQueries({ queryKey: ["purchase-orders"] })

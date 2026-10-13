@@ -52,6 +52,7 @@ async function seed(orgId: string, tag: string) {
   // stopped by RLS (not by the one-pending-per-org unique index).
   await admin.insert(s.trial_extension_request).values({ organization_id: orgId, message: `${tag}-please`, status: tag === "B" ? "declined" : "pending" })
   await admin.insert(s.trial_grant).values({ organization_id: orgId, email_canonical: `owner-${tag.toLowerCase()}@rls.test`, source: "signup", trial_days: 14, granted: true })
+  await admin.insert(s.idempotency_key).values({ organization_id: orgId, key: `k-rls-test-${tag}`, scope: "batch.create", status_code: 201, response: { tag } })
 }
 
 async function run() {
@@ -63,7 +64,7 @@ async function run() {
     ["branch", s.branch], ["product", s.product], ["customer", s.customer], ["sale", s.sale],
     ["role_permission", s.role_permission], ["purchase_order", s.purchase_order],
     ["device", s.device], ["sync_issue", s.sync_issue], ["sync_tombstone", s.sync_tombstone],
-    ["trial_extension_request", s.trial_extension_request],
+    ["trial_extension_request", s.trial_extension_request], ["idempotency_key", s.idempotency_key],
   ]
 
   // Each org sees only its own rows on each table.

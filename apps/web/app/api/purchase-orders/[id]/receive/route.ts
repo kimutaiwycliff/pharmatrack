@@ -6,6 +6,7 @@ import { getApiContext } from "@/lib/api-auth"
 import { zUuid } from "@/lib/api/validation"
 import { loadPurchaseOrder } from "@/lib/purchasing/load"
 import { invalidateBarcodeCache } from "@/lib/products/barcodeCache"
+import { claimFor, idempotent, readIdempotencyKey } from "@/lib/api/idempotency"
 
 const batchSchema = z.object({
   batch_number: z.string().trim().min(1).max(80),
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params
   const ctx = await getApiContext({ permission: "purchasing.receive" })
   if ("error" in ctx) return ctx.error
+  const idem = readIdempotencyKey(request)
+  if ("error" in idem) return idem.error
   const parsed = receiveSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const { lines, close } = parsed.data
@@ -39,7 +42,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const today = nairobiToday()
 
   try {
-    const out = await withTenant(ctx, async (db) => {
+    // A retried submission (same Idempotency-Key) gets the first answer back
+    // instead of booking the delivery in twice.
+    const out = await withTenant(ctx, (db) => idempotent(db, claimFor(ctx.organizationId, idem.key, `po.receive:${id}`), async () => {
       const [po] = await db.select().from(purchase_order).where(eq(purchase_order.id, id)).limit(1)
       if (!po) throw new ReceiveError(404, "Purchase order not found")
       if (po.status === "received" || po.status === "cancelled") throw new ReceiveError(409, `This order is already ${po.status}`)
@@ -96,10 +101,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         entity: "purchase_order", entity_id: id,
         diff: { po_number: po.po_number, batches: batchCount, closed: complete, lines: lines.map((l) => ({ item_id: l.item_id, batches: l.batches })) },
       })
-      return { codes, batchCount, complete, order: await loadPurchaseOrder(db, id, canSeeCost) }
-    })
-    await invalidateBarcodeCache(ctx.organizationId, out.codes)
-    return NextResponse.json({ order: out.order, batches: out.batchCount, complete: out.complete })
+      const order = await loadPurchaseOrder(db, id, canSeeCost)
+      return { status: 200, body: { order, batches: batchCount, complete }, after: codes }
+    }))
+    if (out.after) await invalidateBarcodeCache(ctx.organizationId, out.after)
+    return NextResponse.json(out.body, { status: out.status })
   } catch (err) {
     if (err instanceof ReceiveError) return NextResponse.json({ error: err.message }, { status: err.status })
     throw err

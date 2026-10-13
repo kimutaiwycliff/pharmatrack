@@ -14,6 +14,7 @@ import { packName, type RestockSuggestion } from "../../src/features/purchasing/
 import { useCan } from "../../src/hooks/useCan"
 import { useApiQuery } from "../../src/hooks/useQuery"
 import { apiJson, errorMessage, withQuery } from "../../src/lib/api"
+import { useIdempotencyKey } from "../../src/lib/useIdempotencyKey"
 import { toast } from "../../src/lib/toast"
 import { useBranchScope } from "../../src/store/branchScope"
 import { useSessionStore } from "../../src/store/session"
@@ -95,15 +96,19 @@ function Suggestions() {
   // supplier group (its row disappears only after the re-render).
   const creatingRef = useRef(false)
   const createdKeys = useRef(new Set<string>())
+  // Retrying a draft after a timeout replays it instead of creating a second.
+  const idem = useIdempotencyKey()
 
   async function create(group: SuggestionGroup) {
     if (!branchId || creatingRef.current || createdKeys.current.has(group.key)) return
     creatingRef.current = true
     setCreating(group.key)
     try {
+      const body = buildDraftOrderBody(branchId, group, canSeeCost)
       const res = await apiJson<{ id: string; po_number: string }>("/api/purchase-orders", {
         method: "POST",
-        body: buildDraftOrderBody(branchId, group, canSeeCost),
+        body,
+        headers: idem.headerFor(body),
       })
       createdKeys.current.add(group.key)
       setDone((d) => new Set(d).add(group.key))

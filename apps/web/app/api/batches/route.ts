@@ -9,6 +9,7 @@ import { redis } from "@/lib/redis"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
 import { forbidden } from "@/lib/api-auth"
 import { resolveBranchScope } from "@/lib/inventory/aggregate"
+import { claimFor, idempotent, readIdempotencyKey } from "@/lib/api/idempotency"
 
 const createBatchSchema = z.object({
   product_id: zUuid(),
@@ -64,11 +65,15 @@ export async function POST(request: NextRequest) {
   if (subErr) return subErr
   if (!ctx.permissions.includes("stock.receive")) return forbidden("stock.receive")
 
+  const idem = readIdempotencyKey(request)
+  if ("error" in idem) return idem.error
   const parsed = createBatchSchema.safeParse(await request.json())
   if (!parsed.success) return zodErrorResponse(parsed.error)
   const d = parsed.data
 
-  const batch = await withTenant(ctx, async (db) => {
+  // A retried submission (same Idempotency-Key) gets the first answer back
+  // instead of a second batch.
+  const out = await withTenant(ctx, (db) => idempotent(db, claimFor(ctx.organizationId, idem.key, "batch.create"), async () => {
     const [b] = await db.insert(product_batch).values({
       organization_id: ctx.organizationId,
       product_id: d.product_id,
@@ -81,8 +86,9 @@ export async function POST(request: NextRequest) {
       cost_price: d.cost_price == null ? null : String(d.cost_price),
       received_by: ctx.userId,
     }).returning()
-    return b
-  })
+    return { status: 201, body: { batch: b } }
+  }))
+  if (out.replayed) return NextResponse.json(out.body, { status: out.status })
 
   // Best-effort cache invalidation for this product's barcodes at this branch.
   if (redis) {
@@ -95,7 +101,7 @@ export async function POST(request: NextRequest) {
     } catch {}
   }
 
-  return NextResponse.json({ batch }, { status: 201 })
+  return NextResponse.json(out.body, { status: out.status })
 }
 
 // Edit a batch's metadata (expiry date, batch number, cost). Quantity is NOT

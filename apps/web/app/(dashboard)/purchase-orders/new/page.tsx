@@ -14,6 +14,7 @@ import { useUIStore } from "@/lib/store/uiStore"
 import { formatKES } from "@/lib/store/cartStore"
 import type { RestockSuggestion } from "@/lib/purchasing/serialize"
 import type { ProductWithStock } from "@pharmatrack/types"
+import { useIdempotencyKey } from "@/lib/api/useIdempotencyKey"
 
 interface Line {
   product_id: string
@@ -140,6 +141,10 @@ export default function RestockPlannerPage() {
     }))
   }
 
+  // One key per supplier group's order: a retried submission can't create the
+  // same draft twice.
+  const idem = useIdempotencyKey()
+
   async function createOrders(keys: string[]) {
     const todo = includedGroups.filter(([k]) => keys.includes(k))
     if (todo.length === 0) return
@@ -152,19 +157,21 @@ export default function RestockPlannerPage() {
           pack_label: l.pack_label, ...(canSeeCost ? { unit_cost: l.cost } : {}),
         }))
         if (items.length === 0) continue
+        const body = {
+          branch_id: branchId, supplier_id: key === NO_SUPPLIER ? null : key,
+          expected_date: expected || null, items,
+        }
         const res = await fetch("/api/purchase-orders", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            branch_id: branchId, supplier_id: key === NO_SUPPLIER ? null : key,
-            expected_date: expected || null, items,
-          }),
+          headers: { "Content-Type": "application/json", ...idem.headerFor(body) },
+          body: JSON.stringify(body),
         })
         const json = (await res.json()) as { id?: string; error?: string }
         if (!res.ok || !json.id) throw new Error(json.error ?? "Failed to create order")
         created.push(json.id)
         setRemoved((r) => new Set([...r, ...ls.map((l) => l.product_id)]))
       }
+      idem.reset()
       void qc.invalidateQueries({ queryKey: ["purchase-orders"] })
       void qc.invalidateQueries({ queryKey: ["restock-suggestions"] })
       if (created.length === 1) {

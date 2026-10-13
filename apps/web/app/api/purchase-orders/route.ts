@@ -8,6 +8,7 @@ import { resolveBranchScope } from "@/lib/inventory/aggregate"
 import { formatPoNumber } from "@/lib/purchasing/suggest"
 import { serializePo } from "@/lib/purchasing/serialize"
 import { poItemInput, buildPoLines } from "@/lib/purchasing/lines"
+import { claimFor, idempotent, readIdempotencyKey } from "@/lib/api/idempotency"
 
 const createSchema = z.object({
   branch_id: zUuid(),
@@ -65,6 +66,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ctx = await getApiContext({ permission: "purchasing.manage" })
   if ("error" in ctx) return ctx.error
+  const idem = readIdempotencyKey(request)
+  if ("error" in idem) return idem.error
   const parsed = createSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const d = parsed.data
@@ -73,7 +76,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const created = await withTenant(ctx, async (db) => {
+    // A retried submission (same Idempotency-Key) gets the first order back.
+    const out = await withTenant(ctx, (db) => idempotent(db, claimFor(ctx.organizationId, idem.key, "po.create"), async () => {
       const seqRows = (await db.execute(sql`select nextval('purchase_order_number_seq')::int as n`)) as unknown as Array<{ n: number }>
       const [po] = await db.insert(purchase_order).values({
         organization_id: ctx.organizationId,
@@ -86,9 +90,9 @@ export async function POST(request: NextRequest) {
       }).returning()
       const lines = await buildPoLines(db, d.items, ctx.permissions.includes("cost.view"))
       await db.insert(purchase_order_item).values(lines.map((l) => ({ ...l, purchase_order_id: po!.id })))
-      return po!
-    })
-    return NextResponse.json({ id: created.id, po_number: created.po_number }, { status: 201 })
+      return { status: 201, body: { id: po!.id, po_number: po!.po_number } }
+    }))
+    return NextResponse.json(out.body, { status: out.status })
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("Unknown product")) {
       return NextResponse.json({ error: "One of the products no longer exists" }, { status: 400 })
