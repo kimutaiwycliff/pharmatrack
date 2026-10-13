@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { StyleSheet } from "react-native"
+import { StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import Animated from "react-native-reanimated"
@@ -13,6 +13,7 @@ import { useTheme } from "../theme/useTheme"
 import { space } from "../theme/tokens"
 import { Button } from "./Button"
 import { Card } from "./Card"
+import { Chip } from "./Chip"
 import { Text } from "./Text"
 import { TextField } from "./TextField"
 
@@ -29,6 +30,12 @@ export function DeviceGate() {
   const online = useSyncStore((s) => s.online)
   const revoked = status === "revoked"
   const canRegister = permissions.includes("devices.manage") && !stale
+  const branches = useSessionStore((s) => s.branches)
+  const sessionBranchId = useSessionStore((s) => s.branchId)
+  // A pharmacy with several branches: the device sells for one of them. Without
+  // this an owner/manager with no home branch couldn't register at all (the
+  // server answers "Pick the branch this device sells for").
+  const [branchId, setBranchId] = useState<string | null>(sessionBranchId ?? branches[0]?.id ?? null)
   const [name, setName] = useState("Counter phone")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +48,7 @@ export function DeviceGate() {
     }
     setPending(true)
     try {
-      const r = await registerDevice(name)
+      const r = await registerDevice(name, branches.length > 1 ? branchId : null)
       if (!r.ok) {
         setError(r.error)
         return
@@ -87,6 +94,18 @@ export function DeviceGate() {
             error={error}
             containerStyle={styles.fullWidth}
           />
+          {branches.length > 1 ? (
+            <View style={styles.fullWidth}>
+              <Text variant="label" tone="secondary">
+                Sells for
+              </Text>
+              <View style={styles.branches}>
+                {branches.map((b) => (
+                  <Chip key={b.id} label={b.name} selected={b.id === branchId} onPress={() => setBranchId(b.id)} accessibilityLabel={`Sells for ${b.name}`} />
+                ))}
+              </View>
+            </View>
+          ) : null}
           {!online ? (
             <Text variant="caption" tone="danger" align="center" accessibilityLiveRegion="polite">
               Connect to the internet to register
@@ -123,4 +142,5 @@ export function DeviceGate() {
 const styles = StyleSheet.create({
   card: { gap: space.md, alignItems: "center" },
   fullWidth: { alignSelf: "stretch" },
+  branches: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
 })

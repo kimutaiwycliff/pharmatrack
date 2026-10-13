@@ -28,7 +28,10 @@ export const auth = betterAuth({
   // ADR-013 — the Android app's custom deep-link scheme, trusted alongside the
   // web origin (implicit from baseURL) so Better Auth's origin/CSRF check
   // accepts requests once the `expo` plugin rewrites `expo-origin` → `origin`.
-  trustedOrigins: ["pharmatrack://"],
+  // Desktop till (docs/plans/desktop-android-parity.md): the bundled page's
+  // origin — macOS (tauri://) and Windows (http://tauri.localhost) webviews;
+  // requests are sent by the app's Rust HTTP client with that Origin.
+  trustedOrigins: ["pharmatrack://", "tauri://localhost", "http://tauri.localhost"],
   database: drizzleAdapter(dbAdmin(), {
     provider: "pg",
     schema: { user, session, account, verification, organization: organizationTable, member, invitation },
