@@ -23,6 +23,7 @@ import {
 import { useCan } from "../src/hooks/useCan"
 import { useQuery } from "../src/hooks/useQuery"
 import { apiJson, errorMessage } from "../src/lib/api"
+import { useIdempotencyKey } from "../src/lib/useIdempotencyKey"
 import { parseISODate, toISODate } from "../src/lib/dates"
 import { env } from "../src/lib/env"
 import { printLabel, shareLabelPDF } from "../src/lib/labels/printLabel"
@@ -184,8 +185,10 @@ function ReceiveForm() {
   }
 
   // Ref guard (not `saving`): a second tap before the re-render would POST a
-  // duplicate batch — the server has no idempotency key for this route.
+  // duplicate batch. The Idempotency-Key covers the rest: a retry after a
+  // timeout (the first request may have gone through) is replayed, not re-booked.
   const submitting = useRef(false)
+  const idem = useIdempotencyKey()
 
   async function submit() {
     if (submitting.current) return
@@ -205,7 +208,8 @@ function ReceiveForm() {
           costPrice: body.cost_price ?? null,
         })
       } else {
-        await apiJson("/api/batches", { method: "POST", body })
+        await apiJson("/api/batches", { method: "POST", body, headers: idem.headerFor(body) })
+        idem.reset()
       }
       bumpAll()
       toast.success(`Received ${body.quantity_received.toLocaleString("en-KE")} × ${product.name}`)

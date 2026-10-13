@@ -23,6 +23,8 @@ export { NETWORK_ERROR }
 interface JsonInit {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"
   body?: unknown
+  /** Extra headers, e.g. an Idempotency-Key (lib/useIdempotencyKey.ts). */
+  headers?: Record<string, string>
 }
 
 export async function apiJson<T>(path: string, init: JsonInit = {}): Promise<T> {
@@ -31,6 +33,7 @@ export async function apiJson<T>(path: string, init: JsonInit = {}): Promise<T> 
     res = await apiFetch(path, {
       method: init.method ?? "GET",
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      headers: init.headers,
     })
   } catch (err) {
     throw new ApiError(0, err instanceof Error && err.name === "TimeoutError" ? TIMEOUT_ERROR : NETWORK_ERROR)

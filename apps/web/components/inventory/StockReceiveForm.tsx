@@ -12,8 +12,11 @@ import { formatKES } from "@/lib/store/cartStore"
 import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
 import type { ProductWithStock, Organization } from "@pharmatrack/types"
+import { useIdempotencyKey } from "@/lib/api/useIdempotencyKey"
 
 interface ReceiveItem {
+  /** Stable per line — keys its Idempotency-Key so a retry can't post it twice. */
+  lineId: string
   productId: string
   productName: string
   gtin: string | null
@@ -89,6 +92,7 @@ function ReceiveItemCard({ item, index, onRemove }: { item: ReceiveItem; index: 
 export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
   const [receiveList, setReceiveList] = useState<ReceiveItem[]>([])
+  const idem = useIdempotencyKey()
   const [lastReceived, setLastReceived] = useState<ReceiveItem[]>([])
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("")
   const [posting, setPosting] = useState(false)
@@ -177,6 +181,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
     setReceiveList((prev) => [
       ...prev,
       {
+        lineId: crypto.randomUUID(),
         productId: pendingProduct.product_id!,
         productName: pendingProduct.name!,
         gtin: pendingProduct.gtin,
@@ -202,38 +207,53 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
   async function postReceiving() {
     if (receiveList.length === 0) return
     setPosting(true)
-    let failed = 0
+    // Each line carries its own Idempotency-Key: if some lines fail and the
+    // user posts again, lines that already went through are replayed by the
+    // server, never booked twice. Only the failed lines stay in the list.
+    const failedLines: ReceiveItem[] = []
     for (const item of receiveList) {
       try {
+        const body = {
+          product_id: item.productId,
+          branch_id: branchId,
+          batch_number: item.batchNumber,
+          expiry_date: item.expiryDate,
+          quantity_received: item.qty * item.unitsPerPack,
+          // The form takes cost per PACK (that's what's on the supplier's
+          // invoice), but batch cost is stored per BASE UNIT — the unit
+          // reports multiply by sold quantity. Sending the pack cost as-is
+          // used to overstate COGS by units_per_pack.
+          cost_price: item.costPrice == null ? null : Math.round((item.costPrice / Math.max(1, item.unitsPerPack)) * 100) / 100,
+          supplier_id: item.supplierId || undefined,
+        }
         const res = await fetch("/api/batches", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            product_id: item.productId,
-            branch_id: branchId,
-            batch_number: item.batchNumber,
-            expiry_date: item.expiryDate,
-            quantity_received: item.qty * item.unitsPerPack,
-            // The form takes cost per PACK (that's what's on the supplier's
-            // invoice), but batch cost is stored per BASE UNIT — the unit
-            // reports multiply by sold quantity. Sending the pack cost as-is
-            // used to overstate COGS by units_per_pack.
-            cost_price: item.costPrice == null ? null : Math.round((item.costPrice / Math.max(1, item.unitsPerPack)) * 100) / 100,
-            supplier_id: item.supplierId || undefined,
-          }),
+          headers: { "Content-Type": "application/json", ...idem.headerFor({ line: item.lineId, body }) },
+          body: JSON.stringify(body),
         })
-        if (!res.ok) failed++
+        if (!res.ok) failedLines.push(item)
       } catch {
-        failed++
+        failedLines.push(item)
       }
     }
     setPosting(false)
-    if (failed > 0) {
-      toast.error(`${failed} item(s) failed to post`)
+    const posted = receiveList.filter((i) => !failedLines.includes(i))
+    if (failedLines.length > 0) {
+      toast.error(
+        posted.length > 0
+          ? `${posted.length} batch(es) saved, ${failedLines.length} failed. Check your connection and post again — saved ones won't be repeated.`
+          : `${failedLines.length} item(s) failed to post. Check your connection and try again.`,
+      )
+      setReceiveList(failedLines)
+      if (posted.length > 0) {
+        setLastReceived(posted)
+        onPosted()
+      }
     } else {
       toast.success(`${receiveList.length} batch(es) posted successfully`)
       setLastReceived(receiveList)
       setReceiveList([])
+      idem.reset()
       onPosted()
     }
   }

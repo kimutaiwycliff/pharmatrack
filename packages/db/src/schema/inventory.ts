@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, numeric, timestamp, date } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, integer, numeric, timestamp, date, jsonb, primaryKey } from "drizzle-orm/pg-core"
 import { organization, user } from "./auth"
 import { branch } from "./tenancy"
 import { product, supplier } from "./catalogue"
@@ -49,3 +49,14 @@ export const controlled_substance_log = pgTable("controlled_substance_log", {
   batch_number: text("batch_number"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
+
+// Mirrors infra/migrations/031_idempotency_key.sql. One row per client
+// submission of a stock-creating write; see apps/web/lib/api/idempotency.ts.
+export const idempotency_key = pgTable("idempotency_key", {
+  organization_id: text("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  scope: text("scope").notNull(),
+  status_code: integer("status_code"),
+  response: jsonb("response"),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.organization_id, t.key] })])
