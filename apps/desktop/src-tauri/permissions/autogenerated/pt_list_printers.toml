@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pt-list-printers"
+description = "Enables the pt_list_printers command without any pre-configured scope."
+commands.allow = ["pt_list_printers"]
+
+[[permission]]
+identifier = "deny-pt-list-printers"
+description = "Denies the pt_list_printers command without any pre-configured scope."
+commands.deny = ["pt_list_printers"]

@@ -66,6 +66,17 @@ export default function Settings() {
           />
         </SettingsSection>
 
+        <SettingsSection title="This till">
+          <ListRow
+            title="Printer & scanner"
+            subtitle="Receipt printer, cash drawer and barcode scanner"
+            leading={icon("print-outline")}
+            trailing={chevron}
+            onPress={() => router.push("/settings/hardware")}
+            accessibilityHint="Set up the receipt printer and check the scanner"
+          />
+        </SettingsSection>
+
         <SettingsSection title="Security">
           <ListRow
             title="Till PIN"

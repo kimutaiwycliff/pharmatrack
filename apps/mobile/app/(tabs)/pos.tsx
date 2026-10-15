@@ -24,7 +24,7 @@ import { useMotion } from "../../src/lib/motion"
 import { useTheme } from "../../src/theme/useTheme"
 import { space, TABLET_MIN_WIDTH, radius, type Theme } from "../../src/theme/tokens"
 import {
-  Button, Card, DeviceGate, FormScroll, HardwareScanCatcher, IconButton, Screen, SellingLock, Sheet, StatusBadge, SyncBanners,
+  Button, Card, DeviceGate, DeviceStatusBadges, FormScroll, HardwareScanCatcher, IconButton, Screen, SellingLock, Sheet, StatusBadge, SyncBanners,
   SyncStatusBar, Text,
 } from "../../src/components"
 import { addScanned, topUpAllowance } from "../../src/features/pos/actions"
@@ -339,6 +339,7 @@ export default function Pos() {
     <View style={styles.header}>
       <View style={styles.headerStatus}>{OFFLINE_EDITION ? <StatusBadge status="ok" label="Offline edition" /> : <SyncStatusBar />}</View>
       <View style={styles.headerActions}>
+        <DeviceStatusBadges />
         <IconButton icon="barcode-outline" accessibilityLabel="Scan with camera" onPress={() => go("/scan")} />
         <IconButton icon="ellipsis-vertical" accessibilityLabel="More options" onPress={() => setMenuOpen(true)} />
       </View>

@@ -13,6 +13,10 @@ use tauri_plugin_updater::UpdaterExt;
 #[cfg(feature = "offline-edition")]
 mod offline;
 
+// ADR-015 — receipt printers (USB/COM, Bluetooth COM, network, installed
+// printers) for the web app's Settings → Printer & scanner.
+mod printing;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -121,6 +125,11 @@ pub fn run() {
 
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            printing::pt_list_printers,
+            printing::pt_print,
+            printing::pt_printer_status
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
