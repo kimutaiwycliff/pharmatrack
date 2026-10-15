@@ -8,7 +8,10 @@ import { z } from "zod"
 // department — created ACTIVE and PRICED from the catalog's reference prices so
 // they are immediately visible (product_stock shows active products at stock 0,
 // see migration 008) and sellable. The tenant then tunes price + opening qty in
-// the review grid. Owner/manager only.
+// the review grid. Owner/manager only. Only the curated (priced) list seeds;
+// the PPB register rows (source = 'ppb') are for search + autofill.
+
+const curated = eq(drug_catalog.source, "curated")
 
 async function requireManager() {
   const ctx = await getTenantContext()
@@ -29,10 +32,10 @@ export async function GET() {
 
   const [byCat, seededByCat] = await Promise.all([
     dbAdmin().select({ category: drug_catalog.category, total: sql<number>`count(*)::int` })
-      .from(drug_catalog).where(isNotNull(drug_catalog.category)).groupBy(drug_catalog.category),
+      .from(drug_catalog).where(and(curated, isNotNull(drug_catalog.category))).groupBy(drug_catalog.category),
     dbAdmin().select({ category: drug_catalog.category, seeded: sql<number>`count(*)::int` })
       .from(product).innerJoin(drug_catalog, eq(drug_catalog.id, product.catalog_id))
-      .where(eq(product.organization_id, ctx.organizationId)).groupBy(drug_catalog.category),
+      .where(and(curated, eq(product.organization_id, ctx.organizationId))).groupBy(drug_catalog.category),
   ])
 
   const seededMap = new Map(seededByCat.map((s) => [s.category, s.seeded]))
@@ -63,9 +66,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   const wantCats = parsed.data?.categories?.filter(Boolean) ?? []
 
-  const catalogRows = await dbAdmin().select().from(drug_catalog).where(
+  const catalogRows = await dbAdmin().select().from(drug_catalog).where(and(
+    curated,
     wantCats.length ? inArray(drug_catalog.category, wantCats) : isNotNull(drug_catalog.category),
-  )
+  ))
   if (catalogRows.length === 0) return NextResponse.json({ seeded: 0, updated: 0, alreadyPresent: 0 })
 
   const result = await withTenant(ctx, async (db) => {
@@ -171,7 +175,9 @@ export async function DELETE() {
   const { ctx } = r
 
   const result = await withTenant(ctx, async (db) => {
-    const seeded = await db.select({ id: product.id }).from(product).where(isNotNull(product.catalog_id))
+    // Only Quick Start's own products — never ones a teammate added from a PPB match.
+    const seeded = await db.select({ id: product.id }).from(product)
+      .innerJoin(drug_catalog, eq(drug_catalog.id, product.catalog_id)).where(curated)
     const ids = seeded.map((p) => p.id)
     if (ids.length === 0) return { removed: 0, kept: 0 }
     const [batched, sold] = await Promise.all([

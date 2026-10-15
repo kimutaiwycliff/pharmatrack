@@ -67,6 +67,12 @@ interface CatalogItem {
   units_per_pack: number
   is_controlled: boolean
   requires_prescription: boolean
+  generic_name: string | null
+  /** Typical selling price per base unit (curated rows only). */
+  reference_price: number | null
+  /** 'curated' retail list, or 'ppb' = the Pharmacy and Poisons Board register. */
+  source: "curated" | "ppb"
+  ppb_registration_no: string | null
 }
 
 // Sensible base unit for a chosen dosage form (only applied until the user edits it)
@@ -133,6 +139,8 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
   // Identity
   const [name, setName] = useState(prefill?.name ?? "")
   const [brandName, setBrandName] = useState("")
+  // Molecule from a catalogue pick (groups "related products"); not shown.
+  const [genericName, setGenericName] = useState("")
   const [manufacturer, setManufacturer] = useState(prefill?.manufacturer ?? "")
   const [gtin, setGtin] = useState(prefill?.gtin ?? "")
 
@@ -204,6 +212,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
   function applyCatalogItem(item: CatalogItem) {
     setName(item.name)
     setBrandName(item.brand_name ?? "")
+    setGenericName(item.generic_name ?? "")
     setManufacturer(item.manufacturer ?? "")
     setGtin(item.gtin ?? "")
     setStrength(item.strength ?? "")
@@ -214,6 +223,8 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
     if (item.units_per_pack) setUnitsPerPack(item.units_per_pack)
     setIsControlled(item.is_controlled)
     setRequiresPrescription(item.requires_prescription)
+    // A starting price only — the pharmacy sets its own.
+    if (item.reference_price && !sellingPrice) setSellingPrice(String(item.reference_price))
     setPickedName(`${item.name}${item.strength ? " " + item.strength : ""}`)
     setCatalogOpen(false)
     setCatalogQuery("")
@@ -254,6 +265,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
           body: JSON.stringify({
             name,
             brand_name: brandName || undefined,
+            generic_name: genericName || undefined,
             manufacturer: manufacturer || undefined,
             gtin: gtin || undefined,
             strength: strength || undefined,
@@ -343,7 +355,7 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
                 value={catalogQuery}
                 onChange={(e) => { setCatalogQuery(e.target.value); setPickedName(null) }}
                 onFocus={() => { if (catalogResults.length) setCatalogOpen(true) }}
-                placeholder="Search e.g. Paracetamol, Amoxil, Amlodipine…"
+                placeholder="Search a brand, molecule or PPB number — e.g. Panadol, amlodipine"
                 className="h-10 pl-9 bg-[var(--pt-surface)]"
               />
               {catalogLoading && <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-[var(--pt-text-tertiary)]" />}
@@ -362,10 +374,18 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
                         </span>
                         <span className="text-[11px] text-[var(--pt-text-tertiary)] shrink-0">{item.dosage_form ?? ""}</span>
                       </div>
-                      <div className="flex gap-1.5 mt-0.5">
+                      {item.generic_name || item.manufacturer ? (
+                        <p className="text-[11px] text-[var(--pt-text-secondary)] truncate">
+                          {[item.generic_name, item.manufacturer].filter(Boolean).join(" · ")}
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-1.5 mt-0.5">
                         {item.requires_prescription && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300">Rx</span>}
                         {item.is_controlled && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300">Controlled</span>}
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]">per {item.base_unit}</span>
+                        {item.ppb_registration_no ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--pt-muted-strong)] text-[var(--pt-text-secondary)]">PPB {item.ppb_registration_no}</span>
+                        ) : null}
                       </div>
                     </button>
                   ))}
@@ -374,10 +394,10 @@ export function NewProductDialog({ open, onOpenChange, prefill, branchId, suppli
             </div>
             {pickedName ? (
               <p className="flex items-center gap-1.5 mt-1.5 text-[12px] text-[var(--pt-green-700)]">
-                <Check size={13} /> Autofilled <span className="font-semibold">{pickedName}</span> — just set price &amp; stock below.
+                <Check size={13} /> Autofilled <span className="font-semibold">{pickedName}</span> — check the details, then set price &amp; stock below.
               </p>
             ) : (
-              <p className="mt-1.5 text-[11px] text-[var(--pt-text-tertiary)]">Pick a product to autofill its details, or type everything manually below.</p>
+              <p className="mt-1.5 text-[11px] text-[var(--pt-text-tertiary)]">Pick a product to autofill its details (you can change any of them), or type everything manually below. Includes the Pharmacy and Poisons Board register of medicines.</p>
             )}
           </div>
 
