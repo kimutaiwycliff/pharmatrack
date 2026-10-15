@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react"
 import { Search, ScanBarcode, Plus, AlertCircle } from "lucide-react"
 import { useCartStore } from "@/lib/store/cartStore"
 import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
+import { useDeviceHealth } from "@/lib/printing/useDeviceHealth"
 import type { BarcodeScanEvent } from "@pharmatrack/core"
 import { CameraScanner } from "./CameraScanner"
 import { useProductLookup } from "@/lib/hooks/useProductLookup"
@@ -50,6 +51,8 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const [cameraOpen, setCameraOpen] = useState(false)
+  // The header badges poll the printer; here we only need the scanner.
+  const { scanner } = useDeviceHealth({ poll: false })
   const addItem = useCartStore((s) => s.addItem)
   const setSellUnit = useCartStore((s) => s.setSellUnit)
 
@@ -194,17 +197,20 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
         <CameraScanner onScan={handleScannedEvent} onClose={() => setCameraOpen(false)} />
       )}
 
-      {/* Scanner status */}
+      {/* Scanner status — from the last hardware scan (browsers can't see the device) */}
       <div className="shrink-0">
         <div
+          title={scanner.detail}
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${
             isLoading
               ? "bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400"
-              : "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
+              : scanner.tone === "ok"
+                ? "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
+                : "bg-[var(--pt-muted)] text-[var(--pt-text-secondary)]"
           }`}
         >
-          <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
-          {isLoading ? "Looking up…" : "Scanner ready · USB/Keyboard"}
+          <span className={`w-2 h-2 rounded-full bg-current ${isLoading || scanner.tone === "ok" ? "animate-pulse" : ""}`} />
+          {isLoading ? "Looking up…" : scanner.tone === "ok" ? `${scanner.label} · ${scanner.detail?.replace(/\.$/, "") ?? ""}` : "Scan a barcode, or type to search"}
         </div>
       </div>
 
