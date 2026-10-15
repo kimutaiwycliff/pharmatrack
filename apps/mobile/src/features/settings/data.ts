@@ -69,12 +69,12 @@ export async function saveProfile(data: SettingsData, body: { full_name: string;
 }
 
 /** `password` is ignored offline — the Offline Edition has no account password. */
-export async function savePin(data: SettingsData, pin: string, password: string): Promise<void> {
+export async function savePin(data: SettingsData, pin: string, currentPin?: string): Promise<void> {
   if (OFFLINE) {
     await updateLocalPin(requireStaff(data), pin)
     return
   }
-  await apiJson("/api/settings?target=pin", { method: "PATCH", body: { password, pin } })
+  await apiJson("/api/settings?target=pin", { method: "PATCH", body: { pin, ...(currentPin ? { current_pin: currentPin } : {}) } })
 }
 
 export async function saveOrg(data: SettingsData, body: OrgPayload): Promise<void> {

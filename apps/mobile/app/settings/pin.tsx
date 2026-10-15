@@ -13,10 +13,12 @@ import { useTheme } from "../../src/theme/useTheme"
 import { space } from "../../src/theme/tokens"
 
 // Set / change your own till PIN. Mirrors web's "Quick PIN Login" card:
-// PATCH /api/settings?target=pin with the account password as confirmation
-// (the server re-checks it and refuses trivial PINs), and only once a phone
-// number is on file, since PIN sign-in matches by phone. The Offline Edition
-// has no account password — it stores the PIN locally (repo/settings.ts).
+// PATCH /api/settings?target=pin — no account password (Google sign-in users
+// have none). A first PIN needs only the session; changing one sends the
+// current PIN, or works without it right after a fresh sign-in (the server
+// decides, and refuses trivial PINs). Only once a phone number is on file,
+// since PIN sign-in matches by phone. The Offline Edition stores the PIN
+// locally (repo/settings.ts).
 
 const OFFLINE = env.EXPO_PUBLIC_OFFLINE_MODE
 
@@ -30,7 +32,7 @@ export default function PinSettings() {
 
 function PinFormView({ data, onSaved }: { data: SettingsData; onSaved: () => void }) {
   const theme = useTheme()
-  const [form, setForm] = useState<PinForm>({ pin: "", confirm: "", password: "" })
+  const [form, setForm] = useState<PinForm>({ pin: "", confirm: "", current: "" })
   const [errors, setErrors] = useState<FieldErrors<keyof PinForm>>({})
   const [saving, setSaving] = useState(false)
 
@@ -46,7 +48,7 @@ function PinFormView({ data, onSaved }: { data: SettingsData; onSaved: () => voi
   }
 
   function set<K extends keyof PinForm>(key: K, value: string) {
-    const v = key === "password" ? value : value.replace(/\D/g, "")
+    const v = value.replace(/\D/g, "")
     setForm((f) => ({ ...f, [key]: v }))
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }))
   }
@@ -57,14 +59,14 @@ function PinFormView({ data, onSaved }: { data: SettingsData; onSaved: () => voi
     if (hasErrors(errs)) return
     setSaving(true)
     try {
-      await savePin(data, form.pin, form.password)
+      await savePin(data, form.pin, data.has_pin ? form.current : undefined)
       onSaved()
       toast.success(data.has_pin ? "PIN updated" : "PIN set — you can now sign in with it")
       router.back()
     } catch (err) {
       const msg = errorMessage(err, "Couldn't save your PIN. Please try again.")
-      // The server's wrong-password answer belongs under the password field.
-      if (/password/i.test(msg)) setErrors({ password: msg })
+      // "Not your current PIN" / "enter your current PIN" belong under that field.
+      if (/current PIN/i.test(msg)) setErrors({ current: msg })
       else toast.error(msg)
     } finally {
       setSaving(false)
@@ -80,6 +82,19 @@ function PinFormView({ data, onSaved }: { data: SettingsData; onSaved: () => voi
         {data.has_pin ? "Change the PIN you use" : "Set a PIN to sign in"} at the till with your phone number
         {data.profile.phone ? ` (${data.profile.phone})` : ""}.
       </Text>
+      {OFFLINE || !data.has_pin ? null : (
+        <TextField
+          label="Current PIN"
+          value={form.current}
+          onChangeText={(v) => set("current", v)}
+          error={errors.current}
+          helper="Forgot it? Sign out and back in, then set a new PIN within 15 minutes."
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={4}
+          autoComplete="off"
+        />
+      )}
       <TextField
         label={data.has_pin ? "New PIN" : "PIN"}
         value={form.pin}
@@ -101,18 +116,6 @@ function PinFormView({ data, onSaved }: { data: SettingsData; onSaved: () => voi
         maxLength={maxLength}
         autoComplete="off"
       />
-      {OFFLINE ? null : (
-        <TextField
-          label="Account password"
-          value={form.password}
-          onChangeText={(v) => set("password", v)}
-          error={errors.password}
-          helper="Confirms it's really you"
-          secureTextEntry
-          autoCapitalize="none"
-          autoComplete="current-password"
-        />
-      )}
     </FormScroll>
   )
 }

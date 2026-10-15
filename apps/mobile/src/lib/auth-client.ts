@@ -53,8 +53,29 @@ export async function confirmSignOut() {
   router.replace(useSyncStore.getState().device ? "/switch-user" : "/login")
 }
 
-export async function signInEmail(email: string, password: string) {
-  return authClient.signIn.email({ email, password })
+// The server guards email sign-in with Cloudflare Turnstile; the app gets a
+// token from the site's own check page (components/CaptchaSheet) and sends it
+// the same way the web login form does.
+export async function signInEmail(email: string, password: string, captchaToken?: string | null) {
+  return authClient.signIn.email({
+    email,
+    password,
+    ...(captchaToken ? { fetchOptions: { headers: { "x-captcha-response": captchaToken } } } : {}),
+  })
+}
+
+/** True when the server refused because the security check is missing or failed. */
+export function isCaptchaFailure(err: { message?: string; code?: string } | null | undefined): boolean {
+  return !!err && /captcha/i.test(`${err.code ?? ""} ${err.message ?? ""}`)
+}
+
+// Google sign-in: opens Google in a secure in-app browser tab (Chrome Custom
+// Tabs — Google allows these, unlike embedded web views) and returns to the
+// app through the pharmatrack:// link, signed in. @better-auth/expo handles
+// the round trip; the server's `expo()` plugin and trusted "pharmatrack://"
+// origin are already in place.
+export async function signInGoogle() {
+  return authClient.signIn.social({ provider: "google", callbackURL: "/checking" })
 }
 
 // Custom endpoint (apps/web/lib/auth/pin-plugin.ts) — not a typed authClient

@@ -4,11 +4,11 @@ import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import Animated, { Keyframe } from "react-native-reanimated"
 import { EASE, useMotion } from "../src/lib/motion"
-import { signInEmail, signInPin } from "../src/lib/auth-client"
+import { authClient, isCaptchaFailure, signInEmail, signInGoogle, signInPin, signOut } from "../src/lib/auth-client"
 import { cacheDeviceUserAfterPinLogin, tryOfflinePinLogin } from "../src/lib/device-users"
 import { verifyLocalPin } from "../src/lib/local-auth"
 import { env } from "../src/lib/env"
-import { errorMessage } from "../src/lib/api"
+import { ApiError, apiJson, errorMessage } from "../src/lib/api"
 import { signInErrorMessage, type AuthFailure } from "../src/lib/auth-errors"
 import { isNetworkProblem } from "../src/lib/errors"
 import { findRosterByPhone, rosterToStaff, verifyRosterPin } from "../src/lib/sync/roster"
@@ -17,6 +17,7 @@ import { useSyncStore } from "../src/store/sync"
 import { useTheme } from "../src/theme/useTheme"
 import { radius, space } from "../src/theme/tokens"
 import { Button, Chip, FormScroll, Screen, Text, TextField, useShake } from "../src/components"
+import { CaptchaSheet } from "../src/components/CaptchaSheet"
 
 type Mode = "email" | "pin"
 
@@ -41,6 +42,27 @@ export default function Login() {
   const [pin, setPin] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [googlePending, setGooglePending] = useState(false)
+
+  // Email sign-in's security check (Cloudflare Turnstile, shown from the
+  // website in a sheet). Asked for only once the server says it's needed —
+  // then up front for later attempts. undefined = the person closed it.
+  const [captchaOpen, setCaptchaOpen] = useState(false)
+  const [captchaKey, setCaptchaKey] = useState(0)
+  const captchaResolve = useRef<((token: string | null | undefined) => void) | null>(null)
+  const captchaRequired = useRef(false)
+  const askCaptcha = () =>
+    new Promise<string | null | undefined>((resolve) => {
+      captchaResolve.current = resolve
+      setCaptchaKey((k) => k + 1)
+      setCaptchaOpen(true)
+    })
+  const finishCaptcha = (token: string | null | undefined) => {
+    setCaptchaOpen(false)
+    const resolve = captchaResolve.current
+    captchaResolve.current = null
+    resolve?.(token)
+  }
 
   // A failed sign-in shakes the form and buzzes (error haptic) once per error.
   useEffect(() => {
@@ -66,9 +88,27 @@ export default function Login() {
         router.replace("/pos")
         return
       } else if (mode === "email") {
-        const { error: signInError } = await signInEmail(email, password)
+        const CHECK_SKIPPED = "Complete the security check to sign in, or use Google or your till PIN."
+        let token: string | null | undefined = null
+        if (captchaRequired.current) {
+          token = await askCaptcha()
+          if (token === undefined) {
+            setError(CHECK_SKIPPED)
+            return
+          }
+        }
+        let { error: signInError } = await signInEmail(email, password, token)
+        if (signInError && isCaptchaFailure(signInError)) {
+          captchaRequired.current = true
+          token = await askCaptcha()
+          if (token === undefined) {
+            setError(CHECK_SKIPPED)
+            return
+          }
+          ;({ error: signInError } = await signInEmail(email, password, token))
+        }
         if (signInError) {
-          setError(signInErrorMessage(signInError, "email"))
+          setError(isCaptchaFailure(signInError) ? "The security check didn't go through. Please try again." : signInErrorMessage(signInError, "email"))
           return
         }
         await adoptSignedInUser()
@@ -120,6 +160,41 @@ export default function Login() {
     } finally {
       busy.current = false
       setPending(false)
+    }
+  }
+
+  // Owners who signed up with Google have no password — this is their way in.
+  async function onGoogle() {
+    if (busy.current) return
+    busy.current = true
+    setError(null)
+    setGooglePending(true)
+    try {
+      const { error: googleError } = await signInGoogle()
+      if (googleError) {
+        setError(signInErrorMessage(googleError, "email"))
+        return
+      }
+      // Closing the Google window leaves no session — nothing to do.
+      const user = (await authClient.getSession()).data?.user
+      if (!user) return
+      try {
+        await apiJson("/api/mobile/me")
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          await signOut().catch(() => undefined)
+          setError("This Google account isn't linked to a pharmacy yet. Set up your pharmacy at pharmatrack.co.ke, or ask the owner to invite this email.")
+          return
+        }
+        throw err
+      }
+      await adoptSignedInUser()
+      router.replace("/checking")
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't sign in with Google. Check your connection and try again."))
+    } finally {
+      busy.current = false
+      setGooglePending(false)
     }
   }
 
@@ -239,8 +314,30 @@ export default function Login() {
         ) : null}
         </Animated.View>
 
-        <Button title="Sign in" size="lg" onPress={onSubmit} loading={pending} style={styles.submitButton} />
+        <Button title="Sign in" size="lg" onPress={onSubmit} loading={pending} disabled={googlePending} style={styles.submitButton} />
+
+        {offline ? null : (
+          <>
+            <View style={styles.divider} accessible={false}>
+              <View style={[styles.rule, { backgroundColor: theme.border }]} />
+              <Text variant="caption" tone="secondary">or</Text>
+              <View style={[styles.rule, { backgroundColor: theme.border }]} />
+            </View>
+            <Button
+              title="Continue with Google"
+              variant="secondary"
+              size="lg"
+              onPress={onGoogle}
+              loading={googlePending}
+              disabled={pending}
+              leadingIcon={<Ionicons name="logo-google" size={18} color={theme.text} />}
+            />
+          </>
+        )}
       </FormScroll>
+      {offline ? null : (
+        <CaptchaSheet key={captchaKey} open={captchaOpen} onResult={finishCaptcha} onClose={() => finishCaptcha(undefined)} />
+      )}
     </Screen>
   )
 }
@@ -255,4 +352,6 @@ const styles = StyleSheet.create({
   tab: { flex: 1, justifyContent: "center" },
   forgot: { alignSelf: "flex-end" },
   submitButton: { marginTop: space.sm },
+  divider: { flexDirection: "row", alignItems: "center", gap: space.sm, marginVertical: space.xs },
+  rule: { flex: 1, height: StyleSheet.hairlineWidth },
 })
