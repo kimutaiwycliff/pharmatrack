@@ -322,6 +322,7 @@ export default function PosPage() {
         open={receiptData !== null}
         data={receiptData}
         onNewSale={handleNewSale}
+        autoPrint
       />
 
       {/* New product registration (triggered when barcode not found) */}

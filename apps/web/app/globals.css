@@ -210,10 +210,9 @@
     font-size: 13px;
   }
 
-  @page {
-    size: var(--pt-receipt-width, 80mm) auto;
-    margin: 0;
-  }
+  /* The page size can't use var() inside @page — browsers drop it — so the
+     receipt renders its own `@page { size: 58mm|80mm auto }` (ReceiptModal). */
+  @page { margin: 0; }
 }
 
 /* Safe-area handling for installed PWA with viewport-fit: cover.

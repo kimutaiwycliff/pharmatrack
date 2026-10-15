@@ -9,6 +9,7 @@ import { ClockOutDialog } from "./ClockOutDialog"
 import { OfflineSync } from "./OfflineSync"
 import { OfflineQueueBadge } from "./OfflineQueueBadge"
 import { DeadLetterBadge } from "./DeadLetterBadge"
+import { DeviceStatusBadges } from "./DeviceStatusBadges"
 import { ThemeToggle } from "@/components/theme/ThemeToggle"
 import { useOnline } from "@/lib/offline/useOnline"
 import { WifiOff } from "lucide-react"
@@ -79,6 +80,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
         )}
         <OfflineQueueBadge />
         <DeadLetterBadge />
+        <DeviceStatusBadges />
 
         {/* Shift indicator */}
         {shift && (
