@@ -150,7 +150,10 @@ export async function POST(request: NextRequest) {
     const filled: string[] = []
     const take = <T,>(given: T | undefined, fromCatalog: T | null | undefined, label: string): T | undefined => {
       if (given !== undefined) return given
-      if (fromCatalog != null) { filled.push(label); return fromCatalog }
+      if (fromCatalog != null) {
+        if (fromCatalog !== false) filled.push(label) // a flag is only worth mentioning when it's on
+        return fromCatalog
+      }
       return undefined
     }
     const fill = {
