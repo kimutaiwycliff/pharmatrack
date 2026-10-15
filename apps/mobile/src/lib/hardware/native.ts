@@ -1,4 +1,4 @@
-import { requireOptionalNativeModule, type EventSubscription } from "expo-modules-core"
+import { requireOptionalNativeModule } from "expo"
 import { PermissionsAndroid, Platform } from "react-native"
 import type { PrinterReplies } from "@pharmatrack/core"
 
@@ -11,6 +11,7 @@ export type PrinterKind = "bluetooth" | "network" | "usb"
 export interface BondedDevice { address: string; name: string; isPrinter: boolean; isBuiltIn: boolean; isKeyboard: boolean }
 export interface UsbDeviceInfo { address: string; vendorId: number; productId: number; name: string; manufacturer: string | null; isPrinter: boolean; hasPermission: boolean }
 export interface InputDeviceInfo { id: number; name: string; vendorId: number; productId: number; likelyScanner: boolean }
+interface Subscription { remove(): void }
 
 interface PtHardwareNative {
   bluetoothState(): { supported: boolean; enabled: boolean }
@@ -21,7 +22,7 @@ interface PtHardwareNative {
   send(kind: PrinterKind, address: string, port: number, data: number[]): Promise<void>
   status(kind: PrinterKind, address: string, port: number): Promise<PrinterReplies>
   disconnect(address: string): void
-  addListener(event: "onInputDevicesChanged", cb: (e: { devices: InputDeviceInfo[] }) => void): EventSubscription
+  addListener(event: "onInputDevicesChanged", cb: (e: { devices: InputDeviceInfo[] }) => void): Subscription
 }
 
 const mod = Platform.OS === "android" ? requireOptionalNativeModule<PtHardwareNative>("PtHardware") : null
