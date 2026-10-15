@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  applyCatalogItem, categoryLabel, costFieldVisible, defaultBaseUnit, existingProductId, emptyProductForm, filterSuggestions, formFromProduct,
+  applyCatalogItem, looksLikeBarcode, packPriceFromUnit, unitPriceFromPack, categoryLabel, costFieldVisible, defaultBaseUnit, existingProductId, emptyProductForm, filterSuggestions, formFromProduct,
   marginPercent, mergeSuggestions, orderCategories, priceCents, productSubtitle, validateProductForm,
 } from "../form"
 
@@ -116,6 +116,25 @@ describe("form helpers", () => {
     expect(v.units_per_pack).toBe("10")
     expect(v.selling_price).toBe("3")
     expect(applyCatalogItem({ ...emptyProductForm(), selling_price: "5" }, item).selling_price).toBe("5")
+  })
+
+  it("converts pack and unit prices", () => {
+    expect(unitPriceFromPack("1400", 28)).toBe("50")
+    expect(unitPriceFromPack("100", 3)).toBe("33.33")
+    expect(packPriceFromUnit("2.5", 10)).toBe("25")
+    expect(unitPriceFromPack("", 10)).toBe("")
+    expect(packPriceFromUnit("5", 0)).toBe("")
+  })
+
+  it("tells a scanned barcode from a typed name", () => {
+    expect(looksLikeBarcode("6164001234567")).toBe(true)
+    expect(looksLikeBarcode("0106164001234567172806301" + "0LOT")).toBe(true)
+    expect(looksLikeBarcode("panadol")).toBe(false)
+    expect(looksLikeBarcode("1234")).toBe(false)
+  })
+
+  it("keeps the supplier for the next product", () => {
+    expect(emptyProductForm({ supplier_id: "s1" }).supplier_id).toBe("s1")
   })
 
   it("computes margin from cents", () => {

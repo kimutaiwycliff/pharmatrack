@@ -35,7 +35,7 @@ export interface ProductFormValues {
 
 export type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>>
 
-export function emptyProductForm(prefill?: { gtin?: string | null; name?: string | null }): ProductFormValues {
+export function emptyProductForm(prefill?: { gtin?: string | null; name?: string | null; supplier_id?: string | null }): ProductFormValues {
   return {
     name: prefill?.name ?? "",
     brand_name: "",
@@ -46,7 +46,7 @@ export function emptyProductForm(prefill?: { gtin?: string | null; name?: string
     strength: "",
     dosage_form: "",
     category_id: null,
-    supplier_id: null,
+    supplier_id: prefill?.supplier_id ?? null,
     // Web's NewProductDialog starts on "tablet" too.
     base_unit: "tablet",
     pack_label: "",
@@ -374,4 +374,27 @@ export function costFieldVisible(args: { canViewCost: boolean; mode: ProductForm
   if (!args.canViewCost) return false
   if (args.mode === "create") return true
   return !!args.product && Object.prototype.hasOwnProperty.call(args.product, "cost_price")
+}
+
+/** Price per base unit from a pack price ("" when it can't be worked out). Web: lib/products/entry.ts. */
+export function unitPriceFromPack(packPrice: string, unitsPerPack: number): string {
+  const p = Number(packPrice.replace(/,/g, ""))
+  if (!packPrice.trim() || !Number.isFinite(p) || p <= 0 || !(unitsPerPack >= 1)) return ""
+  return String(Math.round((p * 100) / unitsPerPack) / 100)
+}
+
+/** Pack price from a per-unit price ("" when it can't be worked out). */
+export function packPriceFromUnit(unitPrice: string, unitsPerPack: number): string {
+  const u = Number(unitPrice.replace(/,/g, ""))
+  if (!unitPrice.trim() || !Number.isFinite(u) || u <= 0 || !(unitsPerPack >= 1)) return ""
+  return String(Math.round(u * 100 * unitsPerPack) / 100)
+}
+
+/**
+ * Did a scanner (Bluetooth/USB wedge typing into the box, or the camera) give
+ * us a barcode rather than a product name? 8–14 digits, or a GS1 string.
+ */
+export function looksLikeBarcode(input: string): boolean {
+  const t = input.trim()
+  return /^\d{8,14}$/.test(t) || /^(\]d2|\]C1)?01\d{14}/.test(t) || t.includes("\x1D")
 }
