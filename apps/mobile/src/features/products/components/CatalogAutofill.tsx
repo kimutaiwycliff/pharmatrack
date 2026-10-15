@@ -58,7 +58,7 @@ export function CatalogAutofill({ onPick }: { onPick: (item: CatalogItem) => voi
             <ListRow
               key={item.id}
               title={`${item.name}${item.strength ? ` ${item.strength}` : ""}`}
-              subtitle={[item.dosage_form, item.brand_name, `per ${item.base_unit}`].filter(Boolean).join(" · ")}
+              subtitle={[item.dosage_form, item.generic_name ?? item.brand_name, `per ${item.base_unit}`, item.ppb_registration_no ? `PPB ${item.ppb_registration_no}` : null].filter(Boolean).join(" · ")}
               onPress={() => pick(item)}
               accessibilityHint="Fills in this product's details"
               meta={

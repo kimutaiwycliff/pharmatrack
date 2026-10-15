@@ -78,6 +78,13 @@ export interface CatalogItem {
   base_unit: string
   is_controlled: boolean
   requires_prescription: boolean
+  // Newer servers (GET /api/catalog) also send these; the Offline Edition's KEML rows don't.
+  generic_name?: string | null
+  pack_label?: string | null
+  units_per_pack?: number | null
+  reference_price?: number | null
+  source?: "curated" | "ppb"
+  ppb_registration_no?: string | null
 }
 
 /** apps/web/lib/products/permanentDelete.ts's DeleteImpact. */

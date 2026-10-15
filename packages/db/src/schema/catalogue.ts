@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, numeric, integer, timestamp, unique } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, boolean, numeric, integer, timestamp, date, unique } from "drizzle-orm/pg-core"
 import { organization, user } from "./auth"
 
 // Mirrors the catalogue section of infra/migrations/004_domain.sql.
@@ -45,6 +45,14 @@ export const drug_catalog = pgTable("drug_catalog", {
   default_cost_price: numeric("default_cost_price", { precision: 12, scale: 2 }),
   default_selling_price: numeric("default_selling_price", { precision: 12, scale: 2 }),
   image_url: text("image_url"),
+  // 'curated' (priced retail list; Quick Start seeds these) or 'ppb' (Pharmacy
+  // and Poisons Board register; search/autofill only). Migrations 034–035.
+  source: text("source").notNull().default("curated"),
+  ppb_registration_no: text("ppb_registration_no"),
+  inn: text("inn"),
+  mah: text("mah"),
+  country_of_origin: text("country_of_origin"),
+  ppb_registration_expiry: date("ppb_registration_expiry"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ uq: unique("uq_drug_catalog").on(t.name, t.strength, t.dosage_form).nullsNotDistinct() }))
 

@@ -299,13 +299,22 @@ export function filterSuggestions(all: string[], typed: string, limit = 8): stri
 
 export function applyCatalogItem(
   v: ProductFormValues,
-  item: { name: string; brand_name: string | null; manufacturer: string | null; gtin: string | null; strength: string | null; dosage_form: string | null; base_unit: string; is_controlled: boolean; requires_prescription: boolean },
+  item: {
+    name: string; brand_name: string | null; manufacturer: string | null; gtin: string | null; strength: string | null
+    dosage_form: string | null; base_unit: string; is_controlled: boolean; requires_prescription: boolean
+    generic_name?: string | null; pack_label?: string | null; units_per_pack?: number | null; reference_price?: number | null
+  },
 ): ProductFormValues {
   return {
     ...v,
     name: item.name,
     brand_name: item.brand_name ?? "",
+    generic_name: item.generic_name ?? v.generic_name,
     manufacturer: item.manufacturer ?? "",
+    pack_label: item.pack_label ?? v.pack_label,
+    units_per_pack: item.units_per_pack && item.units_per_pack > 1 ? String(item.units_per_pack) : v.units_per_pack,
+    // A starting price only (curated rows) — never overwrite one already typed.
+    selling_price: v.selling_price || (item.reference_price ? String(item.reference_price) : ""),
     // Keep a scanned GTIN if the catalogue row has none.
     gtin: item.gtin ?? v.gtin,
     strength: item.strength ?? "",

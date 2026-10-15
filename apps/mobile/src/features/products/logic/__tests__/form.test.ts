@@ -104,6 +104,20 @@ describe("form helpers", () => {
     expect(v.strength).toBe("500mg")
   })
 
+  it("fills molecule, pack and a starting price, keeping a typed price", () => {
+    const item = {
+      name: "Panadol", brand_name: "Panadol", manufacturer: "GSK", gtin: null, strength: "500mg", dosage_form: "Tablet",
+      base_unit: "tablet", is_controlled: false, requires_prescription: false,
+      generic_name: "paracetamol", pack_label: "Strip of 10", units_per_pack: 10, reference_price: 3,
+    }
+    const v = applyCatalogItem(emptyProductForm(), item)
+    expect(v.generic_name).toBe("paracetamol")
+    expect(v.pack_label).toBe("Strip of 10")
+    expect(v.units_per_pack).toBe("10")
+    expect(v.selling_price).toBe("3")
+    expect(applyCatalogItem({ ...emptyProductForm(), selling_price: "5" }, item).selling_price).toBe("5")
+  })
+
   it("computes margin from cents", () => {
     expect(marginPercent("80", "100")).toBe(20)
     expect(marginPercent("", "100")).toBeNull()
