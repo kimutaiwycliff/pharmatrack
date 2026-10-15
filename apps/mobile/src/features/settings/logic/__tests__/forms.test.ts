@@ -18,12 +18,19 @@ describe("pinError", () => {
 })
 
 describe("validatePinForm", () => {
-  it("checks the confirmation and (online) the account password", () => {
-    expect(validatePinForm({ pin: "4829", confirm: "4828", password: "" }, { offline: false })).toEqual({
+  it("checks the confirmation; no account password is needed", () => {
+    expect(validatePinForm({ pin: "4829", confirm: "4828", current: "" }, { offline: false })).toEqual({
       confirm: "PINs do not match",
-      password: "Enter your account password to confirm",
     })
-    expect(validatePinForm({ pin: "4829", confirm: "4829", password: "" }, { offline: true })).toEqual({})
+    expect(validatePinForm({ pin: "4829", confirm: "4829", current: "" }, { offline: false })).toEqual({})
+    expect(validatePinForm({ pin: "4829", confirm: "4829", current: "" }, { offline: true })).toEqual({})
+  })
+
+  it("checks the current PIN's shape when one is given", () => {
+    expect(validatePinForm({ pin: "4829", confirm: "4829", current: "12" }, { offline: false })).toEqual({
+      current: "Your current PIN is 4 digits",
+    })
+    expect(validatePinForm({ pin: "4829", confirm: "4829", current: "1093" }, { offline: false })).toEqual({})
   })
 })
 

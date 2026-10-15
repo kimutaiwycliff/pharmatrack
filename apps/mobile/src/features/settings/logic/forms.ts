@@ -34,8 +34,13 @@ export function pinError(pin: string, opts: { offline: boolean }): string | null
 export interface PinForm {
   pin: string
   confirm: string
-  /** Account password — online only (PATCH /api/settings?target=pin re-checks it). */
-  password: string
+  /**
+   * Current PIN — asked only when changing an existing PIN online. Optional:
+   * after a fresh sign-in (within 15 minutes) the server accepts a new PIN
+   * without it, which is the "forgot my PIN" path. No account password —
+   * people who sign in with Google have none.
+   */
+  current: string
 }
 
 export function validatePinForm(form: PinForm, opts: { offline: boolean }): FieldErrors<keyof PinForm> {
@@ -43,7 +48,7 @@ export function validatePinForm(form: PinForm, opts: { offline: boolean }): Fiel
   const pinErr = pinError(form.pin, opts)
   if (pinErr) errors.pin = pinErr
   else if (form.confirm !== form.pin) errors.confirm = "PINs do not match"
-  if (!opts.offline && !form.password) errors.password = "Enter your account password to confirm"
+  if (!opts.offline && form.current && !/^\d{4}$/.test(form.current)) errors.current = "Your current PIN is 4 digits"
   return errors
 }
 

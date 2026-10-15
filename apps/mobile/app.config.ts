@@ -9,7 +9,8 @@ const config: ExpoConfig = {
   slug: "pharmatrack-mobile",
   // 1.1.0 — R2 added native modules (reanimated, worklets, gesture-handler,
   // expo-haptics), so 1.0.0 installs must not receive R2 OTA bundles.
-  version: "1.1.0",
+  // 1.2.0 — react-native-webview (in-app sign-in security check).
+  version: "1.2.0",
   scheme: "pharmatrack",
   // EAS Update (OTA JS/asset pushes without a full APK re-download) — exact
   // keys given by `eas update:configure` for this project, not hand-typed.
