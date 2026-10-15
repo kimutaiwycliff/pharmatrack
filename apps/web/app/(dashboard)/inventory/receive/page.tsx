@@ -1,29 +1,11 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useQuery } from "@tanstack/react-query"
 import { ArrowLeft } from "lucide-react"
 import { StockReceiveForm } from "@/components/inventory/StockReceiveForm"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
-
-interface Supplier {
-  id: string
-  name: string
-}
-
-function useSuppliers() {
-  return useQuery<Supplier[]>({
-    queryKey: ["suppliers"],
-    queryFn: async () => {
-      const res = await fetch("/api/suppliers")
-      if (!res.ok) throw new Error("Failed to fetch suppliers")
-      const json = (await res.json()) as { suppliers: Supplier[] }
-      return json.suppliers
-    },
-    staleTime: 5 * 60_000,
-  })
-}
+import { useSuppliers } from "@/lib/hooks/useSuppliers"
 
 export default function ReceiveStockPage() {
   const router = useRouter()

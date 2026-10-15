@@ -15,6 +15,7 @@ import { CameraScanner } from "@/components/pos/CameraScanner"
 import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
 import type { Product, ProductPackSize, Organization } from "@pharmatrack/types"
+import { useSuppliers } from "@/lib/hooks/useSuppliers"
 
 interface Props {
   productId: string | null
@@ -410,16 +411,8 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
   const labelSize: LabelSize = settingsData?.org.label_size ?? "40x30mm"
   const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
 
-  const { data: suppliersData } = useQuery<{ suppliers: Array<{ id: string; name: string }> }>({
-    queryKey: ["suppliers"],
-    queryFn: async () => {
-      const res = await fetch("/api/suppliers")
-      if (!res.ok) return { suppliers: [] }
-      return res.json() as Promise<{ suppliers: Array<{ id: string; name: string }> }>
-    },
-    staleTime: 5 * 60_000,
-  })
-  const suppliers = suppliersData?.suppliers ?? []
+  const { data: suppliersData } = useSuppliers()
+  const suppliers = suppliersData ?? []
 
   // Custom base units / dosage forms this org has already used, merged with
   // curated defaults for the free-text suggestion dropdowns below.

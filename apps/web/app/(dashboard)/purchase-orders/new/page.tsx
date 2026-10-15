@@ -15,6 +15,7 @@ import { formatKES } from "@/lib/store/cartStore"
 import type { RestockSuggestion } from "@/lib/purchasing/serialize"
 import type { ProductWithStock } from "@pharmatrack/types"
 import { useIdempotencyKey } from "@/lib/api/useIdempotencyKey"
+import { useSuppliers } from "@/lib/hooks/useSuppliers"
 
 interface Line {
   product_id: string
@@ -81,15 +82,8 @@ export default function RestockPlannerPage() {
     },
   })
 
-  const { data: supplierData } = useQuery<{ suppliers: Array<{ id: string; name: string }> }>({
-    queryKey: ["suppliers"],
-    queryFn: async () => {
-      const res = await fetch("/api/suppliers")
-      return res.ok ? (res.json() as Promise<{ suppliers: Array<{ id: string; name: string }> }>) : { suppliers: [] }
-    },
-    staleTime: 5 * 60_000,
-  })
-  const suppliers = useMemo(() => supplierData?.suppliers ?? [], [supplierData])
+  const { data: supplierData } = useSuppliers()
+  const suppliers = useMemo(() => supplierData ?? [], [supplierData])
   const supplierName = (id: string | null) => (id ? suppliers.find((s) => s.id === id)?.name ?? "Supplier" : "No supplier yet")
 
   const lines: Line[] = useMemo(() => {

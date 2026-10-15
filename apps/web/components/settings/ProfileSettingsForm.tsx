@@ -33,7 +33,7 @@ export function ProfileSettingsForm({ profile, hasPin }: Props) {
   const [showPw, setShowPw] = useState(false)
   const [pwSaving, setPwSaving] = useState(false)
 
-  const [pinForm, setPinForm] = useState({ password: "", pin: "", confirm: "" })
+  const [pinForm, setPinForm] = useState({ current: "", pin: "", confirm: "" })
   const [pinSaving, setPinSaving] = useState(false)
   const [pinSet, setPinSet] = useState(hasPin)
   // PIN login matches by the saved phone number, so it must already be on file.
@@ -105,18 +105,19 @@ export function ProfileSettingsForm({ profile, hasPin }: Props) {
   async function savePin() {
     if (!/^\d{4}$/.test(pinForm.pin)) { toast.error("PIN must be exactly 4 digits"); return }
     if (pinForm.pin !== pinForm.confirm) { toast.error("PINs do not match"); return }
-    if (!pinForm.password) { toast.error("Enter your account password to confirm"); return }
     setPinSaving(true)
     try {
       const res = await fetch("/api/settings?target=pin", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pinForm.password, pin: pinForm.pin }),
+        // No account password (Google sign-in users have none). Changing an
+        // existing PIN sends the current one; a recent sign-in also works.
+        body: JSON.stringify({ pin: pinForm.pin, ...(pinSet && pinForm.current ? { current_pin: pinForm.current } : {}) }),
       })
       const json = (await res.json()) as { error?: string }
       if (!res.ok) throw new Error(json.error ?? "Failed to set PIN")
       toast.success(pinSet ? "PIN updated" : "PIN set — you can now sign in with it")
-      setPinForm({ password: "", pin: "", confirm: "" })
+      setPinForm({ current: "", pin: "", confirm: "" })
       setPinSet(true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
@@ -260,19 +261,25 @@ export function ProfileSettingsForm({ profile, hasPin }: Props) {
           </p>
         ) : (
           <>
-            <div>
-              <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
-                Account Password
-              </label>
-              <Input
-                type="password"
-                autoComplete="current-password"
-                placeholder="Confirm it's you"
-                value={pinForm.password}
-                onChange={(e) => setPinForm((f) => ({ ...f, password: e.target.value }))}
-                className="h-10"
-              />
-            </div>
+            {pinSet ? (
+              <div>
+                <label className="block text-xs font-semibold text-[var(--pt-text-secondary)] mb-1.5 uppercase tracking-wide">
+                  Current PIN
+                </label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="4 digits"
+                  value={pinForm.current}
+                  onChange={(e) => setPinForm((f) => ({ ...f, current: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+                  className="h-10 tracking-[0.4em] font-mono"
+                />
+                <p className="text-xs text-[var(--pt-text-secondary)] mt-1.5">
+                  Forgot it? Sign out and back in, then set a new PIN within 15 minutes — or ask the owner to reset it from Staff.
+                </p>
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -308,7 +315,7 @@ export function ProfileSettingsForm({ profile, hasPin }: Props) {
             <Button
               variant="outline"
               onClick={savePin}
-              disabled={pinSaving || pinForm.pin.length !== 4 || pinForm.confirm.length !== 4 || !pinForm.password}
+              disabled={pinSaving || pinForm.pin.length !== 4 || pinForm.confirm.length !== 4}
               className="w-full sm:w-auto"
             >
               {pinSaving ? <Loader2 size={15} className="animate-spin mr-1.5" /> : null}

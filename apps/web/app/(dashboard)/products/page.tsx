@@ -16,6 +16,7 @@ import { useUIStore } from "@/lib/store/uiStore"
 import type { Product, Organization } from "@pharmatrack/types"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
 import { DeleteProductDialog } from "@/components/inventory/DeleteProductDialog"
+import { useSuppliers } from "@/lib/hooks/useSuppliers"
 
 type ProductRow = Product & { category_name?: string }
 
@@ -33,13 +34,6 @@ async function fetchProducts(q: string, categoryId: string, page: number): Promi
   const res = await fetch(`/api/products?${params}`)
   if (!res.ok) throw new Error("Failed to load products")
   return res.json() as Promise<{ products: ProductRow[]; total: number }>
-}
-
-async function fetchSuppliers(): Promise<Array<{ id: string; name: string }>> {
-  const res = await fetch("/api/suppliers")
-  if (!res.ok) return []
-  const data = (await res.json()) as { suppliers: Array<{ id: string; name: string }> }
-  return data.suppliers ?? []
 }
 
 async function toggleActive(id: string, active: boolean): Promise<void> {
@@ -86,11 +80,7 @@ export default function ProductsPage() {
     staleTime: 5 * 60_000,
   })
 
-  const { data: suppliersData } = useQuery({
-    queryKey: ["suppliers"],
-    queryFn: fetchSuppliers,
-    staleTime: 5 * 60_000,
-  })
+  const { data: suppliersData } = useSuppliers()
 
   const { data, isLoading } = useQuery({
     queryKey: ["products", search, categoryId, page],
