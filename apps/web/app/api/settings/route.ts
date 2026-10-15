@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, asc, eq } from "drizzle-orm"
 import { z } from "zod"
 import { dbAdmin, organization, org_settings, branch, staff_profile, user } from "@pharmatrack/db"
-import { auth } from "@/lib/auth/server"
 import { getSession, loadPermissions } from "@/lib/auth/helpers"
-import { hashPin, validatePin } from "@/lib/auth/pin"
+import { hashPin, validatePin, verifyPin } from "@/lib/auth/pin"
+import { checkPinChange } from "@/lib/auth/pin-change"
 import { normalizeKePhone } from "@/lib/auth/phone"
 import { zUuid } from "@/lib/api/validation"
 
@@ -66,20 +66,22 @@ export async function PATCH(request: NextRequest) {
   const body = (await request.json()) as unknown
 
   if (target === "pin") {
-    const parsed = z.object({ password: z.string().min(1, "Account password is required"), pin: z.string() }).safeParse(body)
+    // `password` is still accepted (and ignored) from older Android apps.
+    const parsed = z.object({ pin: z.string(), current_pin: z.string().optional(), password: z.string().optional() }).safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
     if (!sp.phone) return NextResponse.json({ error: "Add your phone number above before setting a PIN" }, { status: 400 })
     const validation = validatePin(parsed.data.pin)
     if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
-    if (!session.user.email) return NextResponse.json({ error: "Account has no email to verify against" }, { status: 400 })
 
-    // Verify the account password without disturbing the user's session: we call
-    // signInEmail but never forward its Set-Cookie to the browser.
-    try {
-      await auth.api.signInEmail({ body: { email: session.user.email, password: parsed.data.password } })
-    } catch {
-      return NextResponse.json({ error: "Incorrect account password" }, { status: 403 })
-    }
+    // No account password (Google sign-in users have none): a first PIN needs
+    // only the session; changing one needs the current PIN or a fresh sign-in.
+    const allowed = await checkPinChange({
+      existingHash: sp.pin_hash,
+      currentPin: parsed.data.current_pin,
+      sessionCreatedAt: session.session.createdAt,
+      verify: verifyPin,
+    })
+    if (!allowed.ok) return NextResponse.json({ error: allowed.error }, { status: 403 })
 
     const pin_hash = await hashPin(validation.pin)
     await db.update(staff_profile).set({ pin_hash }).where(eq(staff_profile.user_id, session.user.id))

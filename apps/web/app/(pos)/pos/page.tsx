@@ -21,6 +21,7 @@ import { queueOfflineSale } from "@/lib/offline/db"
 import { postJson } from "@/lib/api/fetcher"
 import { isUuid } from "@/lib/utils"
 import type { Sale, SaleItem } from "@pharmatrack/types"
+import { useSuppliers } from "@/lib/hooks/useSuppliers"
 
 type PayModal = "cash" | "mpesa" | "split" | null
 
@@ -72,19 +73,9 @@ export default function PosPage() {
   const total = cartTotal(items, discount)
 
   // Suppliers for NewProductDialog (categories are fetched by CategorySelect)
-  const { data: supData } = useQuery<{ suppliers: Array<{ id: string; name: string }> }>({
-    queryKey: ["suppliers", activeBranch?.id],
-    queryFn: async () => {
-      if (!activeBranch) return { suppliers: [] }
-      const res = await fetch(`/api/suppliers`)
-      if (!res.ok) return { suppliers: [] }
-      return res.json() as Promise<{ suppliers: Array<{ id: string; name: string }> }>
-    },
-    enabled: !!activeBranch,
-    staleTime: 300_000,
-  })
+  const { data: supData } = useSuppliers({ enabled: !!activeBranch })
 
-  const suppliers = supData?.suppliers ?? []
+  const suppliers = supData ?? []
 
   async function submitSale(params: {
     paymentMethod: "cash" | "mpesa" | "split"
