@@ -15,7 +15,7 @@ import { createProduct, listCategories, listSuppliers, listUsedUnits, updateProd
 import { notifyProductsChanged } from "../events"
 import {
   applyCatalogItem, BASE_UNITS, categoryLabel, costFieldVisible, defaultBaseUnit, DOSAGE_FORMS, emptyProductForm, existingProductId,
-  filterSuggestions, formFromProduct, marginPercent, mergeSuggestions, orderCategories, validateProductForm,
+  filterSuggestions, formFromProduct, marginPercent, mergeSuggestions, orderCategories, packPriceFromUnit, unitPriceFromPack, validateProductForm,
   type ProductFormErrors, type ProductFormValues,
 } from "../logic/form"
 import type { CatalogItem, ProductDetail } from "../types"
@@ -27,7 +27,12 @@ import { ToggleRow } from "./ToggleRow"
 import { confirm as askConfirm } from "../../../lib/confirm"
 
 type ProductFormProps =
-  | { mode: "create"; prefill?: { gtin?: string | null; name?: string | null } }
+  | {
+      mode: "create"
+      prefill?: { gtin?: string | null; name?: string | null; supplier_id?: string | null }
+      /** "Save & add next": the screen resets the form, keeping the supplier. */
+      onAddedNext?: (added: { name: string; supplierId: string | null }) => void
+    }
   | { mode: "edit"; product: ProductDetail }
 
 // The one product form behind /products/new and /products/[id]/edit (web's
@@ -51,6 +56,9 @@ export function ProductForm(props: ProductFormProps) {
   const [saving, setSaving] = useState(false)
   // Until the user types a base unit, picking a dosage form suggests one (create only).
   const [unitTouched, setUnitTouched] = useState(props.mode === "edit")
+  // Price per pack, linked to the per-unit selling price (which is what's saved).
+  const [packPrice, setPackPrice] = useState(() => packPriceFromUnit(values.selling_price, Number(values.units_per_pack) || 1))
+  const onAddedNext = props.mode === "create" ? props.onAddedNext : undefined
 
   const cats = useQuery("product-categories", () => listCategories())
   const sups = useQuery("product-suppliers", () => listSuppliers())
@@ -82,9 +90,34 @@ export function ProductForm(props: ProductFormProps) {
   }
 
   function onCatalogPick(item: CatalogItem) {
-    setValues((v) => applyCatalogItem(v, item))
+    const next = applyCatalogItem(values, item)
+    setValues(next)
+    setPackPrice(packPriceFromUnit(next.selling_price, Number(next.units_per_pack) || 1))
     setUnitTouched(true)
     setErrors({})
+  }
+
+  function onNewBarcode(gtin: string | null, raw: string) {
+    setValues((v) => (gtin ? { ...v, gtin } : { ...v, barcode_raw: raw }))
+  }
+
+  function openExisting(id: string) {
+    router.replace({ pathname: "/products/[id]", params: { id } })
+  }
+
+  function setSellingPrice(v: string) {
+    set("selling_price", v)
+    setPackPrice(packPriceFromUnit(v, Number(values.units_per_pack) || 1))
+  }
+
+  function setPackPriceText(v: string) {
+    setPackPrice(v)
+    set("selling_price", unitPriceFromPack(v, Number(values.units_per_pack) || 1))
+  }
+
+  function setUnitsPerPack(v: string) {
+    set("units_per_pack", v)
+    setPackPrice(packPriceFromUnit(values.selling_price, Number(v) || 1))
   }
 
   async function scan() {
@@ -105,7 +138,7 @@ export function ProductForm(props: ProductFormProps) {
   const busy = useRef(false)
   const saved = useRef(false)
 
-  async function save() {
+  async function save(next = false) {
     if (busy.current || saved.current) return
     setFormError(null)
     const r = validateProductForm(values, { mode: props.mode, costVisible: showCost })
@@ -128,7 +161,8 @@ export function ProductForm(props: ProductFormProps) {
         saved.current = true
         notifyProductsChanged()
         toast.success(`${r.body.name} added`)
-        router.replace({ pathname: "/products/[id]", params: { id } })
+        if (next && onAddedNext) onAddedNext({ name: r.body.name, supplierId: values.supplier_id })
+        else router.replace({ pathname: "/products/[id]", params: { id } })
       }
     } catch (err) {
       const dupe = err instanceof ApiError && err.status === 409 ? existingProductId(err.body) : null
@@ -156,11 +190,18 @@ export function ProductForm(props: ProductFormProps) {
               {formError}
             </Text>
           ) : null}
-          <Button title={editing ? "Save changes" : "Add product"} onPress={save} loading={saving} />
+          {onAddedNext ? (
+            <View style={styles.row}>
+              <Button title="Save" variant="secondary" onPress={() => save(false)} disabled={saving} style={styles.flex} />
+              <Button title="Save & add next" onPress={() => save(true)} loading={saving} style={styles.grow} />
+            </View>
+          ) : (
+            <Button title={editing ? "Save changes" : "Add product"} onPress={() => save(false)} loading={saving} />
+          )}
         </View>
       }
     >
-      {editing ? null : <CatalogAutofill onPick={onCatalogPick} />}
+      {editing ? null : <CatalogAutofill onPick={onCatalogPick} onOpenExisting={openExisting} onNewBarcode={onNewBarcode} />}
 
       <ImageField value={values.image_url} onChange={(url) => set("image_url", url)} />
 
@@ -275,7 +316,7 @@ export function ProductForm(props: ProductFormProps) {
           <TextField
             label={`${values.base_unit.trim() || "Units"} per pack`}
             value={values.units_per_pack}
-            onChangeText={(v) => set("units_per_pack", v)}
+            onChangeText={setUnitsPerPack}
             error={errors.units_per_pack}
             keyboardType="number-pad"
             containerStyle={styles.flex}
@@ -292,11 +333,21 @@ export function ProductForm(props: ProductFormProps) {
       </Section>
 
       <Section title="Price">
+        {Number(values.units_per_pack) > 1 ? (
+          <TextField
+            label={`Price per ${values.pack_label.trim() || "pack"} of ${values.units_per_pack} (KES)`}
+            value={packPrice}
+            onChangeText={setPackPriceText}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            helper="Or type the price per unit below — each fills the other"
+          />
+        ) : null}
         <View style={styles.row}>
           <TextField
             label={`Selling price per ${values.base_unit.trim() || "unit"} (KES)`}
             value={values.selling_price}
-            onChangeText={(v) => set("selling_price", v)}
+            onChangeText={setSellingPrice}
             error={errors.selling_price}
             keyboardType="decimal-pad"
             placeholder="0.00"
@@ -379,6 +430,7 @@ const styles = StyleSheet.create({
   section: { gap: space.md },
   row: { flexDirection: "row", gap: space.md },
   flex: { flex: 1 },
+  grow: { flex: 2 },
   note: { flexDirection: "row", alignItems: "center", gap: space.xs },
   footer: { gap: space.xs, paddingTop: space.sm, paddingBottom: space.md, borderTopWidth: StyleSheet.hairlineWidth },
 })
