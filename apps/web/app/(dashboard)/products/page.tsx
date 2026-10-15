@@ -378,10 +378,11 @@ export default function ProductsPage() {
         <NewProductDialog
           open={newOpen}
           onOpenChange={setNewOpen}
-          branchId=""
+          branchId={branchId ?? ""}
           suppliers={suppliers}
-          onCreated={(_product) => {
-            setNewOpen(false)
+          allowAddNext
+          onCreated={() => {
+            // The dialog stays open for "Save & add next"; it closes itself otherwise.
             void qc.invalidateQueries({ queryKey: ["products"] })
           }}
           onDuplicate={(existingProductId) => setEditId(existingProductId)}
