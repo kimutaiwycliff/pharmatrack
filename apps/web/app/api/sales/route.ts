@@ -23,6 +23,12 @@ class InvalidProductError extends Error {
   constructor(public productId: string, public productName: string) { super("Invalid product") }
 }
 
+// A product (or pack) with no selling price yet — e.g. added by Quick Start
+// from a catalogue item that had no reference price. Never sold for free.
+class UnpricedProductError extends Error {
+  constructor(public productName: string) { super("Unpriced product") }
+}
+
 const cartItemSchema = z.object({
   product_id: zUuid(),
   product_name: z.string(),
@@ -193,6 +199,7 @@ export async function POST(request: NextRequest) {
         // packs × pack price.
         unitPrice = Number(pack.selling_price) / pack.unit_count
       }
+      if (!(unitPrice > 0)) throw new UnpricedProductError(item.product_name)
       const discountPercent = mayDiscount ? Math.min(item.discount_percent, priced.maxDiscount) : 0
       const lineTotal = Number((item.quantity * unitPrice * (1 - discountPercent / 100)).toFixed(2))
       return { unitPrice, discountPercent, lineTotal }
@@ -364,6 +371,12 @@ export async function POST(request: NextRequest) {
     return { sale: saleOut, items, paperWidth }
     })
   } catch (e) {
+    if (e instanceof UnpricedProductError) {
+      return NextResponse.json(
+        { error: `${e.productName} has no price yet. Set its selling price in Products, then try again.`, code: "unpriced_product" },
+        { status: 409 },
+      )
+    }
     if (e instanceof InvalidProductError) {
       return NextResponse.json(
         { error: `Unknown product: ${e.productName}`, code: "invalid_product" },

@@ -132,7 +132,10 @@ export async function POST(request: NextRequest) {
       reorder_level: 3, // sensible low-stock default for seeded products
       is_controlled: c.is_controlled,
       requires_prescription: c.requires_prescription,
-      is_active: true,
+      // Catalogue items without a reference price start inactive ("needs a
+      // price") — they used to go live at KES 0. Setting a price in the
+      // review grid switches them on.
+      is_active: Number(c.default_selling_price ?? 0) > 0,
     }))
     if (toInsert.length) await db.insert(product).values(toInsert)
 

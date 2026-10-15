@@ -46,9 +46,17 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
   const offset = (page - 1) * limit
 
-  const where = q.length >= 2
-    ? or(ilike(product.name, `%${q}%`), ilike(product.brand_name, `%${q}%`), ilike(product.gtin, `%${q}%`), ilike(product.strength, `%${q}%`))
-    : undefined
+  const categoryId = searchParams.get("category_id")
+  // "Needs a price": no selling price yet (e.g. Quick Start items whose
+  // catalogue entry had none) — these can't be sold until priced.
+  const needsPrice = searchParams.get("needs_price") === "1"
+  const where = and(
+    q.length >= 2
+      ? or(ilike(product.name, `%${q}%`), ilike(product.brand_name, `%${q}%`), ilike(product.gtin, `%${q}%`), ilike(product.strength, `%${q}%`))
+      : undefined,
+    categoryId && /^[0-9a-f-]{36}$/i.test(categoryId) ? eq(product.category_id, categoryId) : undefined,
+    needsPrice ? or(isNull(product.selling_price), sql`${product.selling_price} <= 0`) : undefined,
+  )
 
   const { rows, total } = await withTenant(ctx, async (db) => {
     const rows = await db.select().from(product).where(where).orderBy(asc(product.name)).limit(limit).offset(offset)

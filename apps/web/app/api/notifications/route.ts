@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { and, eq } from "drizzle-orm"
-import { withTenant, product_stock, subscription } from "@pharmatrack/db"
+import { and, eq, isNull, or, sql } from "drizzle-orm"
+import { withTenant, product, product_stock, subscription } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { mergeAcrossBranches, resolveBranchScope } from "@/lib/inventory/aggregate"
 
@@ -76,6 +76,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ lowStock, expiring, trialEndingSoon })
+    // Products with no selling price (e.g. Quick Start items whose catalogue
+    // entry had none) can't be sold — prompt whoever can price them.
+    let needsPrice = 0
+    if (ctx.permissions.includes("products.edit")) {
+      const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(product)
+        .where(or(isNull(product.selling_price), sql`${product.selling_price} <= 0`))
+      needsPrice = r?.n ?? 0
+    }
+
+    return NextResponse.json({ lowStock, expiring, trialEndingSoon, needsPrice })
   })
 }
