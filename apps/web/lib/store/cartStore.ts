@@ -66,6 +66,12 @@ export const useCartStore = create<CartStore>()(
             return state
           }
           const price = product.selling_price ?? 0
+          // Never sell for free: a product without a price (e.g. added by Quick
+          // Start from an unpriced catalogue item) must be priced first.
+          if (!(Number(price) > 0)) {
+            toast.error(`${name} has no price yet. Set its selling price in Products first.`)
+            return state
+          }
           const item: CartItem = {
             product_id: pid,
             product_name: name,

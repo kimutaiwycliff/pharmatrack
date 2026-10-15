@@ -27,10 +27,11 @@ async function fetchCategories(): Promise<Array<{ id: string; name: string }>> {
   return data.categories ?? []
 }
 
-async function fetchProducts(q: string, categoryId: string, page: number): Promise<{ products: ProductRow[]; total: number }> {
+async function fetchProducts(q: string, categoryId: string, page: number, needsPrice = false): Promise<{ products: ProductRow[]; total: number }> {
   const params = new URLSearchParams({ page: String(page), limit: "30" })
   if (q.length >= 2) params.set("q", q)
   if (categoryId) params.set("category_id", categoryId)
+  if (needsPrice) params.set("needs_price", "1")
   const res = await fetch(`/api/products?${params}`)
   if (!res.ok) throw new Error("Failed to load products")
   return res.json() as Promise<{ products: ProductRow[]; total: number }>
@@ -56,6 +57,8 @@ export default function ProductsPage() {
   const branchId = useUIStore((s) => s.activeBranchId)
   const [rawSearch, setRawSearch] = useState("")
   const [categoryId, setCategoryId] = useState("")
+  // Products with no selling price can't be sold — let owners find and fix them.
+  const [needsPrice, setNeedsPrice] = useState(false)
   const [page, setPage] = useState(1)
   const [editId, setEditId] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
@@ -82,9 +85,15 @@ export default function ProductsPage() {
 
   const { data: suppliersData } = useSuppliers()
 
+  const { data: unpriced } = useQuery({
+    queryKey: ["products", "needs-price-count"],
+    queryFn: () => fetchProducts("", "", 1, true),
+    staleTime: 60_000,
+  })
+
   const { data, isLoading } = useQuery({
-    queryKey: ["products", search, categoryId, page],
-    queryFn: () => fetchProducts(search, categoryId, page),
+    queryKey: ["products", search, categoryId, page, needsPrice],
+    queryFn: () => fetchProducts(search, categoryId, page, needsPrice),
     staleTime: 60_000,
   })
 
@@ -165,6 +174,13 @@ export default function ProductsPage() {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          <button
+            onClick={() => { setNeedsPrice((v) => !v); setPage(1) }}
+            aria-pressed={needsPrice}
+            className={`h-9 px-3 rounded-lg border text-sm font-medium transition-colors ${needsPrice ? "border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200" : "border-[var(--pt-border)] text-[var(--pt-text-secondary)] bg-[var(--pt-surface)]"}`}
+          >
+            Needs a price
+          </button>
         </div>
       </div>
 
@@ -172,6 +188,17 @@ export default function ProductsPage() {
       <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
         {/* Quick Start: load the Kenyan retail catalogue by department, then price & stock */}
         <CatalogSeedControls canManage={canSeedCatalog} branchId={branchId} />
+
+        {(unpriced?.total ?? 0) > 0 && !needsPrice ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            <span>
+              <strong>{unpriced!.total}</strong> product{unpriced!.total === 1 ? "" : "s"} {unpriced!.total === 1 ? "has" : "have"} no selling price and can&apos;t be sold yet.
+            </span>
+            <button onClick={() => { setNeedsPrice(true); setPage(1) }} className="font-semibold underline underline-offset-2">
+              Show them
+            </button>
+          </div>
+        ) : null}
 
         {isLoading ? (
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
@@ -189,9 +216,9 @@ export default function ProductsPage() {
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] flex flex-col items-center justify-center py-20 text-[var(--pt-text-tertiary)]">
             <Pill size={36} strokeWidth={1.5} className="mb-3" />
             <p className="text-sm">No products found</p>
-            {(rawSearch || categoryId) && (
+            {(rawSearch || categoryId || needsPrice) && (
               <button
-                onClick={() => { setRawSearch(""); setCategoryId("") }}
+                onClick={() => { setRawSearch(""); setCategoryId(""); setNeedsPrice(false) }}
                 className="mt-3 text-[13px] text-[var(--pt-green)] hover:underline"
               >
                 Clear filters
@@ -242,7 +269,9 @@ export default function ProductsPage() {
                       {[p.strength, p.dosage_form].filter(Boolean).join(" · ") || "—"}
                     </td>
                     <td className="px-4 py-3.5 text-right tabular-nums text-[13px] hidden sm:table-cell">
-                      {p.selling_price != null ? formatKES(p.selling_price) : "—"}
+                      {p.selling_price != null && Number(p.selling_price) > 0
+                        ? formatKES(p.selling_price)
+                        : <span className="text-xs font-semibold text-amber-600">Needs a price</span>}
                     </td>
                     {canSeeCost && (
                       <td className="px-4 py-3.5 text-right tabular-nums text-[13px] text-[var(--pt-text-secondary)] hidden lg:table-cell">

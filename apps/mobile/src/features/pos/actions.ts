@@ -83,6 +83,14 @@ async function withTopUp(attempt: () => CapResult): Promise<{ r: CapResult; outc
 
 /** Add one sell unit (or `opts.count`). `quiet` skips the "added" haptic (the scanner gives its own). */
 export async function addToCart(product: ProductRow, opts?: AddOptions, quiet = false): Promise<boolean> {
+  // Never sell for free: a product (or pack) without a price — e.g. added by
+  // Quick Start from an unpriced catalogue item — must be priced first.
+  const price = opts?.sellUnit ? opts.sellUnit.priceCents / 100 : product.sellingPrice
+  if (!(price > 0)) {
+    haptics.error()
+    toast.error(`${product.name} has no price yet. Set its selling price in Products first.`)
+    return false
+  }
   const res = await withTopUp(() => useCartStore.getState().add(product, opts))
   if (res === BUSY) return false
   if (!res.r.ok) return refuse(res.r, res.outcome)

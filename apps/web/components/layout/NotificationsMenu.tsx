@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Bell, AlertTriangle, Clock, CreditCard } from "lucide-react"
+import { Bell, AlertTriangle, Clock, CreditCard, Tag } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -17,6 +17,7 @@ interface NotificationsData {
   lowStock: { product_id: string; name: string; stock_on_hand: number; reorder_level: number }[]
   expiring: { product_id: string; name: string; earliest_expiry: string; daysUntil: number }[]
   trialEndingSoon: { trial_ends_at: string; daysLeft: number } | null
+  needsPrice?: number
 }
 
 export function NotificationsMenu({ branchId, ready }: { branchId: string | null; ready: boolean }) {
@@ -37,7 +38,8 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
   const lowStock = data?.lowStock ?? []
   const expiring = data?.expiring ?? []
   const trial = data?.trialEndingSoon ?? null
-  const count = lowStock.length + expiring.length + (trial ? 1 : 0)
+  const needsPrice = data?.needsPrice ?? 0
+  const count = lowStock.length + expiring.length + (trial ? 1 : 0) + (needsPrice > 0 ? 1 : 0)
   const hasAny = count > 0
 
   return (
@@ -97,6 +99,22 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
                   </div>
                 </DropdownMenuItem>
               ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+          </>
+        )}
+
+        {needsPrice > 0 && (
+          <>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Needs a price</DropdownMenuLabel>
+              <DropdownMenuItem className="gap-2 items-start py-2" onClick={() => router.push("/products")}>
+                <Tag size={15} className="mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium">{needsPrice} product{needsPrice === 1 ? "" : "s"} without a price</p>
+                  <p className="text-xs text-[var(--pt-text-tertiary)]">They can&apos;t be sold until priced</p>
+                </div>
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
           </>

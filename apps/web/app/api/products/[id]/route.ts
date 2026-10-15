@@ -71,8 +71,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!canViewCost(ctx)) parsed.data.cost_price = undefined
 
   const out = await withTenant(ctx, async (db) => {
-    const [existing] = await db.select({ gtin: product.gtin, barcode_raw: product.barcode_raw }).from(product).where(eq(product.id, id)).limit(1)
+    const [existing] = await db.select({ gtin: product.gtin, barcode_raw: product.barcode_raw, selling_price: product.selling_price, is_active: product.is_active })
+      .from(product).where(eq(product.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Product not found" } }
+
+    // A product on sale must have a price (it would otherwise ring up at KES 0).
+    const nextPrice = parsed.data.selling_price !== undefined ? Number(parsed.data.selling_price) : Number(existing.selling_price ?? 0)
+    const nextActive = parsed.data.is_active !== undefined ? parsed.data.is_active : existing.is_active
+    if (nextActive && !(nextPrice > 0)) {
+      return { status: 400 as const, body: { error: "Set a selling price before putting this product on sale." } }
+    }
 
     const nextGtin = parsed.data.gtin !== undefined ? parsed.data.gtin : existing.gtin
     const nextRaw = parsed.data.barcode_raw !== undefined ? parsed.data.barcode_raw : existing.barcode_raw
