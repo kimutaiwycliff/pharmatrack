@@ -32,7 +32,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const d = parsed.data
 
   const out = await withTenant(ctx, async (db) => {
-    const [existing] = await db.select({ id: appointment.id, service: appointment.service, scheduled_at: appointment.scheduled_at })
+    const [existing] = await db.select({ id: appointment.id, service: appointment.service, scheduled_at: appointment.scheduled_at, assigned_to: appointment.assigned_to })
       .from(appointment).where(eq(appointment.id, id)).limit(1)
     if (!existing) return { status: 404 as const, body: { error: "Appointment not found" } }
 
@@ -42,8 +42,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }).where(eq(appointment.id, id))
     const appt = (await fetchAppointment(db, id))!
 
-    // Rescheduled → drop pending reminders and rebuild from the new time.
-    if (d.scheduled_at && new Date(d.scheduled_at).getTime() !== existing.scheduled_at.getTime()) {
+    // Rescheduled or reassigned → drop pending reminders and rebuild (the
+    // assigned staff member's reminder goes to the new person).
+    const rescheduled = !!d.scheduled_at && new Date(d.scheduled_at).getTime() !== existing.scheduled_at.getTime()
+    const reassigned = d.assigned_to !== undefined && d.assigned_to !== existing.assigned_to
+    if (rescheduled || reassigned) {
       await db.delete(appointment_reminder).where(and(eq(appointment_reminder.appointment_id, id), eq(appointment_reminder.status, "pending")))
       await queueReminders(db, { id: appt.id, scheduled_at: appt.scheduled_at.toISOString(), assigned_to: appt.assigned_to, customer: appt.customer }, ctx.organizationId)
     }

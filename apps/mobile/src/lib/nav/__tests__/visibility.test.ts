@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { resolvePermissions } from "@pharmatrack/core"
-import { effectivePermissions, homeTab, visibleMenuItems, visibleTabs, type NavContext } from "../visibility"
+import { barTabs, effectivePermissions, homeTab, visibleMenuItems, visibleTabs, type NavContext } from "../visibility"
 
 const ctx = (role: string, extra: Partial<NavContext> = {}): NavContext => ({
   permissions: resolvePermissions(role),
@@ -18,7 +18,14 @@ describe("visibleTabs", () => {
   })
 
   it("gives an owner every tab", () => {
-    expect(visibleTabs(ctx("owner"))).toEqual(["pos", "dashboard", "inventory", "shifts", "appointments", "more"])
+    expect(visibleTabs(ctx("owner"))).toEqual(["pos", "dashboard", "inventory", "products", "shifts", "appointments", "more"])
+  })
+
+  it("shows Products in the tab bar and keeps Shift out of it (Shift is in More)", () => {
+    expect(barTabs(ctx("owner"))).toEqual(["pos", "dashboard", "inventory", "products", "appointments", "more"])
+    expect(barTabs(ctx("cashier"))).not.toContain("shifts")
+    // Still reachable: the till's "Shifts" links route to the hidden tab.
+    expect(visibleTabs(ctx("cashier"))).toContain("shifts")
   })
 
   it("hides plan-gated tabs the org's plan doesn't include", () => {
@@ -40,8 +47,8 @@ describe("visibleTabs", () => {
 })
 
 describe("visibleMenuItems", () => {
-  it("cashier sees only sales history, sync and settings", () => {
-    expect(hrefs(ctx("cashier"))).toEqual(["/sales", "/sync", "/settings"])
+  it("cashier sees only shift, sales history, sync and settings", () => {
+    expect(hrefs(ctx("cashier"))).toEqual(["/shifts", "/sales", "/sync", "/settings"])
   })
 
   it("purchase orders show for receive-only staff (pharmacist) and managers", () => {
@@ -60,8 +67,9 @@ describe("visibleMenuItems", () => {
   it("drops online-only screens in the Offline Edition", () => {
     const off = hrefs(ctx("owner", { offline: true }))
     for (const h of ["/purchase-orders", "/sync-issues", "/sync", "/billing", "/shift-history"]) expect(off).not.toContain(h)
-    expect(off).toContain("/products")
+    expect(off).toContain("/shifts")
     expect(off).toContain("/settings")
+    expect(off).not.toContain("/products") // Products is a tab now
   })
 })
 

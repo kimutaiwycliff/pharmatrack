@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { buildReminders, customerSms } from "../reminders"
 
 const base = {
@@ -13,6 +13,20 @@ function future(days: number) {
 }
 
 describe("buildReminders", () => {
+  // SMS is only queued when Africa's Talking is configured.
+  beforeEach(() => {
+    vi.stubEnv("AT_USERNAME", "test")
+    vi.stubEnv("AT_API_KEY", "key")
+  })
+  afterEach(() => vi.unstubAllEnvs())
+
+  it("queues nothing for phones when SMS isn't set up — staff call instead", () => {
+    vi.stubEnv("AT_USERNAME", "")
+    vi.stubEnv("AT_API_KEY", "")
+    const rows = buildReminders({ ...base, scheduledAt: future(5) })
+    expect(rows.map((r) => `${r.recipient}:${r.channel}`)).toEqual(["customer:email"])
+  })
+
   it("queues SMS+email for the customer and SMS for the pharmacist", () => {
     const rows = buildReminders({ ...base, scheduledAt: future(5) })
     const kinds = rows.map((r) => `${r.recipient}:${r.channel}`).sort()

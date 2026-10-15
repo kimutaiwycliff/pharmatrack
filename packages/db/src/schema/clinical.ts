@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, date, jsonb } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, integer, boolean, timestamp, date, jsonb, primaryKey } from "drizzle-orm/pg-core"
 import { organization, user } from "./auth"
 import { branch } from "./tenancy"
 import { product } from "./catalogue"
@@ -49,7 +49,22 @@ export const appointment = pgTable("appointment", {
   created_by: text("created_by").references(() => user.id),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // Migration 033 — outcome of the staff reminder call (no-SMS reminders).
+  contact_outcome: text("contact_outcome").$type<"called" | "no_answer">(),
+  contacted_at: timestamp("contacted_at", { withTimezone: true }),
+  contacted_by: text("contacted_by").references(() => user.id),
 })
+
+// Migration 033 — one row per person per Nairobi day once their morning
+// "clients to call" email has gone out. Operator-only (cron via dbAdmin).
+export const reminder_digest = pgTable("reminder_digest", {
+  organization_id: text("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  user_id: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  digest_date: date("digest_date").notNull(),
+  appointment_count: integer("appointment_count").notNull().default(0),
+  email_status: text("email_status").notNull(),
+  sent_at: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.organization_id, t.user_id, t.digest_date] })])
 
 export const appointment_reminder = pgTable("appointment_reminder", {
   id: uuid("id").primaryKey().defaultRandom(),

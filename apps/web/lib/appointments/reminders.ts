@@ -1,5 +1,6 @@
 import { serviceLabel } from "./services"
 import { whatsappConfigured } from "@/lib/notifications/whatsapp"
+import { smsConfigured } from "@/lib/notifications/sms"
 
 const EAT_OFFSET_MS = 3 * 3_600_000 // Africa/Nairobi is UTC+3 (no DST)
 
@@ -67,10 +68,15 @@ export function buildReminders({
     rows.push({ appointment_id: appointmentId, organization_id: organizationId, channel, recipient, send_at, status: "pending" })
 
   // Prefer WhatsApp for the customer when it's configured (richer + cheaper in
-  // Kenya); otherwise fall back to SMS. Pharmacists are reminded by SMS.
-  if (customer.phone) add(whatsappConfigured() ? "whatsapp" : "sms", "customer")
+  // Kenya), else SMS. With neither switched on nothing is queued for the
+  // phone — staff call the client instead (call list + morning email,
+  // lib/appointments/call-list.ts), rather than piling up skipped rows.
+  if (customer.phone) {
+    if (whatsappConfigured()) add("whatsapp", "customer")
+    else if (smsConfigured()) add("sms", "customer")
+  }
   if (customer.email) add("email", "customer")
-  if (pharmacistPhone) add("sms", "pharmacist")
+  if (pharmacistPhone && smsConfigured()) add("sms", "pharmacist")
 
   return rows
 }
@@ -104,18 +110,22 @@ export function pharmacistSms(ctx: MessageContext): string {
   return `Appointment reminder: ${ctx.customerName} — ${serviceLabel(ctx.service)} at ${ctx.branchName}, ${formatWhen(ctx.scheduledAt)}.`
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c] ?? c))
+}
+
 export function customerEmail(ctx: MessageContext): { subject: string; html: string } {
   return {
     subject: `Reminder: your ${serviceLabel(ctx.service)} appointment`,
     html: `
       <div style="font-family:system-ui,sans-serif;max-width:480px">
         <h2 style="margin:0 0 12px">Appointment reminder</h2>
-        <p>Hi ${ctx.customerName},</p>
-        <p>This is a reminder of your <strong>${serviceLabel(ctx.service)}</strong> appointment at
-        <strong>${ctx.branchName}</strong>.</p>
+        <p>Hi ${escapeHtml(ctx.customerName)},</p>
+        <p>This is a reminder of your <strong>${escapeHtml(serviceLabel(ctx.service))}</strong> appointment at
+        <strong>${escapeHtml(ctx.branchName)}</strong>.</p>
         <p style="font-size:16px"><strong>${formatWhen(ctx.scheduledAt)}</strong></p>
         <p>If you need to reschedule, please contact us.</p>
-        <p style="color:#6b7280">— ${ctx.orgName}</p>
+        <p style="color:#6b7280">— ${escapeHtml(ctx.orgName)}</p>
       </div>`,
   }
 }

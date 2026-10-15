@@ -32,6 +32,7 @@ async function cleanup() {
     await admin.delete(s.customer).where(eq(s.customer.organization_id, orgId))
     await admin.delete(s.branch).where(eq(s.branch.organization_id, orgId))
     await admin.delete(s.organization).where(eq(s.organization.id, orgId))
+    await admin.delete(s.user).where(eq(s.user.id, `rls-user-${orgId}`))
   }
 }
 
@@ -52,6 +53,8 @@ async function seed(orgId: string, tag: string) {
   // stopped by RLS (not by the one-pending-per-org unique index).
   await admin.insert(s.trial_extension_request).values({ organization_id: orgId, message: `${tag}-please`, status: tag === "B" ? "declined" : "pending" })
   await admin.insert(s.trial_grant).values({ organization_id: orgId, email_canonical: `owner-${tag.toLowerCase()}@rls.test`, source: "signup", trial_days: 14, granted: true })
+  await admin.insert(s.user).values({ id: `rls-user-${orgId}`, name: `${tag} owner`, email: `rls-user-${tag.toLowerCase()}@rls.test`, emailVerified: true, createdAt: new Date(), updatedAt: new Date() })
+  await admin.insert(s.reminder_digest).values({ organization_id: orgId, user_id: `rls-user-${orgId}`, digest_date: "2026-10-16", appointment_count: 1, email_status: "sent" })
   await admin.insert(s.idempotency_key).values({ organization_id: orgId, key: `k-rls-test-${tag}`, scope: "batch.create", status_code: 201, response: { tag } })
 }
 
@@ -104,6 +107,15 @@ async function run() {
     const visible = await withTenant({ organizationId: T1, role: "pharmacist", branchId: "00000000-0000-0000-0000-000000000001", branchLocked: true },
       (db: any) => db.select().from(s.purchase_order))
     visible.length === 0 ? ok("purchase_order: branch-locked session sees no other branch's POs") : bad(`purchase_order branch lock leaked ${visible.length}`)
+  }
+
+  // reminder_digest is operator-only too (only the reminder cron, as dbAdmin).
+  {
+    const visible = await withTenant({ organizationId: T1, role: "owner" }, (db: any) => db.select().from(s.reminder_digest))
+    const total = (await admin.select().from(s.reminder_digest)).length
+    visible.length === 0 && total >= 2
+      ? ok(`reminder_digest: tenant session sees 0 of ${total} rows (operator-only)`)
+      : bad(`reminder_digest: tenant session sees ${visible.length} rows (total ${total})`)
   }
 
   // trial_grant is operator-only: no tenant session may read ANY row (incl. its own).

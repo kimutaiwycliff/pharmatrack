@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Bell, AlertTriangle, Clock, CreditCard, Tag } from "lucide-react"
+import { Bell, AlertTriangle, Clock, CreditCard, Phone, Tag } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -18,6 +18,7 @@ interface NotificationsData {
   expiring: { product_id: string; name: string; earliest_expiry: string; daysUntil: number }[]
   trialEndingSoon: { trial_ends_at: string; daysLeft: number } | null
   needsPrice?: number
+  toCall?: number
 }
 
 export function NotificationsMenu({ branchId, ready }: { branchId: string | null; ready: boolean }) {
@@ -39,7 +40,8 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
   const expiring = data?.expiring ?? []
   const trial = data?.trialEndingSoon ?? null
   const needsPrice = data?.needsPrice ?? 0
-  const count = lowStock.length + expiring.length + (trial ? 1 : 0) + (needsPrice > 0 ? 1 : 0)
+  const toCall = data?.toCall ?? 0
+  const count = lowStock.length + expiring.length + (trial ? 1 : 0) + (needsPrice > 0 ? 1 : 0) + (toCall > 0 ? 1 : 0)
   const hasAny = count > 0
 
   return (
@@ -99,6 +101,22 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
                   </div>
                 </DropdownMenuItem>
               ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+          </>
+        )}
+
+        {toCall > 0 && (
+          <>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Appointments</DropdownMenuLabel>
+              <DropdownMenuItem className="gap-2 items-start py-2" onClick={() => router.push("/dashboard")}>
+                <Phone size={15} className="mt-0.5 text-[var(--pt-green-600)] shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium">{toCall} client{toCall === 1 ? "" : "s"} to call</p>
+                  <p className="text-xs text-[var(--pt-text-tertiary)]">Remind them about today&apos;s and tomorrow&apos;s appointments</p>
+                </div>
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
           </>
