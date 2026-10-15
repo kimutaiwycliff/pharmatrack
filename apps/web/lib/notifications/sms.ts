@@ -10,6 +10,11 @@ export type SendResult = { status: "sent" | "skipped" | "failed"; error?: string
  * Env: AT_USERNAME, AT_API_KEY, AT_SENDER_ID (optional sender/short code),
  *      AT_SANDBOX ("true" to use the sandbox endpoint).
  */
+/** True when Africa's Talking credentials are set (SMS can actually be sent). */
+export function smsConfigured(): boolean {
+  return !!(process.env.AT_USERNAME && process.env.AT_API_KEY)
+}
+
 export async function sendSms(to: string, message: string): Promise<SendResult> {
   const username = process.env.AT_USERNAME
   const apiKey = process.env.AT_API_KEY

@@ -6,7 +6,7 @@ import { hasFeature, resolvePermissions, type Feature } from "@pharmatrack/core"
 // capabilities AND the org's plan includes its feature. Unavailable items are
 // hidden, never shown disabled. Pure (no React Native) so it's unit-tested.
 
-export type TabName = "pos" | "shifts" | "dashboard" | "inventory" | "appointments" | "more"
+export type TabName = "pos" | "shifts" | "dashboard" | "inventory" | "products" | "appointments" | "more"
 
 export type MenuHref =
   | "/sales"
@@ -18,6 +18,7 @@ export type MenuHref =
   | "/inventory-import"
   | "/prescriptions"
   | "/shift-history"
+  | "/shifts"
   | "/staff"
   | "/reports"
   | "/sync-issues"
@@ -44,6 +45,8 @@ export interface TabDef extends Gate {
   name: TabName
   title: string
   icon: string
+  /** false = a tab route that's reachable but not shown in the tab bar. */
+  inBar?: boolean
 }
 
 export interface MenuItemDef extends Gate {
@@ -53,22 +56,25 @@ export interface MenuItemDef extends Gate {
   section: "Selling" | "Stock" | "Clinical" | "Insights" | "Admin"
 }
 
-// Order = tab bar order. Shifts is the till's clock-in/out screen, so anyone
-// who sells (or reviews shifts) gets it. Cashiers never see the dashboard
-// (revenue) — dashboard.view is owner/manager/pharmacist by default.
+// Order = tab bar order. Cashiers never see the dashboard (revenue) —
+// dashboard.view is owner/manager/pharmacist by default. Shift (clock in/out)
+// lives in More now; its tab route stays (hidden from the bar) so the till's
+// "Shifts" links and the More entry still open it.
 export const TABS: readonly TabDef[] = [
   { name: "pos", title: "POS", icon: "storefront-outline", anyOf: ["pos.sell"], feature: "pos" },
   { name: "dashboard", title: "Dashboard", icon: "stats-chart-outline", anyOf: ["dashboard.view"], feature: "dashboard" },
   { name: "inventory", title: "Inventory", icon: "cube-outline", anyOf: ["products.view"], feature: "inventory" },
-  { name: "shifts", title: "Shift", icon: "time-outline", anyOf: ["pos.sell", "shifts.view_all"] },
+  { name: "products", title: "Products", icon: "medkit-outline", anyOf: ["products.view"], feature: "inventory" },
+  // Hidden from the bar (inBar: false) but still a tab route — see above.
+  { name: "shifts", title: "Shift", icon: "time-outline", anyOf: ["pos.sell", "shifts.view_all"], inBar: false },
   { name: "appointments", title: "Appointments", icon: "calendar-outline", anyOf: ["appointments.manage"], feature: "appointments" },
   { name: "more", title: "More", icon: "ellipsis-horizontal-circle-outline" },
 ]
 
 export const MENU_ITEMS: readonly MenuItemDef[] = [
+  { section: "Selling", label: "Shift", icon: "time-outline", href: "/shifts", anyOf: ["pos.sell", "shifts.view_all"] },
   { section: "Selling", label: "Sales history", icon: "receipt-outline", href: "/sales" },
   { section: "Selling", label: "Shift history", icon: "time-outline", href: "/shift-history", anyOf: ["shifts.view_all"], onlineOnly: true },
-  { section: "Stock", label: "Products", icon: "medkit-outline", href: "/products", anyOf: ["products.view"], feature: "inventory" },
   { section: "Stock", label: "Purchase orders", icon: "clipboard-outline", href: "/purchase-orders", anyOf: ["purchasing.manage", "purchasing.receive"], feature: "inventory", onlineOnly: true },
   { section: "Stock", label: "Categories", icon: "folder-outline", href: "/categories", anyOf: ["products.view"] },
   { section: "Stock", label: "Suppliers", icon: "business-outline", href: "/suppliers", anyOf: ["products.view", "suppliers.manage"], feature: "inventory" },
@@ -90,8 +96,14 @@ export function passesGate(gate: Gate, ctx: NavContext): boolean {
   return true
 }
 
+/** Tabs this person may open (including ones reachable but not in the bar). */
 export function visibleTabs(ctx: NavContext): TabName[] {
   return TABS.filter((t) => passesGate(t, ctx)).map((t) => t.name)
+}
+
+/** Tabs shown in the tab bar. */
+export function barTabs(ctx: NavContext): TabName[] {
+  return TABS.filter((t) => t.inBar !== false && passesGate(t, ctx)).map((t) => t.name)
 }
 
 export function visibleMenuItems(ctx: NavContext): MenuItemDef[] {
@@ -101,7 +113,7 @@ export function visibleMenuItems(ctx: NavContext): MenuItemDef[] {
 /** First tab a person lands on — mirrors core's homeRouteFor() for the tabs we have. */
 export function homeTab(ctx: NavContext): TabName {
   const tabs = visibleTabs(ctx)
-  for (const t of ["pos", "dashboard", "inventory", "shifts", "appointments"] as const) {
+  for (const t of ["pos", "dashboard", "inventory", "products", "shifts", "appointments"] as const) {
     if (tabs.includes(t)) return t
   }
   return "more"

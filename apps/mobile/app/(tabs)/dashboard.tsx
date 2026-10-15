@@ -1,10 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import { router } from "expo-router"
+import { useState, type ReactNode } from "react"
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native"
 import {
   BranchSwitcher, EmptyState, ErrorState, ListRow, Money, NeedsInternet, Screen, ScreenHeader, SkeletonBlock, SkeletonCards, Text, useIsOnline,
 } from "../../src/components"
+import { ClientsToCallCard } from "../../src/features/call-list/components/ClientsToCallCard"
 import { BarChart } from "../../src/features/insights/components/BarChart"
 import { KpiGrid, type Kpi } from "../../src/features/insights/components/KpiGrid"
 import { PaymentSplitBar } from "../../src/features/insights/components/PaymentSplitBar"
@@ -62,6 +64,12 @@ export default function Dashboard() {
         : null
       : withQuery("/api/dashboard", { branch_id: scope.branchId })
   const q = useQuery<DashboardResponse>(key, loadDashboard)
+  // Pull-to-refresh also reloads the Clients to call card (its own query).
+  const [refreshSignal, setRefreshSignal] = useState(0)
+  const onRefresh = () => {
+    q.refresh()
+    setRefreshSignal((n) => n + 1)
+  }
 
   const header = (
     <ScreenHeader
@@ -122,16 +130,23 @@ export default function Dashboard() {
       <ScrollView keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} tintColor={theme.green} colors={[theme.green]} />}
+        refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={onRefresh} tintColor={theme.green} colors={[theme.green]} />}
       >
         {q.error ? <ErrorState compact message={q.error} onRetry={q.retry} /> : null}
-        <DashboardBody data={q.data} canOpenInventory={can("products.view")} canSell={can("pos.sell")} />
+        <DashboardBody
+          data={q.data}
+          canOpenInventory={can("products.view")}
+          canSell={can("pos.sell")}
+          callList={OFFLINE ? null : <ClientsToCallCard branchId={scope.branchId} refreshSignal={refreshSignal} />}
+        />
       </ScrollView>
     </Screen>
   )
 }
 
-function DashboardBody({ data, canOpenInventory, canSell }: { data: DashboardResponse; canOpenInventory: boolean; canSell: boolean }) {
+function DashboardBody({
+  data, canOpenInventory, canSell, callList,
+}: { data: DashboardResponse; canOpenInventory: boolean; canSell: boolean; callList: ReactNode }) {
   const theme = useTheme()
   const { kpis, alerts, topProducts, recentTransactions } = data
   const today = nairobiToday()
@@ -156,6 +171,9 @@ function DashboardBody({ data, canOpenInventory, canSell }: { data: DashboardRes
       <Section title="Stock alerts" card={false}>
         <StockAlerts alerts={alerts} canOpenInventory={canOpenInventory} />
       </Section>
+
+      {/* Appointment reminders without SMS: who to phone today (online only). */}
+      {callList}
 
       <Section title="Last 7 days" subtitle={`${formatKES(weekTotalCents)} in total`}>
         <BarChart

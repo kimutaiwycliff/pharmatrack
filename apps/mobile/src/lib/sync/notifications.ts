@@ -21,7 +21,8 @@ interface ReminderState {
 let mod: NotificationsModule | null | undefined
 let permissionAsked = false
 
-async function load(): Promise<NotificationsModule | null> {
+/** expo-notifications, or null when the build doesn't include it. Shared with features/call-list. */
+export async function loadNotifications(): Promise<NotificationsModule | null> {
   if (mod !== undefined) return mod
   try {
     mod = await import("expo-notifications")
@@ -31,7 +32,8 @@ async function load(): Promise<NotificationsModule | null> {
   return mod
 }
 
-async function ensurePermission(n: NotificationsModule): Promise<boolean> {
+/** Asks at most once per app run; false when denied or unavailable. */
+export async function ensureNotificationPermission(n: NotificationsModule): Promise<boolean> {
   try {
     const current = await n.getPermissionsAsync()
     if (current.granted) return true
@@ -53,11 +55,11 @@ export async function updateDeadlineReminders(pendingSales: number, deadline: nu
     const key = pendingSales > 0 && deadline ? `${deadline}:${pendingSales}` : "none"
     const prev = kvGetSync<ReminderState>(STATE_KEY)
     if (prev?.key === key) return
-    const n = await load()
+    const n = await loadNotifications()
     if (!n) return
     for (const id of prev?.ids ?? []) await n.cancelScheduledNotificationAsync(id).catch(() => {})
     const ids: string[] = []
-    if (key !== "none" && deadline && (await ensurePermission(n))) {
+    if (key !== "none" && deadline && (await ensureNotificationPermission(n))) {
       if (Platform.OS === "android") {
         await n.setNotificationChannelAsync(CHANNEL_ID, { name: "Sync reminders", importance: n.AndroidImportance.HIGH })
       }

@@ -9,9 +9,10 @@ import { useCan } from "../../src/hooks/useCan"
 import { useIsTablet } from "../../src/hooks/useIsTablet"
 import { useTheme } from "../../src/theme/useTheme"
 
-// Products (More → Products). Phones push /products/[id]; tablets keep the
-// list on the left and the selected product on the right. List, detail and
-// form logic live in src/features/products.
+// Products tab (it replaced Shift in the tab bar; Shift moved to More).
+// Phones push /products/[id]; tablets keep the list on the left and the
+// selected product on the right. List, detail and form logic live in
+// src/features/products.
 export default function ProductsScreen() {
   const theme = useTheme()
   const can = useCan()
@@ -21,6 +22,7 @@ export default function ProductsScreen() {
   const header = (
     <ScreenHeader
       title="Products"
+      hideBack
       right={
         can("products.view") && can("products.create") ? (
           <IconButton icon="add" accessibilityLabel="Add product" onPress={() => router.push("/products/new")} />

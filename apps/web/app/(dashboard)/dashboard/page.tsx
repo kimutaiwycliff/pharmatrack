@@ -7,6 +7,8 @@ import {
 import { TrendingUp, ShoppingCart, CreditCard, Smartphone, AlertTriangle, PackageX, Clock } from "lucide-react"
 import { formatKES } from "@/lib/store/cartStore"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
+import { useCan } from "@/lib/store/sessionStore"
+import { ClientsToCallCard } from "@/components/dashboard/ClientsToCallCard"
 
 interface DashboardData {
   kpis: {
@@ -123,6 +125,7 @@ function ChartTooltipContent({ active, payload, label }: any) {
 
 export default function DashboardPage() {
   const { branchId, ready } = useBranchScope()
+  const canManageAppointments = useCan("appointments.manage")
   const { data, isLoading } = useDashboard(branchId, ready)
 
   const todayLabel = new Date().toLocaleDateString("en-KE", {
@@ -201,6 +204,9 @@ export default function DashboardPage() {
           )}
         </div>
       )}
+
+      {/* Appointment reminders without SMS: who to phone today */}
+      {canManageAppointments ? <ClientsToCallCard branchId={branchId} /> : null}
 
       {/* Chart + Top Products */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">

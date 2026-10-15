@@ -7,7 +7,7 @@ import { useTheme } from "../../src/theme/useTheme"
 import { useSessionStore } from "../../src/store/session"
 import { Button, Card, SubscriptionGate, Text } from "../../src/components"
 import { useNavContext } from "../../src/hooks/useCan"
-import { homeTab, TABS, visibleTabs, type TabName } from "../../src/lib/nav/visibility"
+import { barTabs, homeTab, TABS, visibleTabs, type TabName } from "../../src/lib/nav/visibility"
 
 type IoniconName = keyof typeof Ionicons.glyphMap
 
@@ -76,6 +76,7 @@ function PermissionTabs() {
   const theme = useTheme()
   const nav = useNavContext()
   const visible = visibleTabs(nav)
+  const inBar = barTabs(nav)
   const segments = useSegments() as string[]
   const current = segments[1] as TabName | undefined
   const home = homeTab(nav)
@@ -102,7 +103,7 @@ function PermissionTabs() {
           name={t.name}
           options={{
             title: t.title,
-            href: visible.includes(t.name) ? undefined : null,
+            href: inBar.includes(t.name) ? undefined : null,
             tabBarAccessibilityLabel: `${t.title} tab`,
             tabBarIcon: ({ color, size }) => <Ionicons name={t.icon as IoniconName} size={size} color={color} />,
           }}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { and, eq, isNull, or, sql } from "drizzle-orm"
-import { withTenant, product, product_stock, subscription } from "@pharmatrack/db"
+import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm"
+import { withTenant, appointment, customer, product, product_stock, subscription } from "@pharmatrack/db"
+import { callWindow } from "@/lib/appointments/call-list"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { mergeAcrossBranches, resolveBranchScope } from "@/lib/inventory/aggregate"
 
@@ -85,6 +86,21 @@ export async function GET(request: NextRequest) {
       needsPrice = r?.n ?? 0
     }
 
-    return NextResponse.json({ lowStock, expiring, trialEndingSoon, needsPrice })
+    // Clients to phone about today's/tomorrow's appointments (no-SMS reminders).
+    let toCall = 0
+    if (ctx.permissions.includes("appointments.manage")) {
+      const w = callWindow()
+      const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(appointment)
+        .leftJoin(customer, eq(customer.id, appointment.customer_id))
+        .where(and(
+          gte(appointment.scheduled_at, w.start), lt(appointment.scheduled_at, w.end),
+          eq(appointment.status, "scheduled"), isNull(appointment.contact_outcome),
+          or(isNull(customer.reminders_opt_in), eq(customer.reminders_opt_in, true)),
+          branchId ? eq(appointment.branch_id, branchId) : undefined,
+        ))
+      toCall = r?.n ?? 0
+    }
+
+    return NextResponse.json({ lowStock, expiring, trialEndingSoon, needsPrice, toCall })
   })
 }

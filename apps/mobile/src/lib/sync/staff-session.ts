@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store"
+import { authClient } from "../auth-client"
 import { useSessionStore } from "../../store/session"
 import { useStaffStore, type CurrentStaff } from "../../store/staff"
 import { useCartStore } from "../../store/cart"
@@ -13,7 +14,21 @@ import { getRosterMember } from "./roster"
 // Same key @better-auth/expo persists the session blob under (see device-users.ts).
 const SESSION_DATA_KEY = "pharmatrack_session_data"
 
+// Who is signed in right now. Asks the server first: right after a phone + PIN
+// sign-in, @better-auth/expo has only *started* refreshing its cached session
+// copy (it does that in the background on the cookie change), so reading the
+// cache at that moment found nobody — or the previous person — and the
+// checking screen then asked for the PIN a second time ("Choose who is
+// selling"). getSession() also rewrites that cache. The cache is the offline
+// fallback.
 async function sessionUser(): Promise<{ id: string; name: string } | null> {
+  try {
+    const { data } = await authClient.getSession()
+    const u = data?.user
+    if (u?.id) return { id: u.id, name: u.name || u.email || "Staff" }
+  } catch {
+    // offline — fall back to the cached copy below
+  }
   try {
     const raw = await SecureStore.getItemAsync(SESSION_DATA_KEY)
     if (!raw) return null
