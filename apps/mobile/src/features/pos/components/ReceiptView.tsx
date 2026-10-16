@@ -6,7 +6,11 @@ import { useEffect, useState, type ReactNode } from "react"
 import { KeyboardAvoidingView, Linking, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native"
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from "react-native-reanimated"
 import { AnimatedNumber, Button, CheckMark, Text, TextField } from "../../../components"
+import { userMessage } from "../../../lib/errors"
 import { haptics } from "../../../lib/haptics"
+import { hardwareAvailable } from "../../../lib/hardware/native"
+import { paperFor, printReceipt } from "../../../lib/hardware/printer"
+import { useHardwareStore } from "../../../lib/hardware/store"
 import { useMotion } from "../../../lib/motion"
 import { toast } from "../../../lib/toast"
 import { useTheme } from "../../../theme/useTheme"
@@ -48,7 +52,9 @@ const HERO = {
 } as const
 
 // Shown right after a sale commits. "New sale" is the big, obvious action;
-// sharing is optional (WhatsApp text or an 80 mm PDF — no Bluetooth printing).
+// with a receipt printer set up (Settings → Printer & scanner) there's a
+// Print button and, optionally, it prints by itself; sharing (WhatsApp text or
+// an 80 mm PDF) is always there as the fallback.
 // Sales history reuses it in "reprint" mode so a reprint is identical.
 export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = "complete", status, initialPhone }: ReceiptViewProps) {
   const theme = useTheme()
@@ -56,6 +62,37 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
   const [phone, setPhone] = useState(initialPhone ?? "")
   const [phoneError, setPhoneError] = useState<string | null>(null)
   const [sharingPdf, setSharingPdf] = useState(false)
+  const [printing, setPrinting] = useState(false)
+  const printerSettings = useHardwareStore((s) => s.settings)
+  const canPrint = hardwareAvailable() && !!printerSettings.target
+
+  useEffect(() => {
+    useHardwareStore.getState().load()
+  }, [])
+
+  async function print() {
+    if (printing) return
+    setPrinting(true)
+    try {
+      await printReceipt(receipt, { paper: paperFor(useHardwareStore.getState().settings) })
+      toast.success("Receipt printed")
+    } catch (err) {
+      toast.error(`${userMessage(err, "Couldn't print the receipt.")} You can share it as a PDF instead.`)
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  // Auto-print once, right after a sale (not on reprints).
+  useEffect(() => {
+    if (mode !== "complete") return
+    const { settings } = useHardwareStore.getState()
+    if (!hardwareAvailable() || !settings.target || !settings.autoPrint) return
+    const t = setTimeout(() => void print(), 400)
+    return () => clearTimeout(t)
+    // Once per receipt shown.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const m = useMotion()
   const hero = mode === "complete"
 
@@ -195,6 +232,16 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
       </View>
 
       <View style={styles.share}>
+        {canPrint ? (
+          <Button
+            title={printing ? "Printing…" : "Print receipt"}
+            variant={onNewSale ? "secondary" : "primary"}
+            onPress={print}
+            loading={printing}
+            accessibilityLabel={`Print receipt on ${printerSettings.target?.label ?? "the receipt printer"}`}
+            leadingIcon={<Ionicons name="print-outline" size={20} color={onNewSale ? theme.text : theme.onAccent} />}
+          />
+        ) : null}
         <TextField
           label="Customer WhatsApp (optional)"
           placeholder="07XX XXX XXX"

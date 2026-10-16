@@ -9,6 +9,7 @@ import {
   isStaleGap,
   canAcceptScan,
 } from "@pharmatrack/core"
+import { useDeviceStore } from "@/lib/printing/config"
 
 interface UseBarcodeScanner {
   onScan: (event: BarcodeScanEvent) => void
@@ -33,6 +34,8 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScanner)
     if (!canAcceptScan(raw.length, now, lastScanTimeRef.current)) return
     lastScanTimeRef.current = now
 
+    // Heartbeat for the POS header's scanner badge (browsers can't see the device itself).
+    useDeviceStore.getState().markScan(raw)
     onScanRef.current(parseBarcode(raw))
   }, [])
 

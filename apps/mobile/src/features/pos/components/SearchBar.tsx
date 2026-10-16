@@ -3,6 +3,7 @@ import { forwardRef, useEffect, useRef } from "react"
 import type { TextInput } from "react-native"
 import { IconButton, TextField } from "../../../components"
 import { useTheme } from "../../../theme/useTheme"
+import { useHardwareStore } from "../../../lib/hardware/store"
 import { createBurstDetector } from "../logic/scanBurst"
 
 interface SearchBarProps {
@@ -56,6 +57,7 @@ export const SearchBar = forwardRef<TextInput, SearchBarProps>(function SearchBa
         if (result.kind === "scan") {
           latest.current = result.rest
           onChangeText(result.rest)
+          useHardwareStore.getState().markScan() // scanner heartbeat for the POS badge
           onScan(result.code)
         } else {
           onSubmitSearch(result.text)

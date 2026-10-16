@@ -1,10 +1,13 @@
 "use client"
 
-import { useState, type CSSProperties } from "react"
+import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { Check, Printer, ArrowRight, FileDown, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { toast } from "sonner"
 import { formatKES } from "@/lib/store/cartStore"
+import { hasDirectPrinter, usePrinterConfig, useDeviceStore } from "@/lib/printing/config"
+import { checkPrinter, paperFor, printReceipt, receiptDocFromSale } from "@/lib/printing/printer"
 import type { Sale, SaleItem } from "@pharmatrack/types"
 
 interface ReceiptData {
@@ -21,6 +24,8 @@ interface Props {
   data: ReceiptData | null
   onNewSale: () => void
   closeLabel?: string
+  /** A sale just completed (not a reprint): honour the till's auto-print setting. */
+  autoPrint?: boolean
 }
 
 function formatDate(iso: string) {
@@ -57,8 +62,42 @@ async function downloadPDF(data: ReceiptData) {
   URL.revokeObjectURL(url)
 }
 
-export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale" }: Props) {
+export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale", autoPrint = false }: Props) {
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [printing, setPrinting] = useState(false)
+  const config = usePrinterConfig((s) => s.config)
+  const paper = data ? paperFor(config, data.paperWidth) : "80mm"
+
+  // Direct printer (Settings → Printer & scanner) when set up; otherwise, or if
+  // it fails, the browser's print dialog.
+  async function handlePrint() {
+    if (!data) return
+    if (!hasDirectPrinter(config)) { window.print(); return }
+    setPrinting(true)
+    try {
+      await printReceipt(config, receiptDocFromSale(data), { paper, cash: data.sale.payment_method === "cash" || data.sale.payment_method === "split" })
+      toast.success("Receipt sent to the printer")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't reach the printer", {
+        action: { label: "Use print dialog", onClick: () => window.print() },
+        duration: 8000,
+      })
+    } finally {
+      setPrinting(false)
+      void checkPrinter(config).then((r) => useDeviceStore.getState().setPrinter(r))
+    }
+  }
+
+  // Auto-print once per new sale when the till is set up for it.
+  const autoPrinted = useRef<string | null>(null)
+  useEffect(() => {
+    if (!open || !data || !autoPrint || !config.autoPrint) return
+    if (autoPrinted.current === data.sale.receipt_number) return
+    autoPrinted.current = data.sale.receipt_number
+    const t = setTimeout(() => void handlePrint(), 300)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, data?.sale.receipt_number, autoPrint, config.autoPrint])
 
   async function handlePDF() {
     if (!data) return
@@ -91,9 +130,10 @@ export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale" }:
 
             {/* Thermal receipt */}
             <div className="px-7 pb-2">
+              <style>{`@media print { @page { size: ${paper} auto; margin: 0; } }`}</style>
               <div
                 id="receipt-printable"
-                style={{ "--pt-receipt-width": data.paperWidth ?? "80mm" } as CSSProperties}
+                style={{ "--pt-receipt-width": paper } as CSSProperties}
                 className="border border-dashed border-[var(--pt-border-strong)] rounded-xl p-5 font-mono text-[11px] space-y-2"
               >
                 <div className="text-center space-y-0.5">
@@ -176,10 +216,11 @@ export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale" }:
             <div className="p-5 grid grid-cols-3 gap-2">
               <Button
                 variant="outline"
-                onClick={() => window.print()}
+                onClick={() => void handlePrint()}
+                disabled={printing}
                 className="gap-1.5 text-xs h-10"
               >
-                <Printer size={14} />
+                {printing ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
                 Print
               </Button>
               <Button variant="outline" onClick={handlePDF} disabled={pdfLoading} className="gap-1.5 text-xs h-10">

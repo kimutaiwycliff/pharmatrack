@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react"
 import { StyleSheet, TextInput } from "react-native"
 import { useFocusEffect } from "expo-router"
 import { parseBarcode, type BarcodeScanEvent, COMPLETION_TIMEOUT_MS, canAcceptScan } from "@pharmatrack/core"
+import { useHardwareStore } from "../lib/hardware/store"
 
 interface Props {
   onScan: (event: BarcodeScanEvent) => void
@@ -40,6 +41,7 @@ export function HardwareScanCatcher({ onScan, enabled = true }: Props) {
     const now = Date.now()
     if (!canAcceptScan(trimmed.length, now, lastScanTimeRef.current)) return
     lastScanTimeRef.current = now
+    useHardwareStore.getState().markScan() // scanner heartbeat for the POS badge
     onScanRef.current(parseBarcode(trimmed))
   }, [])
 

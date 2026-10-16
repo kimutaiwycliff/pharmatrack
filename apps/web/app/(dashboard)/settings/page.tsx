@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone, ShieldCheck, TabletSmartphone } from "lucide-react"
+import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone, ShieldCheck, TabletSmartphone, Printer } from "lucide-react"
 import { hasFeature, type Feature, type Capability } from "@pharmatrack/core"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
@@ -12,6 +12,7 @@ import { BillingPanel } from "@/components/settings/BillingPanel"
 import { MpesaSettings } from "@/components/settings/MpesaSettings"
 import { RolePermissionsPanel } from "@/components/settings/RolePermissionsPanel"
 import { DevicesPanel } from "@/components/settings/DevicesPanel"
+import { HardwarePanel } from "@/components/settings/HardwarePanel"
 import { ThemeSegmented } from "@/components/theme/ThemeToggle"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import type { Organization, Branch, Profile, AppointmentService } from "@pharmatrack/types"
@@ -35,7 +36,7 @@ function useSettings() {
   })
 }
 
-type Tab = "org" | "branches" | "devices" | "services" | "payments" | "billing" | "permissions" | "profile" | "appearance"
+type Tab = "org" | "branches" | "devices" | "hardware" | "services" | "payments" | "billing" | "permissions" | "profile" | "appearance"
 
 // `anyOf`: shown when the user holds any of these permissions (omit = everyone).
 // `ownerOnly`: the permissions matrix itself is never delegable.
@@ -43,6 +44,8 @@ const TABS: { key: Tab; label: string; icon: React.ElementType; anyOf?: Capabili
   { key: "org",        label: "Organization", icon: Building2, anyOf: ["settings.organization", "branches.manage"] },
   { key: "branches",   label: "Branches",     icon: GitBranch, anyOf: ["settings.organization", "branches.manage"] },
   { key: "devices",    label: "Devices",      icon: TabletSmartphone, anyOf: ["devices.manage"] },
+  // This till's own printer + scanner (saved on the device) — anyone at the till.
+  { key: "hardware",   label: "Printer & scanner", icon: Printer },
   { key: "services",   label: "Services",     icon: Syringe, anyOf: ["appointment_services.manage", "appointments.manage"] },
   { key: "payments",   label: "Payments",     icon: Smartphone, anyOf: ["settings.organization"], requiresFeature: "mpesa_stk" },
   { key: "billing",    label: "Billing",      icon: CreditCard, anyOf: ["billing.manage"] },
@@ -62,6 +65,13 @@ export default function SettingsPage() {
     (!t.requiresFeature || hasFeature(planCode, t.requiresFeature)),
   )
   const [chosenTab, setTab] = useState<Tab | null>(null)
+  // Deep link: /settings?tab=hardware (the POS header's device badges).
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab")
+    if (!t || !TABS.some((x) => x.key === t)) return
+    const id = setTimeout(() => setTab(t as Tab), 0)
+    return () => clearTimeout(id)
+  }, [])
   const tab: Tab = chosenTab && visibleTabs.some((t) => t.key === chosenTab) ? chosenTab : (visibleTabs[0]?.key ?? "profile")
   const { data, isLoading } = useSettings()
 
@@ -135,6 +145,8 @@ export default function SettingsPage() {
         <BillingPanel />
       ) : tab === "devices" ? (
         <DevicesPanel />
+      ) : tab === "hardware" ? (
+        <HardwarePanel orgName={data?.org.name ?? null} orgPaper={(data?.org.settings as { receipt_paper_width?: string } | null | undefined)?.receipt_paper_width ?? null} />
       ) : tab === "permissions" ? (
         <RolePermissionsPanel />
       ) : isLoading ? (

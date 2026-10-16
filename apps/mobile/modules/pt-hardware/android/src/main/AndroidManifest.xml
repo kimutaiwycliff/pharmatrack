@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- USB receipt printers (USB host / OTG). Optional, so phones without it still install. -->
+  <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+</manifest>

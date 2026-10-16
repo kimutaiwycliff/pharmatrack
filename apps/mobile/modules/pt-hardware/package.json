@@ -1,0 +1,7 @@
+{
+  "name": "pt-hardware",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PharmaTrack Android receipt printers (Bluetooth, USB, LAN, Sunmi built-in) and barcode-scanner detection",
+  "main": "index.ts"
+}

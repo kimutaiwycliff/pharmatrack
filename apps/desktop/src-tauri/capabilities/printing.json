@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "printing",
+  "description": "ADR-015: the PharmaTrack page (hosted, a staging subdomain, or the Offline Edition's local server) may call exactly the three receipt-printer commands — nothing else from Tauri's API.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["https://pharmatrack.co.ke/*", "https://*.pharmatrack.co.ke/*", "http://127.0.0.1:*/*", "http://localhost:*/*"]
+  },
+  "permissions": ["allow-pt-list-printers", "allow-pt-print", "allow-pt-printer-status"]
+}
