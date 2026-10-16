@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm"
 import { staff_profile, appointment_reminder, type DrizzleDB } from "@pharmatrack/db"
+import { orgMessaging } from "@/lib/notifications/messaging"
 import { buildReminders } from "./reminders"
 
 interface ApptForQueue {
@@ -11,7 +12,7 @@ interface ApptForQueue {
 
 /** (Re)build the pending reminder rows for an appointment, inside a tenant tx. */
 export async function queueReminders(db: DrizzleDB, appt: ApptForQueue, orgId: string) {
-  // Respect the customer's messaging opt-out (SMS costs money).
+  // Respect the customer's reminders opt-out.
   if (appt.customer?.reminders_opt_in === false) return
 
   let pharmacistPhone: string | null = null
@@ -26,6 +27,7 @@ export async function queueReminders(db: DrizzleDB, appt: ApptForQueue, orgId: s
     scheduledAt: appt.scheduled_at,
     customer: { phone: appt.customer?.phone ?? null, email: appt.customer?.email ?? null },
     pharmacistPhone,
+    messaging: await orgMessaging(orgId),
   })
   if (rows.length > 0) {
     await db.insert(appointment_reminder).values(rows.map((r) => ({

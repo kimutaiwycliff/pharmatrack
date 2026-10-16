@@ -43,7 +43,7 @@ export const FEATURE_LABELS: Record<Feature, string> = {
   mpesa_stk: "M-Pesa STK push",
   dashboard: "Owner dashboard",
   appointments: "Appointments & reminders",
-  reminders: "SMS / WhatsApp / email reminders",
+  reminders: "Appointment reminders",
   prescriptions: "Prescriptions & DUR",
   reports: "Reports & analytics",
   multi_branch: "Multiple branches",

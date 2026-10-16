@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState } from "react"
 import { MoreHorizontal, Layers, Pill, Pencil } from "lucide-react"
 import { formatKES } from "@/lib/store/cartStore"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { BatchesSheet } from "./BatchesSheet"
 import { EditProductSheet } from "./EditProductSheet"
 import type { ProductStock } from "@pharmatrack/types"
@@ -126,50 +127,32 @@ function ProductCard({ product, onBatches, onEdit }: {
   )
 }
 
+// Row actions. Uses the shared dropdown (rendered above the page, flips up
+// near the bottom), so the table's rounded, overflow-hidden card can't clip it.
 function ActionMenu({ product, onBatches, onEdit }: {
   product: InventoryRow
   onBatches: () => void
   onEdit: () => void
 }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handle)
-    return () => document.removeEventListener("mousedown", handle)
-  }, [open])
-
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(v => !v)}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Actions for ${product.name}`}
         className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] hover:text-[var(--pt-text-secondary)] transition-colors"
       >
         <MoreHorizontal size={16} />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-8 z-20 bg-[var(--pt-surface)] border border-[var(--pt-border)] rounded-lg shadow-lg py-1 min-w-[152px]">
-          <button
-            onClick={() => { onBatches(); setOpen(false) }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--pt-text)] hover:bg-[var(--pt-muted)] transition-colors"
-          >
-            <Layers size={14} />
-            View Batches
-          </button>
-          <button
-            onClick={() => { onEdit(); setOpen(false) }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--pt-text)] hover:bg-[var(--pt-muted)] transition-colors"
-          >
-            <Pencil size={14} />
-            Edit Product
-          </button>
-        </div>
-      )}
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-auto min-w-[160px]">
+        <DropdownMenuItem onClick={onBatches} className="gap-2">
+          <Layers size={14} />
+          View Batches
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onEdit} className="gap-2">
+          <Pencil size={14} />
+          Edit Product
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

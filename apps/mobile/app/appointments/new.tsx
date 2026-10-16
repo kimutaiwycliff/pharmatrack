@@ -285,8 +285,8 @@ export default function BookAppointment() {
             <View style={styles.flex}>
               <Text variant="bodyStrong">Send appointment reminders</Text>
               <Text variant="caption" tone="secondary">
-                A reminder goes out the day before — WhatsApp or SMS to the customer (plus email if available). Messaging may be
-                charged — turn off to skip for this customer.
+                The day before, the customer gets an email reminder (if they have an email address) and appears on your team’s
+                “Clients to call” list. Turn off to skip reminders for this customer.
               </Text>
             </View>
             <Switch

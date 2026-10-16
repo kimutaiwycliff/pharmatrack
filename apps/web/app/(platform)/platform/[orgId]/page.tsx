@@ -32,6 +32,7 @@ interface TenantDetail {
   deletion: { scheduled_purge_at: string; requested_at: string } | null
   previous_trials: PreviousTrial[]
   trial_requests: TrialRequest[]
+  messaging: { sms_enabled: boolean; whatsapp_enabled: boolean; provider_ready: { sms: boolean; whatsapp: boolean } }
 }
 
 const selectCls = "w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
@@ -87,6 +88,24 @@ export default function TenantDetailPage() {
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ["tenant", orgId] })
     await qc.invalidateQueries({ queryKey: ["tenants"] })
+  }
+
+  // Paid add-ons: SMS / WhatsApp reminders (lib/notifications/messaging).
+  const [addonBusy, setAddonBusy] = useState<string | null>(null)
+  async function setAddon(key: "sms_enabled" | "whatsapp_enabled", on: boolean) {
+    setAddonBusy(key)
+    try {
+      const res = await fetch(`/api/platform/tenants/${orgId}/messaging`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: on }),
+      })
+      if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? "Couldn't save")
+      toast.success(`${key === "sms_enabled" ? "SMS" : "WhatsApp"} reminders ${on ? "switched on" : "switched off"}`)
+      await refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't save")
+    } finally {
+      setAddonBusy(null)
+    }
   }
 
   async function saveSubscription() {
@@ -234,6 +253,31 @@ export default function TenantDetailPage() {
           <span className="text-xs text-[var(--pt-text-tertiary)]">choose a state, then Save</span>
         </div>
       </section>
+
+      {/* Paid add-ons */}
+      {data ? (
+        <section className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5 space-y-3">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-text-secondary)]">Paid add-ons</h2>
+            <p className="text-xs text-[var(--pt-text-tertiary)] mt-1">
+              Switch on only after the pharmacy has paid. Until then their app never mentions SMS or WhatsApp, and no messages are sent.
+            </p>
+          </div>
+          {([
+            { key: "sms_enabled", label: "SMS appointment reminders", on: data.messaging.sms_enabled, ready: data.messaging.provider_ready.sms },
+            { key: "whatsapp_enabled", label: "WhatsApp appointment reminders", on: data.messaging.whatsapp_enabled, ready: data.messaging.provider_ready.whatsapp },
+          ] as const).map((a) => (
+            <label key={a.key} className="flex items-start justify-between gap-3 cursor-pointer">
+              <span className="text-sm">
+                {a.label}
+                {!a.ready ? <span className="block text-xs text-amber-600 dark:text-amber-400">Africa’s Talking isn’t configured on the server yet — nothing will send until it is.</span> : null}
+              </span>
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-[var(--pt-green)]" checked={a.on} disabled={addonBusy === a.key}
+                onChange={(e) => void setAddon(a.key, e.target.checked)} />
+            </label>
+          ))}
+        </section>
+      ) : null}
 
       {/* Record payment */}
       <section className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5 flex flex-wrap items-center justify-between gap-3">

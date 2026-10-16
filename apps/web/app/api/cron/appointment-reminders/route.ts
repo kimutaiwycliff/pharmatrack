@@ -4,6 +4,7 @@ import { dbAdmin, appointment_reminder, appointment, customer, branch, organizat
 import { sendSms } from "@/lib/notifications/sms"
 import { sendEmail } from "@/lib/notifications/email"
 import { sendWhatsApp } from "@/lib/notifications/whatsapp"
+import { orgMessaging, type OrgMessaging } from "@/lib/notifications/messaging"
 import { customerSms, pharmacistSms, customerEmail, type MessageContext } from "@/lib/appointments/reminders"
 import { callWindow, digestRecipients, nairobiHour, nairobiYmd, staffDigestEmail, type CallItem, type Manager } from "@/lib/appointments/call-list"
 
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
   const db = dbAdmin()
   const rows = await db.select({
     id: appointment_reminder.id, channel: appointment_reminder.channel, recipient: appointment_reminder.recipient,
+    org_id: appointment_reminder.organization_id,
     scheduled_at: appointment.scheduled_at, service: appointment.service, service_label: appointment.service_label, status: appointment.status,
     c_name: customer.full_name, c_phone: customer.phone, c_email: customer.email, c_opt: customer.reminders_opt_in,
     branch_name: branch.name, org_name: organization.name,
@@ -37,6 +39,13 @@ export async function GET(request: NextRequest) {
     .limit(200)
 
   let sent = 0, skipped = 0, failed = 0
+  // Paid add-ons per pharmacy (checked again at send time: one switched off
+  // since queueing gets no more SMS/WhatsApp).
+  const messagingCache = new Map<string, OrgMessaging>()
+  const messagingOf = async (orgId: string) => {
+    if (!messagingCache.has(orgId)) messagingCache.set(orgId, await orgMessaging(orgId))
+    return messagingCache.get(orgId)!
+  }
 
   for (const r of rows) {
     // Appointment gone or no longer active → nothing to send.
@@ -57,7 +66,10 @@ export async function GET(request: NextRequest) {
     }
 
     let result: { status: "sent" | "skipped" | "failed"; error?: string }
-    if (r.recipient === "customer" && r.channel === "whatsapp") {
+    const m = await messagingOf(r.org_id)
+    if ((r.channel === "sms" && !m.sms) || (r.channel === "whatsapp" && !m.whatsapp)) {
+      result = { status: "skipped", error: `${r.channel === "sms" ? "SMS" : "WhatsApp"} not activated for this pharmacy` }
+    } else if (r.recipient === "customer" && r.channel === "whatsapp") {
       result = r.c_phone ? await sendWhatsApp(r.c_phone, customerSms(ctx)) : { status: "skipped", error: "No customer phone" }
     } else if (r.recipient === "customer" && r.channel === "sms") {
       result = r.c_phone ? await sendSms(r.c_phone, customerSms(ctx)) : { status: "skipped", error: "No customer phone" }

@@ -1,6 +1,5 @@
 import { serviceLabel } from "./services"
-import { whatsappConfigured } from "@/lib/notifications/whatsapp"
-import { smsConfigured } from "@/lib/notifications/sms"
+import type { OrgMessaging } from "@/lib/notifications/messaging"
 
 const EAT_OFFSET_MS = 3 * 3_600_000 // Africa/Nairobi is UTC+3 (no DST)
 
@@ -21,6 +20,8 @@ interface BuildArgs {
   scheduledAt: string | Date
   customer: { phone: string | null; email: string | null }
   pharmacistPhone: string | null
+  /** This pharmacy's paid messaging add-ons (lib/notifications/messaging). */
+  messaging: OrgMessaging
 }
 
 /**
@@ -58,6 +59,7 @@ export function buildReminders({
   scheduledAt,
   customer,
   pharmacistPhone,
+  messaging,
 }: BuildArgs): ReminderInsert[] {
   const sendMs = reminderSendAt(scheduledAt)
   if (sendMs === null) return []
@@ -67,16 +69,16 @@ export function buildReminders({
   const add = (channel: Channel, recipient: "customer" | "pharmacist") =>
     rows.push({ appointment_id: appointmentId, organization_id: organizationId, channel, recipient, send_at, status: "pending" })
 
-  // Prefer WhatsApp for the customer when it's configured (richer + cheaper in
-  // Kenya), else SMS. With neither switched on nothing is queued for the
-  // phone — staff call the client instead (call list + morning email,
+  // Phone messages only when this pharmacy has paid for them: WhatsApp first
+  // (richer + cheaper in Kenya), else SMS. Without either nothing is queued for
+  // the phone — staff call the client instead (call list + morning email,
   // lib/appointments/call-list.ts), rather than piling up skipped rows.
   if (customer.phone) {
-    if (whatsappConfigured()) add("whatsapp", "customer")
-    else if (smsConfigured()) add("sms", "customer")
+    if (messaging.whatsapp) add("whatsapp", "customer")
+    else if (messaging.sms) add("sms", "customer")
   }
   if (customer.email) add("email", "customer")
-  if (pharmacistPhone && smsConfigured()) add("sms", "pharmacist")
+  if (pharmacistPhone && messaging.sms) add("sms", "pharmacist")
 
   return rows
 }
