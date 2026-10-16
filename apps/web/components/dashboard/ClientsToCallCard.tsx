@@ -110,9 +110,12 @@ export function ClientsToCallCard({ branchId }: { branchId: string | null }) {
         </p>
         <Link href="/appointments" className="text-xs font-medium text-[var(--pt-green-600)] hover:underline">All appointments</Link>
       </div>
-      {!data.sms_enabled ? (
-        <p className="text-xs text-[var(--pt-text-secondary)] mb-2">SMS reminders are off — phone these clients to remind them. The same list is emailed to your team each morning.</p>
-      ) : null}
+      {/* SMS is only mentioned once this pharmacy has paid for it (sms_enabled). */}
+      <p className="text-xs text-[var(--pt-text-secondary)] mb-2">
+        {data.sms_enabled
+          ? "They also get an SMS reminder the day before. The same list is emailed to your team each morning."
+          : "Phone these clients to remind them. The same list is emailed to your team each morning."}
+      </p>
       {data.tomorrow.length > 0 ? (
         <>
           <p className="text-[11px] uppercase tracking-wide font-semibold text-[var(--pt-text-secondary)] mt-3">Tomorrow — call today</p>

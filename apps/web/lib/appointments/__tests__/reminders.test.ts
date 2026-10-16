@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
+import { describe, it, expect } from "vitest"
 import { buildReminders, customerSms } from "../reminders"
 
 const base = {
@@ -6,6 +6,8 @@ const base = {
   organizationId: "o1",
   customer: { phone: "0712345678", email: "jane@example.com" },
   pharmacistPhone: "0700000000",
+  // This pharmacy has paid for SMS (lib/notifications/messaging).
+  messaging: { sms: true, whatsapp: false },
 }
 
 function future(days: number) {
@@ -13,18 +15,14 @@ function future(days: number) {
 }
 
 describe("buildReminders", () => {
-  // SMS is only queued when Africa's Talking is configured.
-  beforeEach(() => {
-    vi.stubEnv("AT_USERNAME", "test")
-    vi.stubEnv("AT_API_KEY", "key")
-  })
-  afterEach(() => vi.unstubAllEnvs())
-
-  it("queues nothing for phones when SMS isn't set up — staff call instead", () => {
-    vi.stubEnv("AT_USERNAME", "")
-    vi.stubEnv("AT_API_KEY", "")
-    const rows = buildReminders({ ...base, scheduledAt: future(5) })
+  it("queues nothing for phones when the pharmacy hasn't paid for SMS — staff call instead", () => {
+    const rows = buildReminders({ ...base, scheduledAt: future(5), messaging: { sms: false, whatsapp: false } })
     expect(rows.map((r) => `${r.recipient}:${r.channel}`)).toEqual(["customer:email"])
+  })
+
+  it("prefers WhatsApp for the customer when that add-on is on", () => {
+    const rows = buildReminders({ ...base, scheduledAt: future(5), messaging: { sms: true, whatsapp: true } })
+    expect(rows.map((r) => `${r.recipient}:${r.channel}`).sort()).toEqual(["customer:email", "customer:whatsapp", "pharmacist:sms"])
   })
 
   it("queues SMS+email for the customer and SMS for the pharmacist", () => {

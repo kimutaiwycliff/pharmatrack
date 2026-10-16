@@ -88,11 +88,12 @@ export function ClientsToCallCard({ branchId, refreshSignal }: Props) {
           All appointments
         </Text>
       </PressableScale>
-      {!data.sms_enabled ? (
-        <Text variant="caption" tone="secondary">
-          SMS reminders are off — phone these clients to remind them. The same list is emailed to your team each morning.
-        </Text>
-      ) : null}
+      {/* SMS is only mentioned once this pharmacy has paid for it (sms_enabled). */}
+      <Text variant="caption" tone="secondary">
+        {data.sms_enabled
+          ? "They also get an SMS reminder the day before. The same list is emailed to your team each morning."
+          : "Phone these clients to remind them. The same list is emailed to your team each morning."}
+      </Text>
       {callSections(data).map((section) => (
         <View key={section.key} style={styles.section}>
           <Text variant="caption" tone="secondary" style={styles.sectionTitle}>

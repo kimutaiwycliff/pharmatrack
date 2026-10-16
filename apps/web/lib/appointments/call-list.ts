@@ -113,7 +113,7 @@ export function staffDigestEmail(args: {
       <p>Hi ${escapeHtml(args.recipientName.split(" ")[0] ?? args.recipientName)},</p>
       ${n > 0 ? `
         <h2 style="margin:18px 0 6px;font-size:18px">Call to remind them — appointments tomorrow</h2>
-        <p style="margin:0 0 10px;color:#4b5563">SMS reminders aren't switched on, so please phone these clients today.</p>
+        <p style="margin:0 0 10px;color:#4b5563">Please phone these clients today to remind them.</p>
         ${table(args.tomorrow)}` : ""}
       ${args.today.length > 0 ? `
         <h2 style="margin:22px 0 6px;font-size:18px">Today's appointments</h2>

@@ -5,7 +5,7 @@ import { getApiContext } from "@/lib/api-auth"
 import { requireFeatureApi } from "@/lib/entitlements"
 import { resolveBranchScope } from "@/lib/inventory/aggregate"
 import { callWindow, nairobiYmd } from "@/lib/appointments/call-list"
-import { smsConfigured } from "@/lib/notifications/sms"
+import { orgMessaging } from "@/lib/notifications/messaging"
 
 // "Clients to call": today's and tomorrow's active appointments (Nairobi), for
 // staff to phone the client while SMS reminders aren't switched on. Customers
@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
     next_day_to_call: next?.n ?? 0,
     today: items.filter((i) => day(i.scheduled_at) === w.today),
     tomorrow: items.filter((i) => day(i.scheduled_at) === w.tomorrow),
-    sms_enabled: smsConfigured(),
+    // Only true once this pharmacy has paid for SMS — the UI never mentions SMS otherwise.
+    sms_enabled: (await orgMessaging(ctx.organizationId)).sms,
   })
 }

@@ -62,6 +62,17 @@ export function BookAppointmentDialog({ open, onOpenChange, prefill, onBooked }:
   const [pending, startTransition] = useTransition()
 
   // Staff list for the assignee select (owner/manager get the full list; others fall back to self).
+  // Paid messaging add-ons — SMS/WhatsApp are only mentioned when switched on.
+  const { data: settingsData } = useQuery<{ messaging?: { sms: boolean; whatsapp: boolean } }>({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings")
+      if (!res.ok) throw new Error("Failed to load settings")
+      return res.json()
+    },
+    staleTime: 60_000,
+  })
+  const messaging = settingsData?.messaging
   const { data: staff = [] } = useQuery<StaffMember[]>({
     queryKey: ["staff"],
     queryFn: async () => {
@@ -249,7 +260,9 @@ export function BookAppointmentDialog({ open, onOpenChange, prefill, onBooked }:
             <span>
               <span className="text-sm font-medium block">Send appointment reminders</span>
               <span className="text-xs text-[var(--pt-text-secondary)]">
-                A reminder goes out the day before — WhatsApp or SMS to the customer (plus email if available) and SMS to the assigned pharmacist. Messaging may be charged — turn off to skip for this customer.
+                {messaging?.whatsapp || messaging?.sms
+                  ? `The day before, the customer gets a ${messaging.whatsapp ? "WhatsApp" : "SMS"} reminder (plus email if they have one)${messaging.sms ? " and the assigned pharmacist gets an SMS" : ""}. Turn off to skip reminders for this customer.`
+                  : "The day before, the customer gets an email reminder (if they have an email address) and appears on your team’s “Clients to call” list. Turn off to skip reminders for this customer."}
               </span>
             </span>
             <button

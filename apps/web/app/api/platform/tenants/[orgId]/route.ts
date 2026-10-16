@@ -4,12 +4,14 @@ import { asc, desc, eq, sql } from "drizzle-orm"
 import { organization, org_settings, subscription, plan, branch, staff_profile, subscription_payment, tenant_deletion, audit_log, trial_extension_request } from "@pharmatrack/db"
 import { zUuid } from "@/lib/api/validation"
 import { getPlatformContext } from "@/lib/platform"
+import { smsConfigured } from "@/lib/notifications/sms"
+import { whatsappConfigured } from "@/lib/notifications/whatsapp"
 import { purgeTenant } from "@/lib/platform/purge"
 import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 import { ownerContact } from "@/lib/notifications/billing"
 import { duplicateSignalsForOrg } from "@/lib/trials/eligibility"
 
-type OrgSettings = { email?: string; phone?: string; address?: string; registration_number?: string }
+type OrgSettings = { email?: string; phone?: string; address?: string; registration_number?: string; sms_enabled?: boolean; whatsapp_enabled?: boolean }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
   const { orgId } = await params
@@ -51,6 +53,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   return NextResponse.json({
     tenant: { id: orgRow.id, name: orgRow.name, owner_email: owner?.email ?? null, owner_name: owner?.name ?? null, registration_number: s.registration_number ?? null, email: s.email ?? null, phone: s.phone ?? null, address: s.address ?? null, created_at: orgRow.createdAt.toISOString(), subscriptions },
+    // Paid messaging add-ons (lib/notifications/messaging) + whether the
+    // platform's Africa's Talking keys are set, so the console can warn.
+    messaging: {
+      sms_enabled: s.sms_enabled === true,
+      whatsapp_enabled: s.whatsapp_enabled === true,
+      provider_ready: { sms: smsConfigured(), whatsapp: whatsappConfigured() },
+    },
     branch_count: bc?.n ?? 0,
     staff_count: sc?.n ?? 0,
     plans: plans.map((p) => ({ ...p, price_kes: Number(p.price_kes) })),

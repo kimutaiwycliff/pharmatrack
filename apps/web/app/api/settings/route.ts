@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { and, asc, eq } from "drizzle-orm"
 import { z } from "zod"
 import { dbAdmin, organization, org_settings, branch, staff_profile, user } from "@pharmatrack/db"
+import { messagingFor } from "@/lib/notifications/messaging"
 import { getSession, loadPermissions } from "@/lib/auth/helpers"
 import { hashPin, validatePin, verifyPin } from "@/lib/auth/pin"
 import { checkPinChange } from "@/lib/auth/pin-change"
@@ -51,7 +52,9 @@ export async function GET(_request: NextRequest) {
   }
   const org = orgRow ? { id: orgRow.id, name: orgRow.name, created_at: orgRow.createdAt.toISOString(), ...s } : null
 
-  return NextResponse.json({ profile, has_pin: !!sp.pin_hash, org, branches })
+  // Paid add-ons (SMS / WhatsApp reminders): the UI only mentions them when on.
+  const messaging = messagingFor(settingsRow?.settings)
+  return NextResponse.json({ profile, has_pin: !!sp.pin_hash, org, branches, messaging })
 }
 
 export async function PATCH(request: NextRequest) {
