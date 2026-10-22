@@ -1,4 +1,7 @@
-import { formatKES, normalizeKePhone } from "@pharmatrack/core"
+import {
+  applyReceiptProfile, formatKES, normalizeKePhone, qrSvg, receiptFooterLines, receiptHeaderLines, receiptQtyText,
+  type ReceiptBranchInfo, type ReceiptDoc, type ReceiptProfile,
+} from "@pharmatrack/core"
 import { nairobiParts } from "../../../lib/sync/core/time"
 import { cartTotals, lineTotals, sellQty, type CartItem } from "./cart"
 
@@ -34,23 +37,56 @@ export function nairobiDateTime(ms: number): string {
   return `${pad(p.day)}/${pad(p.month)}/${p.year} ${pad(p.hour)}:${pad(p.minute)}`
 }
 
-export function receiptText(r: ReceiptData): string {
-  const lines = r.lines.map((l) => `• ${l.name} — ${l.qtyLabel}: ${formatKES(l.totalCents)}`)
+/** The till's receipt (cents already) → the shared receipt model the printer uses. */
+export function receiptDocFromReceipt(r: ReceiptData, extra?: { branchName?: string | null; address?: string | null; phone?: string | null }): ReceiptDoc {
+  return {
+    shopName: r.shopName,
+    branchName: extra?.branchName ?? null,
+    address: extra?.address ?? null,
+    phone: extra?.phone ?? null,
+    receiptNumber: r.receiptNumber,
+    dateText: nairobiDateTime(r.soldAtMs),
+    cashier: r.cashier,
+    lines: r.lines.map((l) => ({ name: l.name, qtyLabel: l.qtyLabel, totalCents: l.totalCents, discountCents: l.discountCents })),
+    subtotalCents: r.subtotalCents,
+    discountCents: r.discountCents,
+    totalCents: r.totalCents,
+    paymentLabel: r.paymentLabel,
+    paidCents: r.paidCents,
+    changeCents: r.changeCents,
+    mpesaReference: r.mpesaReference,
+  }
+}
+
+/**
+ * The receipt as customers get it: the sale plus the pharmacy's Settings →
+ * Receipt header/footer (from /api/mobile/me, cached for offline use). Without
+ * a profile (Offline Edition, first launch offline) it's the plain layout.
+ */
+export function brandedReceipt(r: ReceiptData, profile: ReceiptProfile | null | undefined, branch?: ReceiptBranchInfo): ReceiptDoc {
+  return applyReceiptProfile(receiptDocFromReceipt(r, { branchName: branch?.name, address: branch?.address, phone: branch?.phone }), profile, branch)
+}
+
+export function receiptText(d: ReceiptDoc): string {
+  const lines = d.lines.map((l) => `• ${l.name} — ${receiptQtyText(l)}: ${formatKES(l.totalCents)}`)
+  const footer = receiptFooterLines(d)
   return [
-    `*${r.shopName}*`,
-    `Receipt ${r.receiptNumber}`,
-    nairobiDateTime(r.soldAtMs),
+    `*${d.shopName}*`,
+    ...receiptHeaderLines(d),
+    "",
+    `Receipt ${d.receiptNumber}`,
+    d.dateText,
     "",
     ...lines,
     "",
-    r.discountCents > 0 ? `Discount: -${formatKES(r.discountCents)}` : null,
-    `*Total: ${formatKES(r.totalCents)}*`,
-    `Paid (${r.paymentLabel}): ${formatKES(r.paidCents)}`,
-    r.changeCents > 0 ? `Change: ${formatKES(r.changeCents)}` : null,
-    r.mpesaReference ? `M-Pesa ref: ${r.mpesaReference}` : null,
-    `Served by ${r.cashier}`,
-    "",
-    "Thank you — get well soon.",
+    d.discountCents > 0 ? `Discount: -${formatKES(d.discountCents)}` : null,
+    `*Total: ${formatKES(d.totalCents)}*`,
+    `Paid (${d.paymentLabel}): ${formatKES(d.paidCents ?? d.totalCents)}`,
+    d.changeCents && d.changeCents > 0 ? `Change: ${formatKES(d.changeCents)}` : null,
+    d.mpesaReference ? `M-Pesa ref: ${d.mpesaReference}` : null,
+    d.cashier ? `Served by ${d.cashier}` : null,
+    ...(footer.length ? ["", ...footer] : []),
+    ...(d.qrData ? ["", d.qrCaption ? `${d.qrCaption}: ${d.qrData}` : d.qrData] : []),
   ]
     .filter((l): l is string => l !== null)
     .join("\n")
@@ -74,40 +110,48 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 /** 80 mm thermal-width receipt (≈ 226 pt). */
 export const RECEIPT_WIDTH_PT = 227
 
-export function receiptHeightPt(r: ReceiptData): number {
-  return 300 + r.lines.length * 34
+export function receiptHeightPt(d: ReceiptDoc): number {
+  return 260 + d.lines.length * 34 + (receiptHeaderLines(d).length + receiptFooterLines(d).length) * 13 + (d.logoDataUrl ? 60 : 0) + (d.qrData ? 120 : 0)
 }
 
-export function receiptHtml(r: ReceiptData): string {
-  const rows = r.lines
+export function receiptHtml(d: ReceiptDoc): string {
+  const rows = d.lines
     .map(
-      (l) => `<tr><td>${esc(l.name)}<div class="muted">${esc(l.qtyLabel)}${l.discountCents > 0 ? ` · -${esc(formatKES(l.discountCents))}` : ""}</div></td><td class="r">${esc(formatKES(l.totalCents))}</td></tr>`,
+      (l) => `<tr><td>${esc(l.name)}<div class="muted">${esc(receiptQtyText(l))}${l.discountCents ? ` · -${esc(formatKES(l.discountCents))}` : ""}</div></td><td class="r">${esc(formatKES(l.totalCents))}</td></tr>`,
     )
     .join("")
   const row = (label: string, value: string, strong = false) =>
     `<tr${strong ? ' class="strong"' : ""}><td>${esc(label)}</td><td class="r">${esc(value)}</td></tr>`
+  const header = receiptHeaderLines(d).map((l) => `<div class="c muted">${esc(l)}</div>`).join("")
+  const footer = receiptFooterLines(d).map((l) => `<div class="c">${esc(l)}</div>`).join("")
+  // The logo is validated server-side (PNG/JPEG data URL only), so it's safe in src.
+  const logo = d.logoDataUrl && /^data:image\/(png|jpeg);base64,/.test(d.logoDataUrl) ? `<img class="logo" src="${d.logoDataUrl}"/>` : ""
+  const qr = d.qrData ? `<div class="c qr">${qrSvg(d.qrData, 90)}${d.qrCaption ? `<div class="muted">${esc(d.qrCaption)}</div>` : ""}</div>` : ""
   return `<!doctype html><html><head><meta charset="utf-8"/>
 <style>
   @page { margin: 0; }
   body { font-family: -apple-system, Roboto, sans-serif; font-size: 10px; width: ${RECEIPT_WIDTH_PT - 16}pt; margin: 8pt; color: #000; }
   h1 { font-size: 13px; text-align: center; margin: 0 0 2px; }
   .c { text-align: center; } .muted { color: #555; font-size: 9px; } .r { text-align: right; white-space: nowrap; vertical-align: top; }
+  .logo { display: block; margin: 0 auto 4px; max-height: 48pt; max-width: 70%; object-fit: contain; } .qr { margin-top: 8px; }
   table { width: 100%; border-collapse: collapse; } td { padding: 2px 0; }
   hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; } .strong td { font-weight: 700; font-size: 12px; }
 </style></head><body>
-<h1>${esc(r.shopName)}</h1>
-<div class="c">Receipt ${esc(r.receiptNumber)}</div>
-<div class="c muted">${esc(nairobiDateTime(r.soldAtMs))} · ${esc(r.cashier)}</div>
+${logo}<h1>${esc(d.shopName)}</h1>
+${header}
+<hr/>
+<div class="c">Receipt ${esc(d.receiptNumber)}</div>
+<div class="c muted">${esc(d.dateText)}${d.cashier ? ` · ${esc(d.cashier)}` : ""}</div>
+${d.customer ? `<div class="c muted">Customer: ${esc(d.customer)}</div>` : ""}
 <hr/><table>${rows}</table><hr/>
 <table>
-${row("Subtotal", formatKES(r.subtotalCents))}
-${r.discountCents > 0 ? row("Discount", `-${formatKES(r.discountCents)}`) : ""}
-${row("Total", formatKES(r.totalCents), true)}
-${row(`Paid (${r.paymentLabel})`, formatKES(r.paidCents))}
-${r.changeCents > 0 ? row("Change", formatKES(r.changeCents)) : ""}
-${r.mpesaReference ? row("M-Pesa ref", r.mpesaReference) : ""}
-</table><hr/>
-<div class="c">Thank you — get well soon.</div>
+${row("Subtotal", formatKES(d.subtotalCents))}
+${d.discountCents > 0 ? row("Discount", `-${formatKES(d.discountCents)}`) : ""}
+${row("Total", formatKES(d.totalCents), true)}
+${row(`Paid (${d.paymentLabel})`, formatKES(d.paidCents ?? d.totalCents))}
+${d.changeCents && d.changeCents > 0 ? row("Change", formatKES(d.changeCents)) : ""}
+${d.mpesaReference ? row("M-Pesa ref", d.mpesaReference) : ""}
+</table>${footer ? `<hr/>${footer}` : ""}${qr}
 </body></html>`
 }
 

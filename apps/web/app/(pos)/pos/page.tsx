@@ -22,6 +22,7 @@ import { postJson } from "@/lib/api/fetcher"
 import { isUuid } from "@/lib/utils"
 import type { Sale, SaleItem } from "@pharmatrack/types"
 import { useSuppliers } from "@/lib/hooks/useSuppliers"
+import { useReceiptProfile } from "@/lib/printing/useReceiptProfile"
 
 type PayModal = "cash" | "mpesa" | "split" | null
 
@@ -30,6 +31,8 @@ interface ReceiptData {
   items: SaleItem[]
   branchName: string
   branchAddress: string | null
+  branchPhone?: string | null
+  cashierName?: string | null
   orgName: string
   paperWidth?: "58mm" | "80mm"
 }
@@ -44,6 +47,8 @@ export default function PosPage() {
 
   const qc = useQueryClient()
   const profile = useSessionStore((s) => s.profile)
+  // Warm the receipt branding now so the receipt never waits on it.
+  useReceiptProfile()
   const branches = useSessionStore((s) => s.branches)
   const activeBranchId = useUIStore((s) => s.activeBranchId)
 
@@ -159,6 +164,8 @@ export default function PosPage() {
         items: json.items ?? [],
         branchName: activeBranch.name,
         branchAddress: activeBranch.address ?? null,
+        branchPhone: activeBranch.phone ?? null,
+        cashierName: profile?.full_name ?? null,
         orgName: json.sale.org_name ?? "PharmaTrack",
         paperWidth: json.paperWidth ?? "80mm",
       })

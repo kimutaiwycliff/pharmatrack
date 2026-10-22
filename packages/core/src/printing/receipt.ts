@@ -5,10 +5,14 @@
 // Money is integer cents throughout.
 import { formatKES, type Cents } from "../money"
 import { EscPos, toPrinterText, type Align } from "./escpos"
+import { DEFAULT_FOOTER, base64ToBytes, type LogoRaster } from "./receiptProfile"
 
 export type PaperWidth = "58mm" | "80mm"
 
 export const PAPER_COLUMNS: Record<PaperWidth, number> = { "58mm": 32, "80mm": 48 }
+
+/** Printable dots per line at 203 dpi (48 mm / 72 mm). */
+export const PAPER_DOTS: Record<PaperWidth, number> = { "58mm": 384, "80mm": 576 }
 
 export interface ReceiptDocLine {
   name: string
@@ -16,6 +20,8 @@ export interface ReceiptDocLine {
   qtyLabel: string
   totalCents: Cents
   discountCents?: Cents
+  /** Price of one unit; printed as "… @ 12.50" when set. */
+  unitPriceCents?: Cents | null
 }
 
 export interface ReceiptDoc {
@@ -23,8 +29,12 @@ export interface ReceiptDoc {
   branchName?: string | null
   address?: string | null
   phone?: string | null
-  /** Registration / PIN line printed under the header when set. */
+  email?: string | null
+  /** Registration / licence line printed under the header when set. */
   registration?: string | null
+  kraPin?: string | null
+  /** The owner's own header lines (Settings → Receipt). */
+  headerLines?: string[] | null
   receiptNumber: string
   /** Already formatted in Africa/Nairobi, e.g. "15/10/2026 14:05". */
   dateText: string
@@ -38,9 +48,40 @@ export interface ReceiptDoc {
   paidCents?: Cents | null
   changeCents?: Cents | null
   mpesaReference?: string | null
+  /** Single closing line (older callers); `footerLines` wins when set. */
   footer?: string | null
-  /** Printed as a QR code under the footer (e.g. a receipt link). */
+  footerLines?: string[] | null
+  /** Printed as a QR code under the footer (e.g. a WhatsApp or review link). */
   qrData?: string | null
+  qrCaption?: string | null
+  /** Logo for screens / PDFs / printed HTML. */
+  logoDataUrl?: string | null
+  /** Logo for thermal printers (pre-dithered). */
+  logoRaster?: LogoRaster | null
+}
+
+/** The centred lines under the shop name, in print order. Every renderer uses this. */
+export function receiptHeaderLines(doc: ReceiptDoc): string[] {
+  return [
+    doc.branchName,
+    doc.address,
+    doc.phone ? `Tel: ${doc.phone}` : null,
+    doc.email,
+    doc.registration,
+    doc.kraPin ? `KRA PIN: ${doc.kraPin}` : null,
+    ...(doc.headerLines ?? []),
+  ].filter((l): l is string => !!l && !!l.trim())
+}
+
+/** The closing lines: the owner's, else the single `footer`, else the default. */
+export function receiptFooterLines(doc: ReceiptDoc): string[] {
+  if (doc.footerLines) return doc.footerLines.filter((l) => l.trim())
+  return [doc.footer ?? DEFAULT_FOOTER]
+}
+
+/** "2 x Strip of 10 @ 120.00" — the quantity, plus the unit price when shown. */
+export function receiptQtyText(line: ReceiptDocLine): string {
+  return line.unitPriceCents != null ? `${line.qtyLabel} @ ${(line.unitPriceCents / 100).toFixed(2)}` : line.qtyLabel
 }
 
 export interface ReceiptRow {
@@ -90,10 +131,7 @@ export function receiptRows(doc: ReceiptDoc, paper: PaperWidth): ReceiptRow[] {
   const pair = (l: string, r: string, extra: Partial<ReceiptRow> = {}) => rows.push({ text: pairLine(l, r, w), ...extra })
 
   center(doc.shopName.toUpperCase(), { bold: true, big: true })
-  if (doc.branchName) center(doc.branchName)
-  if (doc.address) center(doc.address)
-  if (doc.phone) center(`Tel: ${doc.phone}`)
-  if (doc.registration) center(doc.registration)
+  for (const l of receiptHeaderLines(doc)) center(l)
   rows.push(rule)
 
   pair("Receipt", doc.receiptNumber)
@@ -104,7 +142,7 @@ export function receiptRows(doc: ReceiptDoc, paper: PaperWidth): ReceiptRow[] {
 
   for (const l of doc.lines) {
     for (const t of wrapText(l.name, w)) rows.push({ text: t, bold: true })
-    pair(`  ${l.qtyLabel}`, formatKES(l.totalCents))
+    pair(`  ${receiptQtyText(l)}`, formatKES(l.totalCents))
     if (l.discountCents && l.discountCents > 0) pair("  Discount", `-${formatKES(l.discountCents)}`)
   }
   rows.push(rule)
@@ -120,9 +158,11 @@ export function receiptRows(doc: ReceiptDoc, paper: PaperWidth): ReceiptRow[] {
   pair(`Paid (${doc.paymentLabel})`, formatKES(doc.paidCents ?? doc.totalCents))
   if (doc.changeCents && doc.changeCents > 0) pair("Change", formatKES(doc.changeCents))
   if (doc.mpesaReference) pair("M-Pesa ref", doc.mpesaReference)
-  rows.push(rule)
-
-  center(doc.footer ?? "Thank you - get well soon")
+  const footer = receiptFooterLines(doc)
+  if (footer.length) {
+    rows.push(rule)
+    for (const l of footer) center(l)
+  }
   return rows
 }
 
@@ -152,12 +192,19 @@ export function encodeReceipt(doc: ReceiptDoc, opts: EncodeOptions): Uint8Array 
   const p = new EscPos().init()
   if (opts.openDrawer) p.openDrawer()
   const copies = Math.min(3, Math.max(1, Math.round(opts.copies ?? 1)))
+  // The logo is centred by the printer; wider than the paper would wrap, so skip it.
+  const logo = doc.logoRaster && doc.logoRaster.width <= PAPER_DOTS[opts.paper] ? doc.logoRaster : null
+  const logoBytes = logo ? base64ToBytes(logo.data) : null
   for (let c = 0; c < copies; c++) {
+    if (logo && logoBytes) p.align("center").raster(logo.width, logo.height, logoBytes).feed(1)
     for (const r of receiptRows(doc, opts.paper)) {
       p.align(r.align ?? "left").bold(!!r.bold).size(r.big ? 2 : 1, r.big ? 2 : 1).line(r.text)
     }
     p.size(1, 1).bold(false)
-    if (doc.qrData) p.align("center").qr(doc.qrData, opts.paper === "58mm" ? 4 : 6).line()
+    if (doc.qrData) {
+      p.align("center").qr(doc.qrData, opts.paper === "58mm" ? 4 : 6).line()
+      if (doc.qrCaption) for (const t of wrapText(doc.qrCaption, PAPER_COLUMNS[opts.paper])) p.line(t)
+    }
     p.align("left").feed(3)
     if (opts.cut !== false) p.cut()
   }

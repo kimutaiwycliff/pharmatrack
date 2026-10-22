@@ -1,7 +1,6 @@
-import { encodeReceipt, encodeTestPage, type PaperWidth, type PrinterReplies } from "@pharmatrack/core"
-import type { ReceiptData } from "../../features/pos/logic/receipt"
+import { encodeReceipt, encodeTestPage, type PaperWidth, type PrinterReplies, type ReceiptDoc } from "@pharmatrack/core"
 import { UserFacingError } from "../errors"
-import { isCashPayment, receiptDocFromReceipt, targetLabel, type PrinterSettings, type PrinterTarget } from "./logic"
+import { isCashPayment, targetLabel, type PrinterSettings, type PrinterTarget } from "./logic"
 import { ensureBluetoothPermission, hardware, type BondedDevice } from "./native"
 import { useHardwareStore } from "./store"
 
@@ -32,12 +31,11 @@ export function paperFor(settings: PrinterSettings, orgDefault?: string | null):
 }
 
 /** Print a sale's receipt on this till's printer (and pulse the drawer for cash). */
-export async function printReceipt(r: ReceiptData, opts: { paper: PaperWidth; branchName?: string | null }): Promise<void> {
+export async function printReceipt(doc: ReceiptDoc, opts: { paper: PaperWidth }): Promise<void> {
   const { settings } = useHardwareStore.getState()
   if (!settings.target) throw new UserFacingError("No receipt printer is set up — More → Settings → Printer & scanner.")
-  const doc = receiptDocFromReceipt(r, { branchName: opts.branchName })
   await send(settings.target, encodeReceipt(doc, {
-    paper: opts.paper, openDrawer: settings.openDrawer && isCashPayment(r.paymentLabel), copies: settings.copies,
+    paper: opts.paper, openDrawer: settings.openDrawer && isCashPayment(doc.paymentLabel), copies: settings.copies,
   }))
   void refreshPrinterStatus()
 }

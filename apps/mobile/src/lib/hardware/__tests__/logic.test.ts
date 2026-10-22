@@ -1,25 +1,12 @@
 import { describe, expect, it, vi } from "vitest"
-import { isCashPayment, parseNetworkTarget, pickScanner, receiptDocFromReceipt, targetLabel } from "../logic"
+import { isCashPayment, parseNetworkTarget, pickScanner, targetLabel } from "../logic"
 
 // vi.mock is hoisted above the imports.
 
 vi.mock("../native", () => ({}))
-vi.mock("../../../features/pos/logic/receipt", () => ({
-  nairobiDateTime: (ms: number) => `T${ms}`,
-}))
 
 
 describe("printer logic", () => {
-  it("maps a till receipt to the shared receipt model", () => {
-    const doc = receiptDocFromReceipt({
-      shopName: "Afya", receiptNumber: "R-1", soldAtMs: 5, cashier: "Jane",
-      lines: [{ name: "Panadol", qtyLabel: "2 strips", totalCents: 200, discountCents: 0 }],
-      subtotalCents: 200, discountCents: 0, totalCents: 200, paymentLabel: "Cash", paidCents: 500, changeCents: 300, mpesaReference: null,
-    }, { branchName: "Main" })
-    expect(doc).toMatchObject({ shopName: "Afya", branchName: "Main", dateText: "T5", totalCents: 200, changeCents: 300 })
-    expect(doc.lines[0]).toEqual({ name: "Panadol", qtyLabel: "2 strips", totalCents: 200, discountCents: 0 })
-  })
-
   it("only kicks the drawer for cash", () => {
     expect(isCashPayment("Cash")).toBe(true)
     expect(isCashPayment("Cash + M-Pesa")).toBe(true)

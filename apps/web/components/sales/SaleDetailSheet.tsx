@@ -13,6 +13,7 @@ interface SaleDetail extends Sale {
   cashier_name: string
   branch_name: string | null
   branch_address: string | null
+  branch_phone?: string | null
 }
 
 interface Props {
@@ -180,6 +181,8 @@ export function SaleDetailSheet({ saleId, onClose }: Props) {
             items,
             branchName: sale.branch_name ?? "",
             branchAddress: sale.branch_address,
+            branchPhone: sale.branch_phone ?? null,
+            cashierName: sale.cashier_name,
             orgName: sale.org_name ?? "PharmaTrack",
             paperWidth: data?.paperWidth ?? "80mm",
           }}

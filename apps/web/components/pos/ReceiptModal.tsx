@@ -1,20 +1,24 @@
 "use client"
 
-import { useEffect, useRef, useState, type CSSProperties } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, Printer, ArrowRight, FileDown, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { formatKES } from "@/lib/store/cartStore"
 import { hasDirectPrinter, usePrinterConfig, useDeviceStore } from "@/lib/printing/config"
 import { checkPrinter, paperFor, printReceipt, receiptDocFromSale } from "@/lib/printing/printer"
+import { useReceiptProfile } from "@/lib/printing/useReceiptProfile"
+import type { PaperWidth, ReceiptDoc } from "@pharmatrack/core"
 import type { Sale, SaleItem } from "@pharmatrack/types"
+import { ReceiptPaper } from "./ReceiptPaper"
 
 interface ReceiptData {
   sale: Sale
   items: SaleItem[]
   branchName: string
   branchAddress: string | null
+  branchPhone?: string | null
+  cashierName?: string | null
   orgName: string
   paperWidth?: "58mm" | "80mm"
 }
@@ -28,36 +32,16 @@ interface Props {
   autoPrint?: boolean
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("en-KE", {
-    timeZone: "Africa/Nairobi",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-async function downloadPDF(data: ReceiptData) {
+async function downloadPDF(doc: ReceiptDoc, paper: PaperWidth) {
   const [{ pdf }, { ReceiptPDFDocument }] = await Promise.all([
     import("@react-pdf/renderer"),
     import("./ReceiptPDF"),
   ])
-  const blob = await pdf(
-    <ReceiptPDFDocument
-      sale={data.sale}
-      items={data.items}
-      orgName={data.orgName}
-      branchName={data.branchName}
-      branchAddress={data.branchAddress}
-      paperWidth={data.paperWidth}
-    />,
-  ).toBlob()
+  const blob = await pdf(<ReceiptPDFDocument doc={doc} paperWidth={paper} />).toBlob()
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = url
-  a.download = `receipt-${data.sale.receipt_number}.pdf`
+  a.download = `receipt-${doc.receiptNumber}.pdf`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -67,15 +51,18 @@ export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale", a
   const [printing, setPrinting] = useState(false)
   const config = usePrinterConfig((s) => s.config)
   const paper = data ? paperFor(config, data.paperWidth) : "80mm"
+  // Settings → Receipt branding; until it loads the plain layout is used.
+  const { data: profile } = useReceiptProfile()
+  const doc = useMemo(() => (data ? receiptDocFromSale(data, profile) : null), [data, profile])
 
   // Direct printer (Settings → Printer & scanner) when set up; otherwise, or if
   // it fails, the browser's print dialog.
   async function handlePrint() {
-    if (!data) return
+    if (!data || !doc) return
     if (!hasDirectPrinter(config)) { window.print(); return }
     setPrinting(true)
     try {
-      await printReceipt(config, receiptDocFromSale(data), { paper, cash: data.sale.payment_method === "cash" || data.sale.payment_method === "split" })
+      await printReceipt(config, doc, { paper, cash: data.sale.payment_method === "cash" || data.sale.payment_method === "split" })
       toast.success("Receipt sent to the printer")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't reach the printer", {
@@ -100,10 +87,10 @@ export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale", a
   }, [open, data?.sale.receipt_number, autoPrint, config.autoPrint])
 
   async function handlePDF() {
-    if (!data) return
+    if (!doc) return
     setPdfLoading(true)
     try {
-      await downloadPDF(data)
+      await downloadPDF(doc, paper)
     } finally {
       setPdfLoading(false)
     }
@@ -115,7 +102,7 @@ export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale", a
         showCloseButton={false}
         className="max-w-[460px] p-0 gap-0 overflow-hidden rounded-2xl"
       >
-        {data && (
+        {data && doc && (
           <>
             {/* Success header */}
             <div className="px-6 pt-6 pb-4 text-center">
@@ -128,88 +115,10 @@ export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale", a
               </p>
             </div>
 
-            {/* Thermal receipt */}
-            <div className="px-7 pb-2">
+            {/* Thermal receipt — the same doc the printer and the PDF get */}
+            <div className="px-7 pb-2 max-h-[55vh] overflow-y-auto">
               <style>{`@media print { @page { size: ${paper} auto; margin: 0; } }`}</style>
-              <div
-                id="receipt-printable"
-                style={{ "--pt-receipt-width": paper } as CSSProperties}
-                className="border border-dashed border-[var(--pt-border-strong)] rounded-xl p-5 font-mono text-[11px] space-y-2"
-              >
-                <div className="text-center space-y-0.5">
-                  <p className="font-bold text-[13px] tracking-widest uppercase">
-                    {data.orgName}
-                  </p>
-                  <p className="uppercase tracking-wide">{data.branchName}</p>
-                  {data.branchAddress && (
-                    <p className="text-[var(--pt-text-secondary)]">{data.branchAddress}</p>
-                  )}
-                </div>
-
-                <hr className="border-dashed border-[var(--pt-border-strong)]" />
-
-                <div className="space-y-0.5">
-                  <div className="flex justify-between">
-                    <span className="text-[var(--pt-text-secondary)]">Receipt</span>
-                    <span className="font-semibold">{data.sale.receipt_number}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--pt-text-secondary)]">Date</span>
-                    <span>{formatDate(data.sale.created_at)}</span>
-                  </div>
-                </div>
-
-                <hr className="border-dashed border-[var(--pt-border-strong)]" />
-
-                <div className="space-y-0.5">
-                  {data.items.map((item) => (
-                    <div key={item.id} className="flex justify-between">
-                      <span className="truncate max-w-[220px]">
-                        {item.product_name} × {item.quantity} {item.base_unit}
-                      </span>
-                      <span className="tabular-nums">{formatKES(item.line_total)}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <hr className="border-dashed border-[var(--pt-border-strong)]" />
-
-                {data.sale.discount_amount > 0 && (
-                  <div className="flex justify-between text-[var(--pt-text-secondary)]">
-                    <span>Discount</span>
-                    <span className="tabular-nums">- {formatKES(data.sale.discount_amount)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between font-bold text-[13px]">
-                  <span>TOTAL</span>
-                  <span className="tabular-nums">{formatKES(data.sale.total_amount)}</span>
-                </div>
-
-                <div className="space-y-0.5">
-                  <div className="flex justify-between">
-                    <span className="text-[var(--pt-text-secondary)]">Paid</span>
-                    <span className="capitalize font-semibold">{data.sale.payment_method}</span>
-                  </div>
-                  {data.sale.mpesa_reference && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--pt-text-secondary)]">Ref</span>
-                      <span className="tracking-widest">{data.sale.mpesa_reference}</span>
-                    </div>
-                  )}
-                  {data.sale.change_given != null && data.sale.change_given > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--pt-text-secondary)]">Change</span>
-                      <span className="tabular-nums">{formatKES(data.sale.change_given)}</span>
-                    </div>
-                  )}
-                </div>
-
-                <hr className="border-dashed border-[var(--pt-border-strong)]" />
-                <p className="text-center text-[var(--pt-text-secondary)]">
-                  Thank you for your business
-                </p>
-              </div>
+              <ReceiptPaper id="receipt-printable" doc={doc} paper={paper} />
             </div>
 
             {/* Actions */}

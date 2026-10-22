@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons"
 import { formatKES } from "@pharmatrack/core"
 import * as Print from "expo-print"
 import * as Sharing from "expo-sharing"
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { KeyboardAvoidingView, Linking, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native"
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from "react-native-reanimated"
 import { AnimatedNumber, Button, CheckMark, Text, TextField } from "../../../components"
@@ -15,7 +15,8 @@ import { useMotion } from "../../../lib/motion"
 import { toast } from "../../../lib/toast"
 import { useTheme } from "../../../theme/useTheme"
 import { motion, radius, space, TABLET_MIN_WIDTH } from "../../../theme/tokens"
-import { nairobiDateTime, receiptHeightPt, receiptHtml, receiptText, RECEIPT_WIDTH_PT, whatsappUrl, type ReceiptData } from "../logic/receipt"
+import { useSessionStore } from "../../../store/session"
+import { brandedReceipt, nairobiDateTime, receiptHeightPt, receiptHtml, receiptText, RECEIPT_WIDTH_PT, whatsappUrl, type ReceiptData } from "../logic/receipt"
 
 interface ReceiptViewProps {
   receipt: ReceiptData
@@ -65,6 +66,11 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
   const [printing, setPrinting] = useState(false)
   const printerSettings = useHardwareStore((s) => s.settings)
   const canPrint = hardwareAvailable() && !!printerSettings.target
+  // What the customer gets — print, PDF and WhatsApp — with the pharmacy's
+  // Settings → Receipt header/footer and the selling branch's details.
+  const profile = useSessionStore((s) => s.receipt)
+  const branch = useSessionStore((s) => s.branches.find((b) => b.id === s.branchId))
+  const doc = useMemo(() => brandedReceipt(receipt, profile, branch), [receipt, profile, branch])
 
   useEffect(() => {
     useHardwareStore.getState().load()
@@ -74,7 +80,7 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
     if (printing) return
     setPrinting(true)
     try {
-      await printReceipt(receipt, { paper: paperFor(useHardwareStore.getState().settings) })
+      await printReceipt(doc, { paper: paperFor(useHardwareStore.getState().settings) })
       toast.success("Receipt printed")
     } catch (err) {
       toast.error(`${userMessage(err, "Couldn't print the receipt.")} You can share it as a PDF instead.`)
@@ -106,7 +112,7 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
   }, [])
 
   async function shareWhatsApp() {
-    const text = receiptText(receipt)
+    const text = receiptText(doc)
     const url = whatsappUrl(text, phone)
     if (!url) {
       setPhoneError("Enter a Kenyan mobile number, e.g. 0712 345 678 — or leave it blank")
@@ -128,9 +134,9 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
     setSharingPdf(true)
     try {
       const { uri } = await Print.printToFileAsync({
-        html: receiptHtml(receipt),
+        html: receiptHtml(doc),
         width: RECEIPT_WIDTH_PT,
-        height: receiptHeightPt(receipt),
+        height: receiptHeightPt(doc),
       })
       await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: `Receipt ${receipt.receiptNumber}` })
     } catch (err) {
@@ -151,7 +157,7 @@ export function ReceiptView({ receipt, queued, showSyncState, onNewSale, mode = 
             Receipt {receipt.receiptNumber}
           </Text>
           <Text variant="caption" tone="secondary">
-            {nairobiDateTime(receipt.soldAtMs)} · {receipt.shopName}
+            {nairobiDateTime(receipt.soldAtMs)} · {doc.shopName}
           </Text>
           {status}
         </View>

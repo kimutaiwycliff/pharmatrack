@@ -200,6 +200,9 @@
     background: #fff;
   }
 
+  /* Thermal paper has no grey: print the receipt's muted text black. */
+  #receipt-printable * { color: #000 !important; border-color: #666 !important; }
+
   #receipt-printable .receipt-divider {
     border-top: 1px dashed #666;
     margin: 6px 0;
