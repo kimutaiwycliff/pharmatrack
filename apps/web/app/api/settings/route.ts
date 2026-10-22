@@ -8,6 +8,7 @@ import { hashPin, validatePin, verifyPin } from "@/lib/auth/pin"
 import { checkPinChange } from "@/lib/auth/pin-change"
 import { normalizeKePhone } from "@/lib/auth/phone"
 import { zUuid } from "@/lib/api/validation"
+import { RECEIPT_LIMITS as L, normalizeReceiptSettings, validLogoDataUrl, validLogoRaster, validQrUrl } from "@pharmatrack/core"
 
 const orgSchema = z.object({
   name: z.string().min(2).optional(),
@@ -26,6 +27,31 @@ const profileSchema = z.object({
   // home branch IS their access boundary, so only staff managers may move it.
   branch_id: zUuid().nullable().optional(),
 })
+
+// Settings → Receipt. Stored whole at org_settings.settings.receipt.
+const receiptLine = z.string().trim().max(L.lineChars, `Keep each line under ${L.lineChars} characters`)
+const receiptSchema = z.object({
+  display_name: z.string().trim().max(L.displayName).nullable(),
+  show_branch: z.boolean(),
+  show_address: z.boolean(),
+  show_phone: z.boolean(),
+  show_email: z.boolean(),
+  show_licence: z.boolean(),
+  kra_pin: z.string().trim().max(L.kraPin).regex(/^[A-Za-z0-9]*$/, "KRA PIN is letters and numbers only, e.g. P051234567X").nullable(),
+  header_lines: z.array(receiptLine).max(L.headerLines),
+  footer_lines: z.array(receiptLine).max(L.footerLines),
+  show_cashier: z.boolean(),
+  show_customer: z.boolean(),
+  show_unit_price: z.boolean(),
+  qr_url: z.string().trim().max(L.qrUrl).nullable()
+    .refine((v) => !v || validQrUrl(v) !== null, "The QR link must start with https://, http:// or tel:"),
+  qr_caption: z.string().trim().max(L.qrCaption).nullable(),
+  logo: z.object({
+    data_url: z.string().refine((v) => validLogoDataUrl(v) !== null, "Logo must be a PNG or JPEG image under 60 KB"),
+    raster: z.unknown().nullable().refine((v) => v == null || validLogoRaster(v) !== null, "Logo print data is invalid — upload the logo again"),
+  }).nullable(),
+  print_logo: z.boolean(),
+}).strict()
 
 // Org profile fields beyond name live in org_settings.settings (jsonb).
 const ORG_SETTING_KEYS = ["registration_number", "phone", "email", "address", "receipt_paper_width", "label_size"] as const
@@ -109,6 +135,20 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ org: { id: orgRow!.id, name: orgRow!.name, created_at: orgRow!.createdAt.toISOString(), ...merged } })
   }
 
+  if (target === "receipt") {
+    const perms = await loadPermissions(sp.organization_id, sp.role)
+    if (!perms.includes("settings.organization")) return NextResponse.json({ error: "You don't have permission to change how receipts look" }, { status: 403 })
+    const parsed = receiptSchema.safeParse(body)
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
+    const receipt = normalizeReceiptSettings(parsed.data)
+
+    const [existing] = await db.select().from(org_settings).where(eq(org_settings.organization_id, sp.organization_id)).limit(1)
+    const merged = { ...((existing?.settings as Record<string, unknown> | null) ?? {}), receipt }
+    if (existing) await db.update(org_settings).set({ settings: merged, updated_at: new Date() }).where(eq(org_settings.organization_id, sp.organization_id))
+    else await db.insert(org_settings).values({ organization_id: sp.organization_id, settings: merged })
+    return NextResponse.json({ receipt })
+  }
+
   if (target === "profile") {
     const parsed = profileSchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid" }, { status: 400 })
@@ -134,5 +174,5 @@ export async function PATCH(request: NextRequest) {
     } })
   }
 
-  return NextResponse.json({ error: "target must be 'org', 'profile', or 'pin'" }, { status: 400 })
+  return NextResponse.json({ error: "target must be 'org', 'receipt', 'profile', or 'pin'" }, { status: 400 })
 }

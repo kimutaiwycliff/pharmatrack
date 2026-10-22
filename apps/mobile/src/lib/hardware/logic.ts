@@ -1,5 +1,4 @@
-import type { PaperWidth, PrinterReplies, ReceiptDoc } from "@pharmatrack/core"
-import { nairobiDateTime, type ReceiptData } from "../../features/pos/logic/receipt"
+import type { PaperWidth, PrinterReplies } from "@pharmatrack/core"
 import type { InputDeviceInfo, PrinterKind } from "./native"
 
 // Pure parts of Android printing / scanner detection (tested without devices).
@@ -24,27 +23,6 @@ export interface PrinterSettings {
 }
 
 export const DEFAULT_PRINTER_SETTINGS: PrinterSettings = { target: null, paper: null, autoPrint: false, openDrawer: false, copies: 1 }
-
-/** The till's receipt (cents already) → the shared ESC/POS receipt model. */
-export function receiptDocFromReceipt(r: ReceiptData, extra?: { branchName?: string | null; address?: string | null; phone?: string | null }): ReceiptDoc {
-  return {
-    shopName: r.shopName,
-    branchName: extra?.branchName ?? null,
-    address: extra?.address ?? null,
-    phone: extra?.phone ?? null,
-    receiptNumber: r.receiptNumber,
-    dateText: nairobiDateTime(r.soldAtMs),
-    cashier: r.cashier,
-    lines: r.lines.map((l) => ({ name: l.name, qtyLabel: l.qtyLabel, totalCents: l.totalCents, discountCents: l.discountCents })),
-    subtotalCents: r.subtotalCents,
-    discountCents: r.discountCents,
-    totalCents: r.totalCents,
-    paymentLabel: r.paymentLabel,
-    paidCents: r.paidCents,
-    changeCents: r.changeCents,
-    mpesaReference: r.mpesaReference,
-  }
-}
 
 /** A cash-drawer kick only makes sense when cash changed hands. */
 export function isCashPayment(paymentLabel: string): boolean {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { buildReceiptData, nairobiDateTime, qtyLabel, receiptHtml, receiptText, whatsappUrl, type ReceiptData } from "../receipt"
+import { brandedReceipt, buildReceiptData, nairobiDateTime, qtyLabel, receiptDocFromReceipt, receiptHtml, receiptText, whatsappUrl, type ReceiptData } from "../receipt"
+import { receiptProfileFrom } from "@pharmatrack/core"
 
 const r: ReceiptData = {
   shopName: "Afya <Bora>",
@@ -21,7 +22,7 @@ describe("receipt", () => {
     expect(nairobiDateTime(r.soldAtMs)).toBe("12/10/2026 23:30")
   })
   it("text receipt lists items, total and change", () => {
-    const t = receiptText(r)
+    const t = receiptText(receiptDocFromReceipt(r))
     expect(t).toContain("Receipt D01-261012-0007")
     expect(t).toContain("Paracetamol 500mg — 2 × Strip of 10: KES 110.00")
     expect(t).toContain("*Total: KES 110.00*")
@@ -29,7 +30,26 @@ describe("receipt", () => {
     expect(t).not.toContain("Discount")
   })
   it("escapes HTML", () => {
-    expect(receiptHtml(r)).toContain("Afya &lt;Bora&gt;")
+    expect(receiptHtml(receiptDocFromReceipt(r))).toContain("Afya &lt;Bora&gt;")
+  })
+  it("carries the pharmacy's Settings → Receipt header and footer", () => {
+    const profile = receiptProfileFrom("Afya Bora Ltd", {
+      phone: "0712345678",
+      receipt: { kra_pin: "P051234567X", footer_lines: ["Returns within 7 days"], qr_url: "https://wa.me/254712345678", qr_caption: "Chat with us" },
+    })
+    const doc = brandedReceipt(r, profile, { name: "Westlands", phone: "0722000000" })
+    const t = receiptText(doc)
+    expect(t.startsWith("*Afya Bora Ltd*\nWestlands\nTel: 0722000000\nKRA PIN: P051234567X")).toBe(true)
+    expect(t).toContain("Returns within 7 days")
+    expect(t).toContain("Chat with us: https://wa.me/254712345678")
+    const html = receiptHtml(doc)
+    expect(html).toContain("KRA PIN: P051234567X")
+    expect(html).toContain("<svg")
+  })
+  it("maps a till receipt to the shared receipt model", () => {
+    const doc = receiptDocFromReceipt({ ...r, shopName: "Afya" }, { branchName: "Main" })
+    expect(doc).toMatchObject({ shopName: "Afya", branchName: "Main", dateText: "12/10/2026 23:30", totalCents: 11_000, changeCents: 9_000 })
+    expect(doc.lines[0]).toEqual({ name: "Paracetamol 500mg", qtyLabel: "2 × Strip of 10", totalCents: 11_000, discountCents: 0 })
   })
   it("WhatsApp links", () => {
     expect(whatsappUrl("hi")).toBe("whatsapp://send?text=hi")

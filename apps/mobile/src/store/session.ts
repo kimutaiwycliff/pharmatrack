@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { ReceiptProfile } from "@pharmatrack/core"
 import { eq } from "drizzle-orm"
 import { apiFetch } from "../lib/api-fetch"
 import { ApiError, errorMessage } from "../lib/api"
@@ -18,6 +19,9 @@ const OFFLINE_ORG_ID = "offline"
 interface Branch {
   id: string
   name: string
+  /** Printed on receipts (older servers/caches don't send them). */
+  address?: string | null
+  phone?: string | null
 }
 
 interface Contact {
@@ -40,6 +44,8 @@ interface CachedSession {
   // Capability list from packages/core/src/permissions.ts (e.g. devices.manage).
   // Optional: caches written before R1 don't have it.
   permissions?: string[]
+  /** Settings → Receipt branding; cached so offline receipts keep it. */
+  receipt?: ReceiptProfile | null
 }
 
 const CACHE_KEY = "session"
@@ -53,6 +59,7 @@ interface SessionState {
   planCode: string | null
   contact: Contact | null
   permissions: string[]
+  receipt: ReceiptProfile | null
   loaded: boolean
   error: string | null
   stale: boolean
@@ -82,6 +89,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   planCode: null,
   contact: null,
   permissions: [],
+  receipt: null,
   loaded: false,
   error: null,
   stale: false,
@@ -118,6 +126,7 @@ async function loadMeOnce(): Promise<void> {
         planCode: "enterprise",
         contact: null,
         permissions: [],
+        receipt: null,
       }
       set({ ...cached, loaded: true, stale: false, error: null })
     } catch (err) {
@@ -140,6 +149,7 @@ async function loadMeOnce(): Promise<void> {
       planCode: string
       contact: Contact | null
       permissions?: string[]
+      receipt?: ReceiptProfile | null
     }
     const cached: CachedSession = {
       organizationId: data.organizationId,
@@ -150,6 +160,7 @@ async function loadMeOnce(): Promise<void> {
       planCode: data.planCode,
       contact: data.contact,
       permissions: data.permissions ?? [],
+      receipt: data.receipt ?? null,
     }
     set({ ...cached, loaded: true, stale: false, error: null })
     await kvSet(CACHE_KEY, cached).catch(() => undefined) // cache only
@@ -159,7 +170,7 @@ async function loadMeOnce(): Promise<void> {
     const reason = errorMessage(err, "Couldn't load your account. Check your connection and try again.")
     const cached = await kvGet<CachedSession>(CACHE_KEY).catch(() => null)
     if (cached) {
-      set({ ...cached, permissions: cached.permissions ?? [], loaded: true, stale: true, error: `Offline — showing last known data. ${reason}` })
+      set({ ...cached, permissions: cached.permissions ?? [], receipt: cached.receipt ?? null, loaded: true, stale: true, error: `Offline — showing last known data. ${reason}` })
     } else {
       set({ error: reason })
     }

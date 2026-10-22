@@ -100,6 +100,21 @@ export class EscPos {
       .push(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30) // print
   }
 
+  /**
+   * GS v 0 — a 1-bit raster image (rows packed MSB-first, 1 = black), sent in
+   * bands of 48 rows: cheap printers drop or garble one tall image command.
+   */
+  raster(width: number, height: number, data: ArrayLike<number>): this {
+    const rowBytes = Math.ceil(width / 8)
+    const BAND = 48
+    for (let y0 = 0; y0 < height; y0 += BAND) {
+      const h = Math.min(BAND, height - y0)
+      this.push(GS, 0x76, 0x30, 0x00, rowBytes & 0xff, (rowBytes >> 8) & 0xff, h & 0xff, (h >> 8) & 0xff)
+      for (let i = y0 * rowBytes; i < (y0 + h) * rowBytes; i++) this.out.push(data[i] ?? 0)
+    }
+    return this
+  }
+
   /** Raw bytes, for anything not covered above. */
   raw(b: ArrayLike<number>): this {
     for (let i = 0; i < b.length; i++) this.out.push(b[i]!)

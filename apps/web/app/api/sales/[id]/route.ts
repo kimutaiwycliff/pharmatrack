@@ -13,7 +13,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   return withTenant(ctx, async (db) => {
     const [found] = await db.select({
-      row: sale, org_name: organization.name, branch_name: branch.name, branch_address: branch.address, cashier_name: user.name,
+      row: sale, org_name: organization.name, branch_name: branch.name, branch_address: branch.address, branch_phone: branch.phone, cashier_name: user.name,
     }).from(sale)
       .leftJoin(organization, eq(organization.id, sale.organization_id))
       .leftJoin(branch, eq(branch.id, sale.branch_id))
@@ -40,7 +40,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         amount_tendered: found.row.amount_tendered != null ? Number(found.row.amount_tendered) : null,
         change_given: found.row.change_given != null ? Number(found.row.change_given) : null,
         mpesa_reference: paymentRow?.mpesa_receipt ?? null,
-        org_name: found.org_name, branch_name: found.branch_name, branch_address: found.branch_address, cashier_name: found.cashier_name ?? "—",
+        org_name: found.org_name, branch_name: found.branch_name, branch_address: found.branch_address, branch_phone: found.branch_phone, cashier_name: found.cashier_name ?? "—",
       },
       items: items.map((row) => ({
         ...row,

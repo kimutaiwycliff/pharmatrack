@@ -5,6 +5,7 @@ import { effectivePlanCode } from "@pharmatrack/core"
 import { getTenantContext } from "@/lib/auth/helpers"
 import { platformContact } from "@/lib/platform-contact"
 import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
+import { loadReceiptProfile } from "@/lib/receipt/profile"
 
 // ADR-013 — the only new backend surface the Android app needed. Mirrors the
 // tenant/branch context the web app gets for free from a server-rendered
@@ -26,7 +27,7 @@ export async function GET() {
 
   const branches = await withTenant(ctx, (db) =>
     db
-      .select({ id: branch.id, name: branch.name })
+      .select({ id: branch.id, name: branch.name, address: branch.address, phone: branch.phone })
       .from(branch)
       .where(eq(branch.is_active, true)),
   )
@@ -46,6 +47,9 @@ export async function GET() {
   )
 
   const contact = platformContact()
+  // Settings → Receipt branding; the app caches this whole response, so
+  // receipts printed offline still carry the pharmacy's header and footer.
+  const receipt = await loadReceiptProfile(ctx.organizationId)
 
   return NextResponse.json({
     organizationId: ctx.organizationId,
@@ -57,5 +61,6 @@ export async function GET() {
     subStatus: sub ? effectiveSubscriptionStatus(sub) : null,
     planCode: effectivePlanCode(sub?.status, sub?.planCode),
     contact: { whatsappLink: contact.whatsappLink, mailtoLink: contact.mailtoLink },
+    receipt,
   })
 }

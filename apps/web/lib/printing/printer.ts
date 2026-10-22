@@ -4,7 +4,7 @@
 // up for (Settings → Printer & scanner), sends the shared ESC/POS bytes from
 // @pharmatrack/core, and checks printer health for the POS header badge.
 import {
-  encodeReceipt, encodeTestPage, type PaperWidth, type PrinterReplies, type ReceiptDoc,
+  applyReceiptProfile, encodeReceipt, encodeTestPage, type PaperWidth, type PrinterReplies, type ReceiptDoc, type ReceiptProfile,
 } from "@pharmatrack/core"
 import type { Sale, SaleItem } from "@pharmatrack/types"
 import { hasDirectPrinter, type DesktopTarget, type PrinterConfig } from "./config"
@@ -101,27 +101,34 @@ export function nairobiDateTime(d: Date): string {
 const cents = (kes: number | null | undefined) => Math.round(Number(kes ?? 0) * 100)
 const PAYMENT_LABEL: Record<string, string> = { cash: "Cash", mpesa: "M-Pesa", card: "Card", split: "Cash + M-Pesa" }
 
-/** The web POS's sale (amounts in KES) → the shared receipt model (cents). */
+/**
+ * The web POS's sale (amounts in KES) → the shared receipt model (cents), with
+ * the pharmacy's Settings → Receipt choices applied when the profile is known.
+ * The on-screen receipt, the PDF and the thermal printer all render this.
+ */
 export function receiptDocFromSale(d: {
   sale: Sale
   items: SaleItem[]
   orgName: string
   branchName: string
   branchAddress: string | null
+  branchPhone?: string | null
   cashierName?: string | null
-}): ReceiptDoc {
+}, profile?: ReceiptProfile | null): ReceiptDoc {
   const tendered = d.sale.amount_tendered
-  return {
+  const doc: ReceiptDoc = {
     shopName: d.orgName,
     branchName: d.branchName,
     address: d.branchAddress,
+    phone: d.branchPhone ?? null,
     receiptNumber: d.sale.receipt_number,
     dateText: nairobiDateTime(new Date(d.sale.created_at)),
     cashier: d.cashierName ?? null,
     customer: d.sale.customer_name,
     lines: d.items.map((i) => ({
       name: [i.product_name, i.product_strength].filter(Boolean).join(" "),
-      qtyLabel: `${i.quantity} ${i.base_unit ?? "unit"} @ ${Number(i.unit_price ?? 0).toFixed(2)}`,
+      qtyLabel: `${i.quantity} ${i.base_unit ?? "unit"}`,
+      unitPriceCents: cents(i.unit_price),
       totalCents: cents(i.line_total),
     })),
     subtotalCents: cents(d.sale.subtotal),
@@ -132,4 +139,5 @@ export function receiptDocFromSale(d: {
     changeCents: cents(d.sale.change_given),
     mpesaReference: d.sale.mpesa_reference,
   }
+  return applyReceiptProfile(doc, profile, { name: d.branchName, address: d.branchAddress, phone: d.branchPhone ?? null })
 }

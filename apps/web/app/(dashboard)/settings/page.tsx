@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone, ShieldCheck, TabletSmartphone, Printer } from "lucide-react"
+import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone, ShieldCheck, TabletSmartphone, Printer, ReceiptText } from "lucide-react"
 import { hasFeature, type Feature, type Capability } from "@pharmatrack/core"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
@@ -13,6 +13,7 @@ import { MpesaSettings } from "@/components/settings/MpesaSettings"
 import { RolePermissionsPanel } from "@/components/settings/RolePermissionsPanel"
 import { DevicesPanel } from "@/components/settings/DevicesPanel"
 import { HardwarePanel } from "@/components/settings/HardwarePanel"
+import { ReceiptSettingsPanel } from "@/components/settings/ReceiptSettingsPanel"
 import { ThemeSegmented } from "@/components/theme/ThemeToggle"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import type { Organization, Branch, Profile, AppointmentService } from "@pharmatrack/types"
@@ -36,12 +37,14 @@ function useSettings() {
   })
 }
 
-type Tab = "org" | "branches" | "devices" | "hardware" | "services" | "payments" | "billing" | "permissions" | "profile" | "appearance"
+type Tab = "org" | "receipt" | "branches" | "devices" | "hardware" | "services" | "payments" | "billing" | "permissions" | "profile" | "appearance"
 
 // `anyOf`: shown when the user holds any of these permissions (omit = everyone).
 // `ownerOnly`: the permissions matrix itself is never delegable.
 const TABS: { key: Tab; label: string; icon: React.ElementType; anyOf?: Capability[]; ownerOnly?: boolean; requiresFeature?: Feature }[] = [
   { key: "org",        label: "Organization", icon: Building2, anyOf: ["settings.organization", "branches.manage"] },
+  // How every receipt is branded (header, footer, logo, QR) — owner by default.
+  { key: "receipt",    label: "Receipt",      icon: ReceiptText, anyOf: ["settings.organization"] },
   { key: "branches",   label: "Branches",     icon: GitBranch, anyOf: ["settings.organization", "branches.manage"] },
   { key: "devices",    label: "Devices",      icon: TabletSmartphone, anyOf: ["devices.manage"] },
   // This till's own printer + scanner (saved on the device) — anyone at the till.
@@ -146,7 +149,7 @@ export default function SettingsPage() {
       ) : tab === "devices" ? (
         <DevicesPanel />
       ) : tab === "hardware" ? (
-        <HardwarePanel orgName={data?.org.name ?? null} orgPaper={(data?.org.settings as { receipt_paper_width?: string } | null | undefined)?.receipt_paper_width ?? null} />
+        <HardwarePanel orgName={data?.org.name ?? null} orgPaper={data?.org.receipt_paper_width ?? null} />
       ) : tab === "permissions" ? (
         <RolePermissionsPanel />
       ) : isLoading ? (
@@ -159,6 +162,9 @@ export default function SettingsPage() {
         <>
           {tab === "org" && (
             <OrgSettingsForm org={data.org} readonly={!canEditOrg} />
+          )}
+          {tab === "receipt" && (
+            <ReceiptSettingsPanel org={data.org} branches={data.branches} readonly={!canEditOrg} />
           )}
           {tab === "branches" && (
             <BranchList branches={data.branches} isOwner={canEditOrg} />
