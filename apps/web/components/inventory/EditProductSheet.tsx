@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatKES } from "@/lib/store/cartStore"
 import { useCan } from "@/lib/store/sessionStore"
-import { CategorySelect } from "./CategorySelect"
+import { CategoryPicker } from "./CategoryPicker"
+import { categoryPayload, isDefaultValue } from "@pharmatrack/core"
+import { suggestCategory } from "@pharmatrack/core"
 import { SuggestInput } from "./SuggestInput"
 import { CameraScanner } from "@/components/pos/CameraScanner"
 import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
@@ -465,10 +467,12 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
       const res = await fetch(`/api/products/${productId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        // A default category the pharmacy doesn't have yet goes as category_key (created on save).
+        body: JSON.stringify(isDefaultValue(form.category_id) ? { ...form, category_id: undefined, ...categoryPayload(form.category_id) } : form),
       })
       const json = (await res.json()) as { error?: string }
       if (!res.ok) throw new Error(json.error ?? "Failed to save")
+      if (isDefaultValue(form.category_id)) await queryClient.invalidateQueries({ queryKey: ["categories"] })
       toast.success("Product updated")
       await queryClient.invalidateQueries({ queryKey: ["product", productId] })
       await queryClient.invalidateQueries({ queryKey: ["inventory"] })
@@ -576,7 +580,12 @@ export function EditProductSheet({ productId, onClose, onSaved }: Props) {
 
               {/* Category */}
               <Section title="Category">
-                <CategorySelect value={form.category_id ?? null} onChange={(id) => setF("category_id", id)} />
+                <CategoryPicker
+                  value={form.category_id ?? null}
+                  onChange={(v) => setF("category_id", v)}
+                  // Existing products are never re-filed on their own — an uncategorised one gets a one-tap suggestion.
+                  suggestion={form.category_id ? null : suggestCategory({ name: [form.name, form.brand_name].filter(Boolean).join(" "), generic: (form as { generic_name?: string | null }).generic_name, dosageForm: form.dosage_form })}
+                />
               </Section>
 
               {/* Supplier */}

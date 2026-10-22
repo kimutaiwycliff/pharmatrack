@@ -1,6 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { router } from "expo-router"
-import { useRef, useState, type ReactNode } from "react"
+import { useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  buildCategoryOptions, findTaxonomyEntry, optionForSuggestion, suggestCategory, taxonomyKey, type CategorySuggestion,
+} from "@pharmatrack/core"
 import { StyleSheet, View } from "react-native"
 import { Button, Card, FormScroll, IconButton, Text, TextField } from "../../../components"
 import { useCan } from "../../../hooks/useCan"
@@ -8,6 +11,7 @@ import { useQuery } from "../../../hooks/useQuery"
 import { ApiError, errorMessage } from "../../../lib/api"
 import { toast } from "../../../lib/toast"
 import { captureScan } from "../../../lib/scanCapture"
+import { env } from "../../../lib/env"
 import { scanFields } from "../../../lib/stock/scan-fields"
 import { useTheme } from "../../../theme/useTheme"
 import { space } from "../../../theme/tokens"
@@ -42,6 +46,8 @@ type ProductFormProps =
 // autofill (create), barcode scan and org-used unit suggestions. Pack sizes,
 // split-unit, labels and delete live on the detail screen. Reads/writes go
 // through ../data, so the Offline Edition uses the local repo automatically.
+const OFFLINE = env.EXPO_PUBLIC_OFFLINE_MODE
+
 export function ProductForm(props: ProductFormProps) {
   const theme = useTheme()
   const can = useCan()
@@ -56,6 +62,8 @@ export function ProductForm(props: ProductFormProps) {
   const [saving, setSaving] = useState(false)
   // Until the user types a base unit, picking a dosage form suggests one (create only).
   const [unitTouched, setUnitTouched] = useState(props.mode === "edit")
+  const [categoryTouched, setCategoryTouched] = useState(false)
+  const [picked, setPicked] = useState<CatalogItem | null>(null)
   // Price per pack, linked to the per-unit selling price (which is what's saved).
   const [packPrice, setPackPrice] = useState(() => packPriceFromUnit(values.selling_price, Number(values.units_per_pack) || 1))
   const onAddedNext = props.mode === "create" ? props.onAddedNext : undefined
@@ -64,11 +72,33 @@ export function ProductForm(props: ProductFormProps) {
   const sups = useQuery("product-suppliers", () => listSuppliers())
   const used = useQuery("product-units", () => listUsedUnits().catch(() => ({ base_units: [], dosage_forms: [] })))
 
-  const categoryOptions: PickerOption[] = orderCategories(cats.data ?? []).map((c) => ({
-    id: c.id,
-    label: categoryLabel(c, cats.data ?? []),
-    child: !!c.parent_id,
-  }))
+  // Online: the pharmacy's categories plus the PharmaTrack defaults it hasn't
+  // used yet ("default:<key>", created by the server on save). The Offline
+  // Edition keeps to its own local categories.
+  const mergedOptions = useMemo(() => (OFFLINE ? [] : buildCategoryOptions(cats.data ?? [])), [cats.data])
+  const categoryOptions: PickerOption[] = OFFLINE
+    ? orderCategories(cats.data ?? []).map((c) => ({ id: c.id, label: categoryLabel(c, cats.data ?? []), child: !!c.parent_id }))
+    : mergedOptions.map((o) => ({ id: o.value, label: o.label === o.group ? o.label : `${o.label} · ${o.group}` }))
+  // Existing ids not in the merged list (e.g. a department chosen directly) still need a label.
+  if (values.category_id && !categoryOptions.some((o) => o.id === values.category_id)) {
+    const c = (cats.data ?? []).find((x) => x.id === values.category_id)
+    if (c) categoryOptions.unshift({ id: c.id, label: categoryLabel(c, cats.data ?? []) })
+  }
+
+  // Category suggestion: the catalogue's own when picked from it, else from
+  // name / molecule / form. New products take a "likely" one until the user
+  // picks; otherwise it's offered as a chip.
+  const suggestion = useMemo<CategorySuggestion | null>(() => {
+    if (OFFLINE) return null
+    if (picked?.category && picked.subcategory && findTaxonomyEntry(taxonomyKey(picked.category, picked.subcategory))) {
+      return { category: picked.category as CategorySuggestion["category"], subcategory: picked.subcategory, confidence: "likely", reason: "catalogue" }
+    }
+    return suggestCategory({ name: [values.name, values.brand_name].filter(Boolean).join(" "), generic: values.generic_name, dosageForm: values.dosage_form })
+  }, [picked, values.name, values.brand_name, values.generic_name, values.dosage_form])
+  const suggestedValue = suggestion ? optionForSuggestion(mergedOptions, cats.data ?? [], suggestion) : null
+  const autoCategory = !editing && !categoryTouched && suggestion?.confidence === "likely" ? suggestedValue : null
+  const categoryValue = autoCategory ?? values.category_id
+  const suggestionLabel = suggestion ? `${suggestion.subcategory} · ${suggestion.category}` : null
   const supplierOptions: PickerOption[] = [...(sups.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((s) => ({ id: s.id, label: s.name }))
   const dosageSuggestions = filterSuggestions(mergeSuggestions(DOSAGE_FORMS, used.data?.dosage_forms), values.dosage_form)
   const unitSuggestions = filterSuggestions(mergeSuggestions(BASE_UNITS, used.data?.base_units), values.base_unit)
@@ -90,6 +120,7 @@ export function ProductForm(props: ProductFormProps) {
   }
 
   function onCatalogPick(item: CatalogItem) {
+    setPicked(item)
     const next = applyCatalogItem(values, item)
     setValues(next)
     setPackPrice(packPriceFromUnit(next.selling_price, Number(next.units_per_pack) || 1))
@@ -141,7 +172,7 @@ export function ProductForm(props: ProductFormProps) {
   async function save(next = false) {
     if (busy.current || saved.current) return
     setFormError(null)
-    const r = validateProductForm(values, { mode: props.mode, costVisible: showCost })
+    const r = validateProductForm({ ...values, category_id: categoryValue }, { mode: props.mode, costVisible: showCost })
     if (!r.ok) {
       setErrors(r.errors)
       toast.error("Check the highlighted fields")
@@ -258,12 +289,32 @@ export function ProductForm(props: ProductFormProps) {
         <SuggestionChips label="Dosage form" options={dosageSuggestions} onPick={setDosageForm} />
         <PickerField
           label="Category"
-          value={values.category_id}
+          value={categoryValue}
           options={categoryOptions}
-          onChange={(id) => set("category_id", id)}
+          noneLabel="Uncategorised"
+          onChange={(id) => {
+            setCategoryTouched(true)
+            set("category_id", id)
+          }}
           loading={cats.loading}
-          helper={cats.error ? "Couldn't load categories" : undefined}
+          helper={
+            cats.error
+              ? "Couldn't load categories"
+              : autoCategory
+                ? `Auto-filled ${suggestion?.reason === "catalogue" ? "from the catalogue" : `from “${suggestion?.reason}”`} — change it if you shelve it elsewhere`
+                : undefined
+          }
         />
+        {suggestionLabel && suggestedValue && suggestedValue !== categoryValue && (editing ? !values.category_id : true) ? (
+          <SuggestionChips
+            label="Suggested category"
+            options={[`Suggested: ${suggestionLabel}`]}
+            onPick={() => {
+              setCategoryTouched(true)
+              set("category_id", suggestedValue)
+            }}
+          />
+        ) : null}
         <PickerField
           label="Default supplier"
           value={values.supplier_id}

@@ -6,6 +6,7 @@ import { generateInternalBarcode } from "@pharmatrack/core"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
+import { resolveDefaultCategory } from "@/lib/catalog/defaultCategory"
 import { deriveGenericName } from "@/lib/generic-name"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
 
@@ -21,6 +22,9 @@ const createProductSchema = z.object({
   strength: z.string().optional(),
   dosage_form: z.string().optional(),
   category_id: zUuid().optional(),
+  // A default category ("pain-fever/gout") — created in this pharmacy's
+  // categories on first use. Ignored when category_id is given.
+  category_key: z.string().max(120).optional(),
   supplier_id: zUuid().nullable().optional(),
   base_unit: z.string().min(1),
   pack_label: z.string().optional(),
@@ -54,7 +58,12 @@ export async function GET(request: NextRequest) {
     q.length >= 2
       ? or(ilike(product.name, `%${q}%`), ilike(product.brand_name, `%${q}%`), ilike(product.gtin, `%${q}%`), ilike(product.strength, `%${q}%`))
       : undefined,
-    categoryId && /^[0-9a-f-]{36}$/i.test(categoryId) ? eq(product.category_id, categoryId) : undefined,
+    // A department includes its subcategories; "none" = uncategorised.
+    categoryId === "none"
+      ? isNull(product.category_id)
+      : categoryId && /^[0-9a-f-]{36}$/i.test(categoryId)
+        ? or(eq(product.category_id, categoryId), sql`${product.category_id} IN (SELECT id FROM category WHERE parent_id = ${categoryId})`)
+        : undefined,
     needsPrice ? or(isNull(product.selling_price), sql`${product.selling_price} <= 0`) : undefined,
   )
 
@@ -129,7 +138,7 @@ export async function POST(request: NextRequest) {
       barcode_raw: barcodeRaw,
       strength: d.strength ?? null,
       dosage_form: d.dosage_form ?? null,
-      category_id: d.category_id ?? null,
+      category_id: d.category_id ?? (d.category_key ? await resolveDefaultCategory(db, ctx.organizationId, d.category_key) : null),
       supplier_id: d.supplier_id ?? null,
       base_unit: d.base_unit,
       pack_label: d.pack_label ?? null,

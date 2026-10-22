@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { z } from "zod"
 import { toast } from "sonner"
 import { AlertTriangle, ArrowLeft, Camera, Check, ChevronDown, Loader2, PackageCheck, Pencil, Plus, Search, Sparkles } from "lucide-react"
@@ -21,9 +21,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { CameraScanner } from "@/components/pos/CameraScanner"
-import { CategorySelect } from "./CategorySelect"
+import { CategoryPicker, useTenantCategories } from "./CategoryPicker"
+import { buildCategoryOptions, categoryPayload, optionForSuggestion } from "@pharmatrack/core"
+import { findTaxonomyEntry, suggestCategory, taxonomyKey, type CategorySuggestion } from "@pharmatrack/core"
 import { SuggestInput } from "./SuggestInput"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { BarcodeScanEvent } from "@pharmatrack/core"
 import type { ProductWithStock } from "@pharmatrack/types"
 import { packPriceFromUnit, readScannedCode, unitPriceFromPack, type ScannedCode } from "@/lib/products/entry"
@@ -77,6 +79,9 @@ interface CatalogItem {
   reference_price: number | null
   /** 'curated' retail list, or 'ppb' = the Pharmacy and Poisons Board register. */
   source: "curated" | "ppb"
+  /** Default category (packages/core taxonomy) the catalogue files it under. */
+  category: string | null
+  subcategory: string | null
   ppb_registration_no: string | null
 }
 
@@ -268,7 +273,9 @@ function ProductEntry({
   // Classification
   const [strength, setStrength] = useState("")
   const [dosageForm, setDosageForm] = useState("")
-  const [categoryId, setCategoryId] = useState<string | null>(null)
+  // undefined = not chosen yet: the category follows the best suggestion
+  // (catalogue or molecule) until the user picks one.
+  const [categoryChoice, setCategoryChoice] = useState<string | null | undefined>(undefined)
   const [requiresPrescription, setRequiresPrescription] = useState(false)
   const [isControlled, setIsControlled] = useState(false)
 
@@ -304,6 +311,24 @@ function ProductEntry({
   })
   const baseUnitSuggestions = mergeSuggestions(BASE_UNITS, unitsData?.base_units)
   const dosageFormSuggestions = mergeSuggestions(DOSAGE_FORMS, unitsData?.dosage_forms)
+
+  // Category: the catalogue's own when picked from it, else a guess from the
+  // name / molecule / form. "likely" guesses fill the field (marked
+  // Auto-filled); "maybe" ones only show as a one-tap chip.
+  const queryClient = useQueryClient()
+  const { data: tenantCategories = [] } = useTenantCategories()
+  const categoryOptions = useMemo(() => buildCategoryOptions(tenantCategories), [tenantCategories])
+  const categorySuggestion = useMemo<CategorySuggestion | null>(() => {
+    if (picked?.category && picked.subcategory && findTaxonomyEntry(taxonomyKey(picked.category, picked.subcategory))) {
+      return { category: picked.category as CategorySuggestion["category"], subcategory: picked.subcategory, confidence: "likely", reason: "catalogue" }
+    }
+    return suggestCategory({ name: [name, brandName].filter(Boolean).join(" "), generic: genericName, dosageForm })
+  }, [picked, name, brandName, genericName, dosageForm])
+  const autoCategory = categorySuggestion?.confidence === "likely" ? optionForSuggestion(categoryOptions, tenantCategories, categorySuggestion) : null
+  const categoryValue = categoryChoice !== undefined ? categoryChoice : autoCategory
+  const categoryAutoFrom = categoryChoice === undefined && autoCategory
+    ? (categorySuggestion?.reason === "catalogue" ? "from the catalogue" : `from “${categorySuggestion?.reason}”`)
+    : null
 
   // ── Step 1: find ──────────────────────────────────────────────────────────
   const [query, setQuery] = useState("")
@@ -481,7 +506,7 @@ function ProductEntry({
             gtin: gtin || undefined,
             strength: strength || undefined,
             dosage_form: dosageForm,
-            category_id: categoryId || undefined,
+            ...categoryPayload(categoryValue),
             supplier_id: supplierId || undefined,
             requires_prescription: requiresPrescription,
             is_controlled: isControlled,
@@ -528,6 +553,8 @@ function ProductEntry({
           }
         }
 
+        // A default category may have just been created for this pharmacy.
+        if (categoryValue?.startsWith("default:")) void queryClient.invalidateQueries({ queryKey: ["categories"] })
         toast.success(`${label({ name, strength: strength || null })} added`)
         onSaved({
           ...(product as unknown as ProductWithStock),
@@ -738,6 +765,17 @@ function ProductEntry({
         </>
       )}
 
+      {/* Category — one pick sets category + subcategory */}
+      <div className="space-y-2">
+        <SectionTitle>Category</SectionTitle>
+        <CategoryPicker
+          value={categoryValue}
+          onChange={setCategoryChoice}
+          suggestion={categorySuggestion}
+          autoFilledFrom={categoryAutoFrom}
+        />
+      </div>
+
       {/* Units & Price */}
       <div className="space-y-4">
         <SectionTitle>Units & Price</SectionTitle>
@@ -843,11 +881,10 @@ function ProductEntry({
       <div>
         <button type="button" onClick={() => setMoreOpen((v) => !v)} className="inline-flex flex-wrap items-center gap-1 text-sm font-medium text-[var(--pt-text-secondary)] hover:text-[var(--pt-text-primary)]">
           <ChevronDown size={15} className={`transition-transform ${moreOpen ? "rotate-180" : ""}`} /> More options
-          <span className="text-xs text-[var(--pt-text-tertiary)] font-normal">— category, supplier, reorder level, discount limit</span>
+          <span className="text-xs text-[var(--pt-text-tertiary)] font-normal">— supplier, reorder level, discount limit</span>
         </button>
         {moreOpen && (
           <div className="space-y-4 mt-3">
-            <CategorySelect value={categoryId} onChange={setCategoryId} />
             {suppliers.length > 0 && (
               <div>
                 <Label className="text-sm font-medium">Default supplier</Label>

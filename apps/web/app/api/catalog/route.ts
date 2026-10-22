@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     dosage_form: drug_catalog.dosage_form,
     base_unit: drug_catalog.base_unit,
     category: drug_catalog.category,
+    subcategory: drug_catalog.subcategory,
     is_controlled: drug_catalog.is_controlled,
     requires_prescription: drug_catalog.requires_prescription,
     pack_label: drug_catalog.default_pack_label,
