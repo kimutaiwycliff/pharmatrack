@@ -2,16 +2,17 @@
 
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree, Trash2, Tag } from "lucide-react"
+import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree, Trash2, Tag, FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { EditProductSheet } from "@/components/inventory/EditProductSheet"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { CategoryManager } from "@/components/inventory/CategoryManager"
+import { BulkImportDialog } from "@/components/inventory/BulkImportDialog"
 import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
 import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
 import { formatKES } from "@/lib/store/cartStore"
-import { useCan } from "@/lib/store/sessionStore"
+import { useCan, useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
 import type { Product, Organization } from "@pharmatrack/types"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
@@ -53,6 +54,8 @@ export default function ProductsPage() {
   const canSeedCatalog = useCan("catalog.seed")
   const canDelete = useCan("products.delete")
   const canEdit = useCan("products.edit")
+  // Same permission the import API checks.
+  const canImport = useCan("stock.receive")
   const [deleting, setDeleting] = useState<ProductRow | null>(null)
   const branchId = useUIStore((s) => s.activeBranchId)
   const [rawSearch, setRawSearch] = useState("")
@@ -62,6 +65,8 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1)
   const [editId, setEditId] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const importBranchName = useSessionStore((s) => s.branches.find((b) => b.id === branchId)?.name)
   const [catMgrOpen, setCatMgrOpen] = useState(false)
   const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
   const search = useDebounce(rawSearch, 300)
@@ -135,6 +140,16 @@ export default function ProductsPage() {
             <FolderTree size={16} />
             Manage categories
           </button>
+          {canImport && (
+            <button
+              onClick={() => setImportOpen(true)}
+              className="inline-flex items-center gap-2 px-3.5 h-9 rounded-lg border border-[var(--pt-border)] text-[var(--pt-text-secondary)] text-sm font-semibold hover:bg-[var(--pt-muted)] transition-colors"
+            >
+              <FileSpreadsheet size={16} />
+              <span className="hidden sm:inline">Import from Excel</span>
+              <span className="sm:hidden">Import</span>
+            </button>
+          )}
           <button
             onClick={() => setNewOpen(true)}
             className="inline-flex items-center gap-2 px-4 h-9 rounded-lg bg-[var(--pt-green)] text-white text-sm font-semibold hover:bg-[var(--pt-green-600)] transition-colors"
@@ -394,6 +409,14 @@ export default function ProductsPage() {
       )}
 
       <CategoryManager open={catMgrOpen} onOpenChange={setCatMgrOpen} />
+      {importOpen && (
+        <BulkImportDialog
+          title="Import products from Excel"
+          branchId={branchId}
+          branchName={importBranchName}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
 
       <LabelPrintDialog
         open={labelItems !== null}

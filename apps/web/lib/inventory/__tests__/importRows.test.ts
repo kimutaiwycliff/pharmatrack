@@ -67,8 +67,37 @@ describe("toImportRows", () => {
   it("flags rows that would fail and skips blank rows", () => {
     const rows = toImportRows(headers, [["", "", "", "", ""], ["Amoxil", "", "", "5", "whenever"]], mapping, { hasBranch: false })
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.problems).toEqual([
-      'can\'t read expiry "whenever"', "no selling price", "opening stock needs a branch", "opening stock needs an expiry date",
-    ])
+    expect(rows[0]!.problems).toEqual(['can\'t read expiry "whenever"', "no selling price"])
+    expect(rows[0]!.warnings).toEqual(["stock skipped — no branch selected"])
+  })
+})
+
+describe("the PharmaTrack template", () => {
+  const headers = [
+    "Product name *", "Generic name (INN)", "Strength", "Dosage form", "Barcode (GTIN)", "Old item code", "Category", "Subcategory",
+    "Smallest unit sold *", "Pack name", "Units per pack *", "Cost price per PACK (KES) *", "Selling price per UNIT (KES) *",
+    "Selling price per PACK (KES)", "Qty in stock (UNITS)", "Batch number", "Expiry date", "Reorder level (UNITS)",
+    "Prescription only? (Y/N)", "Controlled? (Y/N)", "Supplier", "Review note",
+  ]
+  it("maps every column automatically", () => {
+    expect(autoMapping(headers)).toEqual({
+      name: "Product name *", generic_name: "Generic name (INN)", strength: "Strength", dosage_form: "Dosage form",
+      gtin: "Barcode (GTIN)", barcode_raw: "Old item code", category: "Category", subcategory: "Subcategory",
+      base_unit: "Smallest unit sold *", pack_label: "Pack name", units_per_pack: "Units per pack *",
+      pack_cost_price: "Cost price per PACK (KES) *", selling_price: "Selling price per UNIT (KES) *",
+      pack_selling_price: "Selling price per PACK (KES)", opening_qty: "Qty in stock (UNITS)", batch_number: "Batch number",
+      expiry_date: "Expiry date", reorder_level: "Reorder level (UNITS)", requires_prescription: "Prescription only? (Y/N)",
+      is_controlled: "Controlled? (Y/N)", supplier: "Supplier",
+    })
+  })
+  it("keeps a pack price beside the unit price, and works out unit cost from pack cost", () => {
+    const m = autoMapping(headers)
+    const row = ["Augmentin 625mg", "", "625mg", "Tablet", "", "A1001", "", "", "tablet", "Box", 14, 1450, 130, 1650, 42, "", "", 14, "Y", "", "Harleys", "note"]
+    const [r] = toImportRows(headers, [row], m, { hasBranch: true })
+    expect(r!.data).toMatchObject({ selling_price: "130", pack_selling_price: "1650", cost_price: "103.57", barcode_raw: "A1001", supplier: "Harleys", opening_qty: "42" })
+    expect(r!.warnings).toEqual(["stock skipped — no expiry date"])
+  })
+  it("uses a lone Generic name column as the name", () => {
+    expect(autoMapping(["Generic name", "Price"])).toEqual({ name: "Generic name", selling_price: "Price" })
   })
 })
