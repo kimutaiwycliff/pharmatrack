@@ -5,6 +5,7 @@ import { withTenant, product, product_pack_size, audit_log } from "@pharmatrack/
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { canViewCost, omitCost } from "@/lib/auth/costVisibility"
 import { zUuid } from "@/lib/api/validation"
+import { resolveDefaultCategory } from "@/lib/catalog/defaultCategory"
 import { serializePackSize } from "@/lib/products/packsize"
 import { findBarcodeConflict } from "@/lib/products/barcodeConflict"
 import { invalidateBarcodeCache } from "@/lib/products/barcodeCache"
@@ -21,6 +22,8 @@ const updateSchema = z.object({
   strength: z.string().nullable().optional(),
   dosage_form: z.string().nullable().optional(),
   category_id: zUuid().nullable().optional(),
+  // A default category, created on first use (see POST /api/products).
+  category_key: z.string().max(120).optional(),
   supplier_id: zUuid().nullable().optional(),
   base_unit: z.string().min(1).optional(),
   pack_label: z.string().nullable().optional(),
@@ -87,7 +90,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const conflictName = await findBarcodeConflict(db, ctx.organizationId, [nextGtin, nextRaw], { productId: id })
     if (conflictName) return { status: 409 as const, body: { error: `That barcode is already assigned to "${conflictName}"` } }
 
-    const { cost_price, selling_price, max_discount_percent, ...rest } = parsed.data
+    const { cost_price, selling_price, max_discount_percent, category_key, ...rest } = parsed.data
+    if (category_key && rest.category_id === undefined) rest.category_id = await resolveDefaultCategory(db, ctx.organizationId, category_key)
     const [updated] = await db.update(product).set({
       ...rest,
       ...(cost_price !== undefined && { cost_price: cost_price == null ? null : String(cost_price) }),

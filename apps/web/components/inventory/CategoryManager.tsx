@@ -6,7 +6,7 @@ import { Plus, Pencil, Trash2, Check, X, Loader2, FolderTree, CornerDownRight } 
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirm } from "@/components/ui/confirm-dialog"
-import type { CategoryNode } from "./CategorySelect"
+import type { TenantCategory as CategoryNode } from "@pharmatrack/core"
 
 async function fetchCategories(): Promise<CategoryNode[]> {
   const res = await fetch("/api/categories")

@@ -20,10 +20,10 @@ import { useSuppliers } from "@/lib/hooks/useSuppliers"
 
 type ProductRow = Product & { category_name?: string }
 
-async function fetchCategories(): Promise<Array<{ id: string; name: string }>> {
+async function fetchCategories(): Promise<Array<{ id: string; name: string; parent_id: string | null }>> {
   const res = await fetch("/api/categories")
   if (!res.ok) return []
-  const data = (await res.json()) as { categories: Array<{ id: string; name: string }> }
+  const data = (await res.json()) as { categories: Array<{ id: string; name: string; parent_id: string | null }> }
   return data.categories ?? []
 }
 
@@ -170,9 +170,13 @@ export default function ProductsPage() {
             className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] text-[var(--pt-text-secondary)]"
           >
             <option value="">All categories</option>
-            {categories.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
+            <option value="none">Uncategorised</option>
+            {categories.filter((c) => !c.parent_id).map((p) => [
+              <option key={p.id} value={p.id}>{p.name}</option>,
+              ...categories.filter((c) => c.parent_id === p.id).map((c) => (
+                <option key={c.id} value={c.id}>{"\u00a0\u00a0\u00a0"}{c.name}</option>
+              )),
+            ])}
           </select>
           <button
             onClick={() => { setNeedsPrice((v) => !v); setPage(1) }}

@@ -85,6 +85,9 @@ export interface CatalogItem {
   reference_price?: number | null
   source?: "curated" | "ppb"
   ppb_registration_no?: string | null
+  /** Default category the catalogue files it under (packages/core taxonomy). */
+  category?: string | null
+  subcategory?: string | null
 }
 
 /** apps/web/lib/products/permanentDelete.ts's DeleteImpact. */

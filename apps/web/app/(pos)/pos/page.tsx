@@ -77,7 +77,7 @@ export default function PosPage() {
   const clearCart = useCartStore((s) => s.clearCart)
   const total = cartTotal(items, discount)
 
-  // Suppliers for NewProductDialog (categories are fetched by CategorySelect)
+  // Suppliers for NewProductDialog (categories are fetched by CategoryPicker)
   const { data: supData } = useSuppliers({ enabled: !!activeBranch })
 
   const suppliers = supData ?? []

@@ -8,6 +8,8 @@ export const category = pgTable("category", {
   organization_id: text("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
   parent_id: uuid("parent_id"),
   name: text("name").notNull(),
+  // Which default (packages/core taxonomy) this row was created for — see migration 036.
+  default_key: text("default_key"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })

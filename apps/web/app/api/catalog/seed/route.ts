@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, isNotNull, inArray, sql } from "drizzle-orm"
 import { dbAdmin, withTenant, drug_catalog, product, product_batch, sale_item, category } from "@pharmatrack/db"
+import { DEFAULT_TAXONOMY, findTaxonomyEntry, taxonomyKey } from "@pharmatrack/core"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { z } from "zod"
 
@@ -76,17 +77,26 @@ export async function POST(request: NextRequest) {
     // Materialise a two-level taxonomy for this org: top-level departments
     // (parent_id NULL) and their subcategories (parent_id = department). Products
     // link to the leaf (subcategory) when present, else the department. Idempotent.
-    const existingCats = await db.select({ id: category.id, name: category.name, parent_id: category.parent_id }).from(category)
+    // Rows created for a default category carry its default_key, so a
+    // department the owner renamed is still found (and not recreated).
+    const existingCats = await db.select({ id: category.id, name: category.name, parent_id: category.parent_id, default_key: category.default_key }).from(category)
+    const byDefaultKey = new Map(existingCats.filter((c) => c.default_key).map((c) => [c.default_key!, c.id]))
+    const keyFor = (cat: string, sub?: string) => (sub ? (findTaxonomyEntry(taxonomyKey(cat, sub)) ? taxonomyKey(cat, sub) : null) : (cat in DEFAULT_TAXONOMY ? taxonomyKey(cat) : null))
     const parentByName = new Map(existingCats.filter((c) => !c.parent_id).map((c) => [c.name, c.id]))
     const childKey = (pid: string, name: string) => `${pid}::${name}`
     const childByKey = new Map(existingCats.filter((c) => c.parent_id).map((c) => [childKey(c.parent_id!, c.name), c.id]))
 
     // 1. departments
     const wantParents = [...new Set(catalogRows.map((c) => c.category).filter(Boolean) as string[])]
+    for (const n of wantParents) {
+      const k = keyFor(n)
+      const linked = k ? byDefaultKey.get(k) : undefined
+      if (linked) parentByName.set(n, linked)
+    }
     const missingParents = wantParents.filter((n) => !parentByName.has(n))
     if (missingParents.length) {
       const inserted = await db.insert(category)
-        .values(missingParents.map((name) => ({ organization_id: ctx.organizationId, name })))
+        .values(missingParents.map((name) => ({ organization_id: ctx.organizationId, name, default_key: keyFor(name) })))
         .returning({ id: category.id, name: category.name })
       for (const c of inserted) parentByName.set(c.name, c.id)
     }
@@ -95,12 +105,18 @@ export async function POST(request: NextRequest) {
       catalogRows.filter((c) => c.category && c.subcategory)
         .map((c) => [`${c.category}::${c.subcategory}`, { parent: c.category!, name: c.subcategory! }]),
     ).values()]
+    for (const ch of wantChildren) {
+      const k = keyFor(ch.parent, ch.name)
+      const linked = k ? byDefaultKey.get(k) : undefined
+      const pid = parentByName.get(ch.parent)
+      if (linked && pid) childByKey.set(childKey(pid, ch.name), linked)
+    }
     const missingChildren = wantChildren.filter((ch) => {
       const pid = parentByName.get(ch.parent); return pid && !childByKey.has(childKey(pid, ch.name))
     })
     if (missingChildren.length) {
       const inserted = await db.insert(category)
-        .values(missingChildren.map((ch) => ({ organization_id: ctx.organizationId, name: ch.name, parent_id: parentByName.get(ch.parent)! })))
+        .values(missingChildren.map((ch) => ({ organization_id: ctx.organizationId, name: ch.name, parent_id: parentByName.get(ch.parent)!, default_key: keyFor(ch.parent, ch.name) })))
         .returning({ id: category.id, name: category.name, parent_id: category.parent_id })
       for (const c of inserted) childByKey.set(childKey(c.parent_id!, c.name), c.id)
     }

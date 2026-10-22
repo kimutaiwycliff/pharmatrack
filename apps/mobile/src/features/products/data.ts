@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from "expo-file-system"
 import * as Crypto from "expo-crypto"
+import { categoryPayload, isDefaultValue } from "@pharmatrack/core"
 import { apiJson, ApiError, NETWORK_ERROR, withQuery } from "../../lib/api"
 import { apiFetchFormData } from "../../lib/api-fetch"
 import { env } from "../../lib/env"
@@ -42,6 +43,12 @@ export async function getProduct(id: string): Promise<ProductDetailResponse> {
   return apiJson<ProductDetailResponse>(`/api/products/${id}`)
 }
 
+/** A default category the pharmacy doesn't have yet ("default:<key>") goes as category_key; the server creates it. */
+function withCategoryKey(body: ProductBody): ProductBody & { category_key?: string } {
+  const p = categoryPayload(body.category_id)
+  return isDefaultValue(body.category_id) ? { ...body, category_id: undefined, ...p } : body
+}
+
 /** Creates a product; resolves with its id. A duplicate (409) throws ApiError whose body has existing_product_id. */
 export async function createProduct(body: ProductBody): Promise<string> {
   if (LOCAL) {
@@ -50,7 +57,7 @@ export async function createProduct(body: ProductBody): Promise<string> {
     if (image_url) await setLocalProductImage(created.product.id, image_url)
     return created.product.id
   }
-  const r = await apiJson<{ product: { id: string } }>("/api/products", { method: "POST", body })
+  const r = await apiJson<{ product: { id: string } }>("/api/products", { method: "POST", body: withCategoryKey(body) })
   return r.product.id
 }
 
@@ -61,7 +68,7 @@ export async function updateProduct(id: string, body: ProductBody): Promise<Prod
     const r = await updateLocalProduct(id, rest)
     return r.product as ProductDetail | undefined
   }
-  const r = await apiJson<{ product: ProductDetail }>(`/api/products/${id}`, { method: "PATCH", body })
+  const r = await apiJson<{ product: ProductDetail }>(`/api/products/${id}`, { method: "PATCH", body: withCategoryKey(body) })
   return r.product
 }
 

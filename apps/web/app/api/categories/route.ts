@@ -19,7 +19,7 @@ export async function GET() {
   if (subErr) return subErr
 
   const rows = await withTenant(ctx, (db) =>
-    db.select({ id: category.id, name: category.name, parent_id: category.parent_id })
+    db.select({ id: category.id, name: category.name, parent_id: category.parent_id, default_key: category.default_key })
       .from(category).orderBy(asc(category.name)))
   return NextResponse.json({ categories: rows })
 }
