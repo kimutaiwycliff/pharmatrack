@@ -7,21 +7,24 @@ export interface ImportField { key: string; label: string; required?: boolean; h
 
 export const IMPORT_FIELDS: ImportField[] = [
   { key: "name", label: "Name", required: true },
+  { key: "generic_name", label: "Generic name", hint: "blank → from the catalogue" },
   { key: "selling_price", label: "Selling price", hint: "per unit, KES" },
-  { key: "pack_selling_price", label: "Pack selling price", hint: "per pack — divided by units per pack" },
+  { key: "pack_selling_price", label: "Pack selling price", hint: "per pack — becomes a pack size when a unit price is also given" },
   { key: "brand_name", label: "Brand" },
   { key: "manufacturer", label: "Manufacturer" },
   { key: "gtin", label: "Barcode / GTIN" },
+  { key: "barcode_raw", label: "Old item code", hint: "your previous POS code — searchable at the till" },
   { key: "strength", label: "Strength" },
   { key: "dosage_form", label: "Dosage form" },
   { key: "base_unit", label: "Base unit", hint: "tablet, ml, bottle… (default: unit)" },
-  { key: "category", label: "Department", hint: "e.g. OTC Medicines" },
-  { key: "subcategory", label: "Subcategory", hint: "e.g. Pain & Fever" },
+  { key: "category", label: "Category", hint: "e.g. Pain & Fever — blank → suggested" },
+  { key: "subcategory", label: "Subcategory", hint: "e.g. Gout" },
   { key: "pack_label", label: "Pack name", hint: "Box, Strip…" },
   { key: "units_per_pack", label: "Units per pack" },
   { key: "cost_price", label: "Cost price", hint: "per unit, KES" },
   { key: "pack_cost_price", label: "Pack cost price", hint: "per pack" },
   { key: "reorder_level", label: "Reorder level" },
+  { key: "supplier", label: "Supplier", hint: "added to your suppliers if new" },
   { key: "is_controlled", label: "Controlled?", hint: "yes/no" },
   { key: "requires_prescription", label: "Requires Rx?", hint: "yes/no" },
   { key: "opening_qty", label: "Opening stock qty", hint: "needs branch + expiry" },
@@ -35,7 +38,14 @@ const norm = (s: string) => s.toLowerCase().replace(/\(.*?\)/g, " ").replace(/[^
 const EXACT: Record<string, string> = {
   "name": "name", "product name": "name", "product": "name", "item": "name", "item name": "name", "drug": "name",
   "drug name": "name", "description": "name", "item description": "name", "product description": "name", "medicine": "name",
-  "generic name": "name", "generic": "name",
+  "generic name": "generic_name", "generic": "generic_name", "inn": "generic_name", "molecule": "generic_name",
+  "old item code": "barcode_raw", "item code": "barcode_raw", "code": "barcode_raw", "sku": "barcode_raw", "product code": "barcode_raw",
+  "smallest unit sold": "base_unit", "unit sold": "base_unit", "sold per": "base_unit",
+  "supplier": "supplier", "default supplier": "supplier", "vendor": "supplier",
+  "selling price per unit": "selling_price", "selling price per pack": "pack_selling_price",
+  "cost price per pack": "pack_cost_price", "cost price per unit": "cost_price",
+  "qty in stock": "opening_qty", "prescription only": "requires_prescription",
+  "ppb reg no": "", "review note": "", "notes": "", "note": "",
   "brand": "brand_name", "brand name": "brand_name", "trade name": "brand_name",
   "manufacturer": "manufacturer", "maker": "manufacturer", "mfr": "manufacturer", "company": "manufacturer",
   "gtin": "gtin", "barcode": "gtin", "bar code": "gtin", "ean": "gtin", "upc": "gtin",
@@ -63,7 +73,7 @@ const EXACT: Record<string, string> = {
 export function guessField(header: string): string {
   const h = norm(header)
   if (!h) return ""
-  if (EXACT[h]) return EXACT[h]!
+  if (h in EXACT) return EXACT[h]!
   const has = (...w: string[]) => w.some((x) => new RegExp(`\\b${x}`).test(h))
   const pack = has("pack", "box", "carton", "strip")
   if (has("expir", "exp")) return "expiry_date"
@@ -74,7 +84,8 @@ export function guessField(header: string): string {
   if (has("reorder", "minimum", "min")) return "reorder_level"
   if (pack && has("size", "units", "per")) return "units_per_pack"
   if (has("qty", "quantity", "stock", "balance", "on hand")) return "opening_qty"
-  if (has("manufactur", "supplier")) return "manufacturer"
+  if (has("supplier", "vendor")) return "supplier"
+  if (has("manufactur")) return "manufacturer"
   if (has("brand")) return "brand_name"
   if (has("strength")) return "strength"
   if (has("form")) return "dosage_form"
@@ -93,6 +104,8 @@ export function autoMapping(headers: string[]): Record<string, string> {
     const f = guessField(h)
     if (f && !m[f]) m[f] = h
   }
+  // A sheet whose only name column is "Generic name" names products by it.
+  if (!m.name && m.generic_name) { m.name = m.generic_name; delete m.generic_name }
   return m
 }
 
@@ -162,7 +175,7 @@ export function toImportRows(
   rows: unknown[][],
   mapping: Record<string, string>,
   opts: { hasBranch: boolean },
-): Array<{ data: Record<string, string>; problems: string[] }> {
+): Array<{ data: Record<string, string>; problems: string[]; warnings: string[] }> {
   const idx: Record<string, number> = {}
   for (const [field, header] of Object.entries(mapping)) {
     const i = header ? headers.indexOf(header) : -1
@@ -192,19 +205,30 @@ export function toImportRows(
         }
       }
       const units = Number(data.units_per_pack) >= 1 ? Math.round(Number(data.units_per_pack)) : 1
-      if (!data.selling_price && data.pack_selling_price) data.selling_price = String(Math.round((Number(data.pack_selling_price) * 100) / units) / 100)
+      // Pack price only → the unit price. Both given → the pack keeps its own
+      // price (the server adds it as a pack size).
+      if (!data.selling_price && data.pack_selling_price) {
+        data.selling_price = String(Math.round((Number(data.pack_selling_price) * 100) / units) / 100)
+        delete data.pack_selling_price
+      }
+      if (data.pack_selling_price && units <= 1) delete data.pack_selling_price
       if (!data.cost_price && data.pack_cost_price) data.cost_price = String(Math.round((Number(data.pack_cost_price) * 100) / units) / 100)
-      delete data.pack_selling_price
       delete data.pack_cost_price
       if (data.units_per_pack) data.units_per_pack = String(units)
       if (data.opening_qty) data.opening_qty = String(Math.max(0, Math.round(Number(data.opening_qty))))
 
       if (!data.name) problems.push("missing name")
       if (!(Number(data.selling_price) > 0)) problems.push("no selling price")
+      // The product is still created; only its opening stock waits.
+      const warnings: string[] = []
       if (Number(data.opening_qty) > 0) {
-        if (!opts.hasBranch) problems.push("opening stock needs a branch")
-        if (!data.expiry_date) problems.push("opening stock needs an expiry date")
+        if (!opts.hasBranch) warnings.push("stock skipped — no branch selected")
+        else if (!data.expiry_date) warnings.push("stock skipped — no expiry date")
       }
-      return { data, problems }
+      const unitCost = Number(data.cost_price)
+      if (unitCost > 0 && Number(data.selling_price) > 0 && unitCost >= Number(data.selling_price)) warnings.push("cost is not below the selling price")
+      // Usually a pack price typed into the per-unit column.
+      else if (unitCost > 0 && Number(data.selling_price) > unitCost * 5) warnings.push(`price is over 5× the unit cost (${unitCost}) — is it per unit?`)
+      return { data, problems, warnings }
     })
 }

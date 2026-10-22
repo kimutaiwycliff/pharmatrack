@@ -63,6 +63,17 @@ const INJ = ["inject", "infus", "pre-filled", "implant"]
 
 type Hit = [TaxonomyCategory, string, string]
 
+/** The molecule of a known Kenyan brand at the start of a name ("Amoxil 500mg" → "amoxicillin"), else null. */
+export function brandMolecule(name: string): string | null {
+  const words = name.toLowerCase().trim().split(/[^a-z0-9]+/)
+  return BRAND_ALIASES[`${words[0]} ${words[1] ?? ""}`.trim()] ?? BRAND_ALIASES[words[0] ?? ""] ?? null
+}
+
+/** Departments whose medicines are prescription-only by default (POM) when nothing else says. */
+export const PRESCRIPTION_DEPARTMENTS: readonly TaxonomyCategory[] = [
+  "Antibiotics & Infections", "Heart & Blood Pressure", "Diabetes & Hormones", "Brain & Mental Health", "Men's Health & Urology", "Hospital & Specialist",
+]
+
 /** Products whose dosage form decides the shelf (eye, ear, skin, inhaled, vaginal…). */
 function byForm(n: string, f: string, mol: (w: readonly string[]) => boolean): Hit | null {
   if (has(f, EYE) || has(n, [" eye drop", " eyedrop", " eye oint", " ophthalmic"])) {
@@ -112,8 +123,7 @@ export function suggestCategory(input: { name?: string | null; generic?: string 
   const f = ` ${(input.dosageForm ?? "").toLowerCase()} `
   if (!n.trim() && !g.trim()) return null
   // A known brand at the start of the name contributes its molecule.
-  const words = n.trim().split(/[^a-z0-9]+/)
-  const brand = BRAND_ALIASES[`${words[0]} ${words[1] ?? ""}`.trim()] ?? BRAND_ALIASES[words[0] ?? ""] ?? ""
+  const brand = brandMolecule(n) ?? ""
   const text = `${g} ${n} ${brand} `
   const mol = (words: readonly string[]) => has(text, words)
   const out = (h: Hit, confidence: CategorySuggestion["confidence"]): CategorySuggestion => ({ category: h[0], subcategory: h[1], confidence, reason: h[2] })
