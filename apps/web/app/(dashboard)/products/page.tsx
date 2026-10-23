@@ -1,14 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree, Trash2, Tag, FileSpreadsheet } from "lucide-react"
+import { Plus, Pill, Search, SlidersHorizontal, X, ToggleLeft, ToggleRight, FolderTree, Trash2, Tag, FileSpreadsheet, Download } from "lucide-react"
 import { toast } from "sonner"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { EditProductSheet } from "@/components/inventory/EditProductSheet"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { CategoryManager } from "@/components/inventory/CategoryManager"
 import { BulkImportDialog } from "@/components/inventory/BulkImportDialog"
+import { ExportProductsDialog } from "@/components/inventory/ExportProductsDialog"
 import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
 import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
 import { formatKES } from "@/lib/store/cartStore"
@@ -66,6 +67,16 @@ export default function ProductsPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  // Deep links from Settings → Branches ("set up a new branch"): ?export=1 / ?import=1.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    const t = setTimeout(() => {
+      if (sp.get("export") === "1") setExportOpen(true)
+      else if (sp.get("import") === "1") setImportOpen(true)
+    }, 0)
+    return () => clearTimeout(t)
+  }, [])
   const importBranchName = useSessionStore((s) => s.branches.find((b) => b.id === branchId)?.name)
   const [catMgrOpen, setCatMgrOpen] = useState(false)
   const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
@@ -132,13 +143,21 @@ export default function ProductsPage() {
             {total} product{total !== 1 ? "s" : ""} in catalogue
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setCatMgrOpen(true)}
             className="inline-flex items-center gap-2 px-3.5 h-9 rounded-lg border border-[var(--pt-border)] text-[var(--pt-text-secondary)] text-sm font-semibold hover:bg-[var(--pt-muted)] transition-colors"
           >
             <FolderTree size={16} />
             Manage categories
+          </button>
+          <button
+            onClick={() => setExportOpen(true)}
+            className="inline-flex items-center gap-2 px-3.5 h-9 rounded-lg border border-[var(--pt-border)] text-[var(--pt-text-secondary)] text-sm font-semibold hover:bg-[var(--pt-muted)] transition-colors"
+          >
+            <Download size={16} />
+            <span className="hidden sm:inline">Export to Excel</span>
+            <span className="sm:hidden">Export</span>
           </button>
           {canImport && (
             <button
@@ -409,6 +428,20 @@ export default function ProductsPage() {
       )}
 
       <CategoryManager open={catMgrOpen} onOpenChange={setCatMgrOpen} />
+      {exportOpen && (
+        <ExportProductsDialog
+          onClose={() => setExportOpen(false)}
+          branchId={branchId}
+          filter={{
+            q: search,
+            categoryId,
+            label: [
+              search.trim().length >= 2 ? `search “${search.trim()}”` : null,
+              categoryId === "none" ? "Uncategorised" : categories.find((c) => c.id === categoryId)?.name ?? null,
+            ].filter(Boolean).join(" · ") || null,
+          }}
+        />
+      )}
       {importOpen && (
         <BulkImportDialog
           title="Import products from Excel"

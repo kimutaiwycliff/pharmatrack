@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Pencil, Check, X, Loader2 } from "lucide-react"
+import Link from "next/link"
+import { Plus, Pencil, Check, X, Loader2, Download, FileSpreadsheet, ArrowLeftRight, Store } from "lucide-react"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
@@ -256,6 +257,60 @@ export function BranchList({ branches, isOwner }: Props) {
           />
         )}
       </div>
+
+      {isOwner && <NewBranchGuide />}
     </div>
+  )
+}
+
+// Opening a new branch: products and prices are already shared by every
+// branch, so only its stock needs loading — count it on an exported sheet and
+// import it while working in the new branch.
+function NewBranchGuide() {
+  const steps = [
+    {
+      icon: Store,
+      title: "Your products are already there",
+      body: "Products, prices and categories are shared by every branch — nothing to copy. Only stock is kept per branch.",
+    },
+    {
+      icon: Download,
+      title: "Export a count sheet",
+      body: "Products → Export to Excel → “Products only”. Every product, with the stock columns left blank.",
+      action: { href: "/products?export=1", label: "Export count sheet" },
+    },
+    {
+      icon: FileSpreadsheet,
+      title: "Count the new branch’s shelves",
+      body: "Fill in Qty in stock (in units), Batch number and Expiry date. Leave rows you don’t stock there blank.",
+    },
+    {
+      icon: ArrowLeftRight,
+      title: "Switch to the new branch and import",
+      body: "Pick the branch in the top bar, then Products → Import from Excel. Existing products are recognised and their stock is received at that branch.",
+      action: { href: "/products?import=1", label: "Import counted stock" },
+    },
+  ]
+  return (
+    <section className="mt-6 rounded-xl border border-[var(--pt-border)] bg-[var(--pt-surface)] p-5" aria-labelledby="new-branch-guide">
+      <h3 id="new-branch-guide" className="text-sm font-semibold">Setting up a new branch</h3>
+      <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5">Add the branch above, then load its opening stock in four steps.</p>
+      <ol className="mt-4 space-y-4">
+        {steps.map((s, i) => (
+          <li key={s.title} className="flex gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--pt-green-50)] text-[var(--pt-green-700)] text-xs font-bold" aria-hidden>{i + 1}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium flex items-center gap-1.5"><s.icon size={14} className="text-[var(--pt-text-tertiary)]" /> {s.title}</p>
+              <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5">{s.body}</p>
+              {s.action && (
+                <Link href={s.action.href} className="inline-block mt-1.5 text-xs font-semibold text-[var(--pt-green-600)] hover:underline">
+                  {s.action.label} →
+                </Link>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }

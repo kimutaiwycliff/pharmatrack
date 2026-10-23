@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus, Pencil, Trash2, Check, X, Loader2, FolderTree, CornerDownRight } from "lucide-react"
 import { toast } from "sonner"
@@ -30,6 +30,12 @@ export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenC
   const qc = useQueryClient()
   const confirm = useConfirm()
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories, staleTime: 30_000 })
+  // Products saved elsewhere (the POS, another tab, the Android app, an
+  // import) create their default categories on the server — reload the tree
+  // each time it's opened so they show up without a page refresh.
+  useEffect(() => {
+    if (open) void qc.invalidateQueries({ queryKey: ["categories"] })
+  }, [open, qc])
 
   const topLevel = useMemo(() => categories.filter((c) => !c.parent_id), [categories])
   const childrenOf = useMemo(() => {
