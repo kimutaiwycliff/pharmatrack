@@ -16,7 +16,8 @@ interface Props {
   /** Whether STK push is available (plan includes it + tenant configured M-Pesa). */
   stkAvailable?: boolean
   onClose: () => void
-  onConfirm: (cashAmt: number, mpesaAmt: number, mpesaRef: string | null) => void
+  /** viaPrompt: the M-Pesa part was requested by STK prompt (vs. a code typed by hand). */
+  onConfirm: (cashAmt: number, mpesaAmt: number, mpesaRef: string | null, how: { viaPrompt: boolean }) => void
 }
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
@@ -48,7 +49,7 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, on
 
   async function handleConfirm() {
     if (mpesaMode === "manual") {
-      onConfirm(cash, mpesa, trimmedCode || null)
+      onConfirm(cash, mpesa, trimmedCode || null, { viaPrompt: false })
       return
     }
     setSending(true)
@@ -60,7 +61,7 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, on
       })
     } catch {}
     setSending(false)
-    onConfirm(cash, mpesa, null)
+    onConfirm(cash, mpesa, null, { viaPrompt: true })
   }
 
   return (

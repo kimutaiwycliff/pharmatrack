@@ -4,10 +4,12 @@ import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import Link from "next/link"
-import { Smartphone, Tablet, Loader2, ShieldOff, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { Smartphone, Tablet, Monitor, Loader2, ShieldOff, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import { ThisComputerCard } from "@/components/till/ThisComputerCard"
+import { useTillStore } from "@/lib/till/store"
 
 interface DeviceRow {
   id: string; name: string; code: string; branch_name: string | null; platform: string | null; app_version: string | null
@@ -35,6 +37,7 @@ export function DevicesPanel() {
   const confirm = useConfirm()
   const [editing, setEditing] = useState<string | null>(null)
   const [share, setShare] = useState("")
+  const thisDeviceId = useTillStore((s) => (s.registered ? s.device?.id : null))
   const { data, isLoading } = useQuery<{ devices: DeviceRow[] }>({
     queryKey: ["devices"],
     queryFn: async () => {
@@ -69,11 +72,14 @@ export function DevicesPanel() {
       <div>
         <h2 className="text-base font-bold">Selling devices</h2>
         <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
-          Phones and tablets registered here can sell offline all day. Each gets its own share of branch stock, so devices
-          can never sell more than you have, and must sync before midnight. To add one, sign in on the phone as an owner
-          or manager and tap <span className="font-semibold">Register this device</span>.
+          Phones, tablets and computers registered here can sell offline all day. Each gets its own share of branch stock,
+          so devices can never sell more than you have, and must sync before midnight. To add a phone, sign in on it as an
+          owner or manager and tap <span className="font-semibold">Register this device</span>; to add a computer, use the
+          card below on that computer.
         </p>
       </div>
+
+      <ThisComputerCard onChanged={() => void qc.invalidateQueries({ queryKey: ["devices"] })} />
 
       {devices.length === 0 ? (
         <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] py-10 text-center text-sm text-[var(--pt-text-secondary)]">
@@ -83,7 +89,7 @@ export function DevicesPanel() {
         <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] divide-y divide-[var(--pt-border)]">
           {devices.map((d) => {
             const today = syncedToday(d.last_sync_at)
-            const Icon = d.name.toLowerCase().includes("tablet") ? Tablet : Smartphone
+            const Icon = d.platform === "web" || d.platform === "desktop" ? Monitor : d.name.toLowerCase().includes("tablet") ? Tablet : Smartphone
             return (
               <div key={d.id} className="px-4 sm:px-5 py-4">
                 <div className="flex items-start gap-3">
@@ -92,6 +98,9 @@ export function DevicesPanel() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm">{d.name}</span>
                       <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-[var(--pt-muted)] text-[var(--pt-text-secondary)]">{d.code}</span>
+                      {d.id === thisDeviceId && (
+                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--pt-green-50)] text-[var(--pt-green-600)]">This computer</span>
+                      )}
                       {d.open_issues > 0 && (
                         <Link href="/sync-issues" className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                           <AlertTriangle size={11} /> {d.open_issues} issue{d.open_issues === 1 ? "" : "s"}

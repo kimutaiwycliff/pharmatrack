@@ -114,7 +114,19 @@ export async function getCachedProduct(
 }
 
 export async function queueOfflineSale(sale: Omit<OfflineSale, "id">) {
-  return posDB.offlineSales.add(sale)
+  return posDB.transaction("rw", posDB.offlineSales, posDB.products, async () => {
+    const id = await posDB.offlineSales.add(sale)
+    // Take the units off the cached stock so the next offline search (and the
+    // cart's stock cap) reflects what's actually left on the shelf.
+    const qty = new Map<string, number>()
+    for (const i of sale.items) qty.set(i.product_id, (qty.get(i.product_id) ?? 0) + i.quantity)
+    const cached = await posDB.products.bulkGet([...qty.keys()])
+    const updated = cached
+      .filter((p): p is CachedProduct => !!p)
+      .map((p) => ({ ...p, stock_on_hand: Math.max(0, Number(p.stock_on_hand ?? 0) - (qty.get(p.product_id!) ?? 0)) }))
+    if (updated.length) await posDB.products.bulkPut(updated)
+    return id
+  })
 }
 
 export async function getUnsyncedSales(): Promise<OfflineSale[]> {

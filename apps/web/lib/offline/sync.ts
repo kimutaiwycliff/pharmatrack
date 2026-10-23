@@ -7,6 +7,8 @@ export interface SyncResult {
   /** Server rejected permanently (e.g. 409 insufficient stock) — moved to the
    *  dead-letter store for a manager to reconcile (never silently deleted). */
   rejected: number
+  /** The browser's sign-in expired — sales stay queued until someone signs in again. */
+  authRequired: boolean
 }
 
 /**
@@ -20,6 +22,7 @@ export async function syncOfflineSales(): Promise<SyncResult> {
   let synced = 0
   let dropped = 0
   let rejected = 0
+  let authRequired = false
 
   for (const s of sales) {
     // Drop records that would always fail server validation.
@@ -52,11 +55,17 @@ export async function syncOfflineSales(): Promise<SyncResult> {
           customer_name: null,
           customer_phone: s.customerPhone,
           offline_reference: s.saleId, // server can dedupe on this
+          sold_at: s.createdAt, // dated when it was sold, not when it synced
         }),
       })
       if (res.ok) {
         if (s.id != null) await markSaleSynced(s.id)
         synced++
+      } else if (res.status === 401 || res.status === 403) {
+        // Signed out (or the session lost its rights) — not the sale's fault.
+        // Keep everything queued; it uploads once someone signs in again.
+        authRequired = true
+        break
       } else if (res.status >= 400 && res.status < 500 && res.status !== 429) {
         // Permanent rejection (e.g. 409 insufficient stock, 400 invalid) — it can
         // never succeed on retry, so take it out of the queue, but keep it in
@@ -74,5 +83,5 @@ export async function syncOfflineSales(): Promise<SyncResult> {
     }
   }
 
-  return { synced, dropped, rejected }
+  return { synced, dropped, rejected, authRequired }
 }

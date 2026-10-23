@@ -1,4 +1,4 @@
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
 
@@ -16,6 +16,12 @@ mod offline;
 // ADR-015 — receipt printers (USB/COM, Bluetooth COM, network, installed
 // printers) for the web app's Settings → Printer & scanner.
 mod printing;
+
+// Deadline notifications for the till (pt_notify).
+mod desktop;
+
+#[cfg(desktop)]
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -45,6 +51,13 @@ pub fn run() {
             .manage(offline::OfflineProcesses::default());
     }
 
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_notification::init())
+            .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None));
+    }
+
     builder
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
@@ -70,13 +83,34 @@ pub fn run() {
                     MenuItem::with_id(app, "open", "Open PharmaTrack", true, None::<&str>)?;
                 let quit_item =
                     MenuItem::with_id(app, "quit", "Quit PharmaTrack", true, None::<&str>)?;
-                let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
+                // Start the till when the computer starts, so it's ready (and
+                // syncing) before the first customer.
+                let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
+                let autostart_item = CheckMenuItem::with_id(
+                    app,
+                    "autostart",
+                    "Start with computer",
+                    true,
+                    autostart_on,
+                    None::<&str>,
+                )?;
+                let menu = Menu::with_items(app, &[&open_item, &autostart_item, &quit_item])?;
+                let autostart_toggle = autostart_item.clone();
 
                 TrayIconBuilder::new()
                     .icon(app.default_window_icon().unwrap().clone())
                     .menu(&menu)
                     .show_menu_on_left_click(true)
-                    .on_menu_event(|app, event| match event.id().as_ref() {
+                    .on_menu_event(move |app, event| match event.id().as_ref() {
+                        "autostart" => {
+                            let launcher = app.autolaunch();
+                            let on = launcher.is_enabled().unwrap_or(false);
+                            let result = if on { launcher.disable() } else { launcher.enable() };
+                            if let Err(err) = result {
+                                eprintln!("autostart toggle failed: {err}");
+                            }
+                            let _ = autostart_toggle.set_checked(launcher.is_enabled().unwrap_or(false));
+                        }
                         "quit" => {
                             #[cfg(feature = "offline-edition")]
                             offline::kill_all(app);
@@ -128,7 +162,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             printing::pt_list_printers,
             printing::pt_print,
-            printing::pt_printer_status
+            printing::pt_printer_status,
+            desktop::pt_notify
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

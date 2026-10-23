@@ -67,6 +67,8 @@ export function CashModal({ open, total, onClose, onConfirm }: Props) {
                 type="number"
                 value={tendered}
                 onChange={(e) => setTendered(Number(e.target.value) || 0)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleConfirm() }}
+                autoFocus
                 className="w-full h-14 pl-14 pr-4 text-2xl font-bold tabular-nums border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
               />
             </div>

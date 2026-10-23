@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { toast } from "sonner"
 import { ShoppingCart, ChevronUp } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -23,6 +23,12 @@ import { isUuid } from "@/lib/utils"
 import type { Sale, SaleItem } from "@pharmatrack/types"
 import { useSuppliers } from "@/lib/hooks/useSuppliers"
 import { useReceiptProfile } from "@/lib/printing/useReceiptProfile"
+import type { PaymentInput } from "@pharmatrack/core/sync"
+import { useTillActive, useTillStore, bumpTillData } from "@/lib/till/store"
+import { AllowanceError, cartToLines, commitTillSale, TillLockedError, type CommitSaleInput } from "@/lib/till/commit-sale"
+import { refreshTillState, requestTopUp, scheduleSoonSync } from "@/lib/till/engine"
+import { NetworkError } from "@/lib/till/http"
+import { receiptFromPayload } from "@/lib/till/receipt"
 
 type PayModal = "cash" | "mpesa" | "split" | null
 
@@ -53,6 +59,9 @@ export default function PosPage() {
   const activeBranchId = useUIStore((s) => s.activeBranchId)
 
   const online = useOnline()
+  const tillActive = useTillActive()
+  const tillDevice = useTillStore((s) => s.device)
+  const tillBranchInfo = useTillStore((s) => s.branch)
   // Whether STK push is offered (plan includes it + tenant configured M-Pesa).
   const { data: mpesaAvail } = useQuery<{ available: boolean }>({
     queryKey: ["mpesaAvailable"],
@@ -63,11 +72,13 @@ export default function PosPage() {
     staleTime: 5 * 60_000,
   })
   const stkAvailable = mpesaAvail?.available ?? false
-  const { data: shift } = useActiveShift(profile?.id ?? "")
+  // A registered till keeps its shift on this computer (lib/till); only a plain browser uses the server shift.
+  const { data: shift } = useActiveShift(tillActive ? null : (profile?.id ?? ""))
   // Sell from the branch the open shift belongs to — that's where the cash
   // drawer is. Before a shift loads, fall back to the selected branch, else the
   // first valid branch, so a sale never POSTs an empty branch_id.
   const activeBranch =
+    (tillActive ? branches.find((b) => b.id === tillDevice?.branchId) : undefined) ??
     branches.find((b) => b.id === shift?.branch_id && isUuid(b.id)) ??
     branches.find((b) => b.id === activeBranchId && isUuid(b.id)) ??
     branches.find((b) => isUuid(b.id)) ??
@@ -90,8 +101,14 @@ export default function PosPage() {
     cashAmount?: number
     mpesaAmount?: number
     customerPhone?: string | null
+    /** M-Pesa confirmed after an STK prompt (vs. a code typed by hand). */
+    mpesaViaPrompt?: boolean
   }) {
     if (!profile) return
+    if (tillActive) {
+      await submitTillSale(params)
+      return
+    }
     if (!activeBranch || !isUuid(activeBranch.id)) {
       toast.error("No valid branch selected — pick a branch from the selector and try again.")
       return
@@ -191,10 +208,138 @@ export default function PosPage() {
     }
   }
 
+  // Registered till: every sale (online or not) is recorded on this computer
+  // first and uploads a few seconds later — same rules as the Android app.
+  async function submitTillSale(params: {
+    paymentMethod: "cash" | "mpesa" | "split"
+    amountTendered: number | null
+    mpesaReference: string | null
+    cashAmount?: number
+    mpesaAmount?: number
+    customerPhone?: string | null
+    mpesaViaPrompt?: boolean
+  }) {
+    const till = useTillStore.getState()
+    if (!till.staff || !till.shift) {
+      toast.error("Start a shift before selling.")
+      return
+    }
+    if (items.length === 0) {
+      toast.error("Cart is empty.")
+      return
+    }
+    const cents = (kes: number | null | undefined) => Math.round((kes ?? 0) * 100)
+    const verified = !!params.mpesaViaPrompt
+    const payment: PaymentInput =
+      params.paymentMethod === "cash"
+        ? { method: "cash", tenderedCents: cents(params.amountTendered) }
+        : params.paymentMethod === "mpesa"
+          ? { method: "mpesa", reference: params.mpesaReference, verified }
+          : { method: "split", cashCents: cents(params.cashAmount), mpesaCents: cents(params.mpesaAmount), reference: params.mpesaReference, verified }
+    const input: CommitSaleInput = {
+      cashierId: till.staff.id, shiftClientId: till.shift.client_id, lines: cartToLines(items), payment,
+      discountCents: cents(discount), customerPhone: params.customerPhone ?? null,
+    }
+
+    setSubmitting(true)
+    try {
+      let result: Awaited<ReturnType<typeof commitTillSale>> | null = null
+      // Online, a line beyond this computer's share asks the server for more
+      // (from stock no other till holds) and tries again — once per product.
+      for (let attempt = 0; attempt <= input.lines.length; attempt++) {
+        try {
+          result = await commitTillSale(input)
+          break
+        } catch (err) {
+          if (!(err instanceof AllowanceError)) throw err
+          const short = err.wanted - err.available
+          let granted = 0
+          if (navigator.onLine) {
+            try {
+              granted = await requestTopUp(err.productId, short)
+            } catch (e) {
+              if (!(e instanceof NetworkError)) throw e
+            }
+          }
+          if (granted < short) {
+            const have = err.available + granted
+            toast.error(
+              navigator.onLine
+                ? (have > 0
+                  ? `Only ${have} ${err.productName} can be sold here — other tills hold the rest of the branch's stock. Reduce the quantity, or sync the other tills (remove unused ones in Settings → Devices).`
+                  : `No ${err.productName} free for this till — other tills hold what's left. Sync them, or remove unused ones in Settings → Devices.`)
+                : (have > 0
+                  ? `Only ${have} ${err.productName} left on this computer while offline. Reduce the quantity.`
+                  : `No ${err.productName} left on this computer while offline. Remove it from the cart.`),
+              { duration: 8000 },
+            )
+            return
+          }
+        }
+      }
+      if (!result) throw new Error("Sale was not recorded")
+
+      const b = activeBranch
+      setReceiptData({
+        ...receiptFromPayload(result.payload, {
+          branchId: tillDevice?.branchId ?? b?.id ?? "",
+          branchName: tillBranchInfo?.name ?? b?.name ?? "Branch",
+          branchAddress: tillBranchInfo?.address ?? b?.address ?? null,
+          branchPhone: tillBranchInfo?.phone ?? b?.phone ?? null,
+          orgName: tillDevice?.organizationName ?? "PharmaTrack",
+          cashierName: till.staff.name,
+        }),
+      })
+      setPayModal(null)
+      bumpTillData()
+      void refreshTillState() // header: "N waiting to upload"
+      scheduleSoonSync()
+      if (!navigator.onLine) {
+        toast.success(`Saved on this computer · ${result.receiptNumber}. It uploads when the internet is back.`, { id: "till-saved-offline" })
+      }
+    } catch (err) {
+      toast.error(err instanceof TillLockedError || err instanceof Error ? err.message : "The sale wasn't recorded. Try again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleNewSale = useCallback(() => {
     clearCart()
     setReceiptData(null)
+    // Ready for the next customer: scanner/keyboard go straight to search.
+    window.setTimeout(() => document.getElementById("pos-search")?.focus(), 50)
   }, [clearCart])
+
+  // Keyboard-first selling (desktop tills): F2 search · F8 cash · F9 M-Pesa ·
+  // F4 split. Keys that browsers keep (F5 reload, F6 address bar, F7 caret
+  // browsing…) are left alone. Ignored while a payment, receipt or new-product
+  // dialog is open.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.altKey || e.ctrlKey || e.metaKey) return
+      if (payModal || receiptData || newProductOpen) return
+      const pay = e.key === "F8" ? "cash" : e.key === "F9" ? "mpesa" : e.key === "F4" ? "split" : null
+      if (e.key === "F2") {
+        e.preventDefault()
+        const el = document.getElementById("pos-search") as HTMLInputElement | null
+        el?.focus()
+        el?.select()
+        return
+      }
+      if (!pay) return
+      e.preventDefault()
+      if (items.length === 0) {
+        toast.info("Add something to the cart first.", { id: "pos-empty-cart" })
+        return
+      }
+      if (submitting) return
+      setCartOpen(false)
+      setPayModal(pay)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [payModal, receiptData, newProductOpen, items.length, submitting])
 
   const handleBarcodeNotFound = useCallback((barcode: string) => {
     setNotFoundBarcode(barcode)
@@ -278,7 +423,9 @@ export default function PosPage() {
       </Sheet>
 
       {/* Payment modals */}
+      {/* Remounted on each open so "tendered" starts from this sale's total. */}
       <CashModal
+        key={payModal === "cash" ? "cash-open" : "cash-closed"}
         open={payModal === "cash"}
         total={total}
         onClose={() => setPayModal(null)}
@@ -297,12 +444,13 @@ export default function PosPage() {
         online={online}
         stkAvailable={stkAvailable}
         onClose={() => setPayModal(null)}
-        onConfirm={(ref) =>
+        onConfirm={(ref, how) =>
           submitSale({
             paymentMethod: "mpesa",
             amountTendered: total,
             changeGiven: 0,
             mpesaReference: ref,
+            mpesaViaPrompt: how.viaPrompt,
           })
         }
       />
@@ -312,7 +460,7 @@ export default function PosPage() {
         online={online}
         stkAvailable={stkAvailable}
         onClose={() => setPayModal(null)}
-        onConfirm={(cashAmt, mpesaAmt, ref) =>
+        onConfirm={(cashAmt, mpesaAmt, ref, how) =>
           submitSale({
             paymentMethod: "split",
             amountTendered: cashAmt,
@@ -320,6 +468,7 @@ export default function PosPage() {
             mpesaReference: ref,
             cashAmount: cashAmt,
             mpesaAmount: mpesaAmt,
+            mpesaViaPrompt: how.viaPrompt,
           })
         }
       />

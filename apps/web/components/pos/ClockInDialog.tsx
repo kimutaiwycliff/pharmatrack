@@ -5,9 +5,10 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Clock, ArrowLeft } from "lucide-react"
+import { Clock, ArrowLeft, CloudOff } from "lucide-react"
 import { useSessionStore, useCan } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
+import { SetupTillDialog } from "@/components/till/SetupTill"
 
 interface ClockInDialogProps {
   onSuccess: () => void
@@ -26,6 +27,8 @@ export function ClockInDialog({ onSuccess }: ClockInDialogProps) {
   const activeBranchId = useUIStore((s) => s.activeBranchId)
   const setActiveBranch = useUIStore((s) => s.setActiveBranch)
   const canPickBranch = useCan("branches.all") && branches.length > 1
+  const canSetUpTill = useCan("devices.manage")
+  const [setupOpen, setSetupOpen] = useState(false)
   const [branchId, setBranchId] = useState(
     branches.find((b) => b.id === activeBranchId)?.id ?? profile?.branch_id ?? branches[0]?.id ?? "",
   )
@@ -132,7 +135,18 @@ export function ClockInDialog({ onSuccess }: ClockInDialogProps) {
           >
             <ArrowLeft size={15} /> Back to dashboard
           </Link>
+
+          {canSetUpTill && (
+            <button
+              type="button"
+              onClick={() => setSetupOpen(true)}
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-[var(--pt-green-600)] hover:underline pt-1"
+            >
+              <CloudOff size={13} /> Set up offline selling on this computer
+            </button>
+          )}
         </div>
+        <SetupTillDialog open={setupOpen} onOpenChange={setSetupOpen} />
       </div>
     </div>
   )
