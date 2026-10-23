@@ -287,6 +287,47 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
 
 // ─── Inventory tab ───────────────────────────────────────────────────────────
 
+interface StockValue {
+  cost_value: number; retail_value: number; potential_profit: number; margin_percent: number | null
+  expired_cost: number; units: number; products: number; products_missing_cost: number; products_expired: number
+}
+
+// Owner only (GET /api/reports/stock-value is owner-gated too): what the
+// shelves are worth at cost and at selling price, and the profit between them.
+function StockValueCards({ branchId }: { branchId: string }) {
+  const isOwner = useSessionStore((s) => s.profile?.role === "owner")
+  const { data, isLoading, isError } = useQuery<StockValue>({
+    queryKey: ["reports-stock-value", branchId],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/stock-value${branchId ? `?branch_id=${branchId}` : ""}`)
+      if (!res.ok) throw new Error("Failed")
+      return res.json() as Promise<StockValue>
+    },
+    enabled: isOwner,
+    staleTime: 2 * 60_000,
+  })
+  if (!isOwner) return null
+  if (isLoading) return <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{[0, 1, 2].map((i) => <div key={i} className="h-[92px] rounded-xl bg-[var(--pt-muted-strong)] animate-pulse" />)}</div>
+  if (isError || !data) return null
+  const notes = [
+    data.products_missing_cost > 0 ? `${data.products_missing_cost} product${data.products_missing_cost === 1 ? " has" : "s have"} no cost price — left out of stock value and profit.` : null,
+    data.expired_cost > 0 ? `${formatKES(data.expired_cost)} of expired stock (${data.products_expired} product${data.products_expired === 1 ? "" : "s"}) isn't counted — write it off under Inventory.` : null,
+  ].filter(Boolean)
+  return (
+    <section aria-labelledby="stock-value-heading" className="space-y-2">
+      <h2 id="stock-value-heading" className="text-[13px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide">
+        Stock value <span className="font-normal normal-case tracking-normal text-[var(--pt-text-tertiary)]">· {branchId ? "this branch" : "all branches"} · only you can see this</span>
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <KpiCard icon={Package} label="Stock value (at cost)" value={formatKES(data.cost_value)} sub={`${data.units.toLocaleString("en-KE")} units · ${data.products} products`} color="blue" />
+        <KpiCard icon={ShoppingBag} label="Potential revenue" value={formatKES(data.retail_value)} sub="If all of it sells at today's prices" />
+        <KpiCard icon={TrendingUp} label="Potential profit" value={formatKES(data.potential_profit)} sub={data.margin_percent != null ? `${data.margin_percent}% margin` : undefined} color={data.potential_profit < 0 ? "red" : "green"} />
+      </div>
+      {notes.map((n) => <p key={n} className="text-[12px] text-[var(--pt-text-tertiary)]">{n}</p>)}
+    </section>
+  )
+}
+
 function InventoryTab({ branchId }: { branchId: string }) {
   const [filter, setFilter] = useState<"all" | "out_of_stock" | "low_stock" | "expiring" | "controlled">("all")
 
@@ -322,6 +363,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
 
   return (
     <div className="space-y-6">
+      <StockValueCards branchId={branchId} />
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard icon={Package} label="Total SKUs" value={String(summary.totalSKUs)} />
         <KpiCard icon={AlertTriangle} label="Out of Stock" value={String(summary.outOfStock)} color="red" />
@@ -367,8 +409,9 @@ function InventoryTab({ branchId }: { branchId: string }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(p => (
-                <tr key={p.product_id} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-[var(--pt-muted)]/60">
+              {filtered.map((p, i) => (
+                // "All branches" lists a product once per branch — the id alone isn't unique.
+                <tr key={`${p.product_id}:${i}`} className="border-b border-[var(--pt-border)] last:border-b-0 hover:bg-[var(--pt-muted)]/60">
                   <td className="px-4 py-3">
                     <p className="font-semibold text-[13px]">{p.name}</p>
                     {p.brand_name && <p className="text-[11px] text-[var(--pt-text-tertiary)]">{p.brand_name}</p>}
