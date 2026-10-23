@@ -6,6 +6,7 @@ import { getTenantContext } from "@/lib/auth/helpers"
 import { platformContact } from "@/lib/platform-contact"
 import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 import { loadReceiptProfile } from "@/lib/receipt/profile"
+import { recordActivity } from "@/lib/insights/activity"
 
 // ADR-013 — the only new backend surface the Android app needed. Mirrors the
 // tenant/branch context the web app gets for free from a server-rendered
@@ -24,6 +25,8 @@ import { loadReceiptProfile } from "@/lib/receipt/profile"
 export async function GET() {
   const ctx = await getTenantContext()
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Operator insights: the phone app was opened (throttled, never throws).
+  void recordActivity({ userId: ctx.userId, organizationId: ctx.organizationId, source: "android" })
 
   const branches = await withTenant(ctx, (db) =>
     db

@@ -7,6 +7,7 @@ import type { PlanCode, Capability } from "@pharmatrack/core"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
 import { ConfirmProvider } from "@/components/ui/confirm-dialog"
+import { ActivityPing } from "@/components/ActivityPing"
 
 /** Pick a valid active branch WITHOUT clobbering the user's saved choice.
  *  (Previously every layout mount reset it to the profile's setup branch, so an
@@ -113,6 +114,7 @@ export function Providers({
     <QueryClientProvider client={client}>
       <SessionInit profile={profile} branches={branches} planCode={planCode} permissions={permissions} />
       <PermissionSync />
+      <ActivityPing />
       <ConfirmProvider>{children}</ConfirmProvider>
     </QueryClientProvider>
   )

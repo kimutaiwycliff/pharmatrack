@@ -140,3 +140,11 @@ function fmtDate(iso: string): string {
 function esc(s: string): string {
   return s.replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c] ?? c))
 }
+
+/** Weekly operator digest (app/api/cron/platform-digest). Returns how many addresses it went to. */
+export async function sendPlatformDigest(subject: string, html: string): Promise<number> {
+  const to = await platformEmails()
+  if (!to.length) return 0
+  const results = await Promise.allSettled(to.map((email) => sendEmail(email, subject, html)))
+  return results.filter((r) => r.status === "fulfilled" && r.value.status === "sent").length
+}

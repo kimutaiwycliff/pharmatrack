@@ -55,6 +55,8 @@ async function seed(orgId: string, tag: string) {
   await admin.insert(s.trial_grant).values({ organization_id: orgId, email_canonical: `owner-${tag.toLowerCase()}@rls.test`, source: "signup", trial_days: 14, granted: true })
   await admin.insert(s.user).values({ id: `rls-user-${orgId}`, name: `${tag} owner`, email: `rls-user-${tag.toLowerCase()}@rls.test`, emailVerified: true, createdAt: new Date(), updatedAt: new Date() })
   await admin.insert(s.reminder_digest).values({ organization_id: orgId, user_id: `rls-user-${orgId}`, digest_date: "2026-10-16", appointment_count: 1, email_status: "sent" })
+  await admin.insert(s.user_activity_day).values({ organization_id: orgId, user_id: `rls-user-${orgId}`, day: "2026-10-23", logins: 1, pings: 3, sources: ["web"] })
+  await admin.insert(s.platform_tenant_note).values({ organization_id: orgId, kind: "call", body: `${tag} owner said stock is late` })
   await admin.insert(s.idempotency_key).values({ organization_id: orgId, key: `k-rls-test-${tag}`, scope: "batch.create", status_code: 201, response: { tag } })
 }
 
@@ -130,6 +132,25 @@ async function run() {
       bad("trial_grant: tenant insert succeeded (should be blocked)")
     } catch {
       ok("trial_grant: tenant insert blocked")
+    }
+  }
+
+  // Operator insights (migration 040): usage history and the operator's notes
+  // are invisible to every tenant session, and tenants can't write them.
+  for (const [name, table, row] of [
+    ["user_activity_day", s.user_activity_day, { organization_id: T1, user_id: `rls-user-${T1}`, day: "2026-10-24", logins: 1 }],
+    ["platform_tenant_note", s.platform_tenant_note, { organization_id: T1, kind: "note", body: "sneaky" }],
+  ] as const) {
+    const visible = await withTenant({ organizationId: T1, role: "owner" }, (db: any) => db.select().from(table))
+    const total = (await admin.select().from(table as any)).length
+    visible.length === 0 && total >= 2
+      ? ok(`${name}: tenant session sees 0 of ${total} rows (operator-only)`)
+      : bad(`${name}: tenant session sees ${visible.length} rows (total ${total})`)
+    try {
+      await withTenant({ organizationId: T1, role: "owner" }, (db: any) => db.insert(table).values(row))
+      bad(`${name}: tenant insert succeeded (should be blocked)`)
+    } catch {
+      ok(`${name}: tenant insert blocked`)
     }
   }
 
