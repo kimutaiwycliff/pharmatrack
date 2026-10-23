@@ -7,6 +7,8 @@ import { expo } from "@better-auth/expo"
 import { dbAdmin, user, session, account, verification, organization as organizationTable, member, invitation } from "@pharmatrack/db"
 import { sendEmail } from "@/lib/notifications/email"
 import { pinLogin } from "@/lib/auth/pin-plugin"
+import { assertNotLocked, failedAttempt, succeeded } from "@/lib/auth/lockout"
+import { authRateLimitStorage } from "@/lib/rate-limit"
 import { OFFLINE_MODE } from "@/lib/offline-mode"
 
 // Third-party integrations are opt-in via env so local/dev runs without keys.
@@ -33,13 +35,16 @@ export const auth = betterAuth({
     provider: "pg",
     schema: { user, session, account, verification, organization: organizationTable, member, invitation },
   }),
-  // Built-in rate limiting for all /api/auth/* endpoints. Enabled in production
-  // by default; stricter per-path rules guard the credential + email-sending
-  // routes against brute force and spam. (In-memory per instance — adequate for
-  // the single-VM deploy; switch to database/secondary storage if scaling out.)
+  // Built-in rate limiting for all /api/auth/* endpoints, per client IP (Caddy
+  // sets X-Forwarded-For to Cloudflare's CF-Connecting-IP). Enabled in
+  // production by default; stricter per-path rules guard the credential +
+  // email-sending routes. Counts live in Redis (lib/rate-limit.ts, atomic
+  // INCR) so a deploy or restart doesn't reset them. Per-ACCOUNT lockouts for
+  // password and PIN sign-in are separate (lib/auth/lockout.ts).
   rateLimit: {
     window: 60,
     max: 100,
+    customStorage: authRateLimitStorage,
     customRules: {
       "/sign-in/email": { window: 300, max: 10 },        // password login
       "/sign-in/pin": { window: 300, max: 10 },          // till PIN login
@@ -64,6 +69,19 @@ export const auth = betterAuth({
       if (ctx.path === "/sign-up/email" && ctx.request) {
         throw new APIError("FORBIDDEN", { message: "Sign up at /signup to create a PharmaTrack account." })
       }
+      // Password brute force across many IPs: a locked account answers 429.
+      if (ctx.path === "/sign-in/email" && ctx.request) {
+        const email = String((ctx.body as { email?: unknown } | undefined)?.email ?? "").trim().toLowerCase()
+        if (email) await assertNotLocked("password", email)
+      }
+    }),
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/sign-in/email" || !ctx.request) return
+      const email = String((ctx.body as { email?: unknown } | undefined)?.email ?? "").trim().toLowerCase()
+      if (!email) return
+      const r = ctx.context.returned as { statusCode?: number } | undefined
+      if (r && typeof r === "object" && r.statusCode === 401) await failedAttempt("password", email)
+      else if (!(r && typeof r === "object" && typeof r.statusCode === "number" && r.statusCode >= 400)) await succeeded("password", email)
     }),
   },
   emailAndPassword: {

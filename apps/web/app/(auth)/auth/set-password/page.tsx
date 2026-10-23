@@ -60,7 +60,7 @@ function SetPasswordForm() {
       {!token ? (
         <p className="mt-6 text-sm text-[var(--pt-red)]">This link is invalid or has expired. Please request a new invite or reset link.</p>
       ) : (
-        <form onSubmit={submit} className="mt-6 space-y-4">
+        <form method="post" onSubmit={submit} className="mt-6 space-y-4">
           <div>
             <Label className="text-sm font-medium">New password</Label>
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5 h-10" autoFocus />

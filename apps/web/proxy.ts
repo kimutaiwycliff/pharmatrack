@@ -1,8 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { getSessionCookie } from "better-auth/cookies"
+import { createHash } from "node:crypto"
+import { apiLimitMessage, apiTierFor } from "@/lib/api-limits"
+import { clientIp, rateLimit, retryText, tooManyRequests } from "@/lib/rate-limit"
 
-// Next 16 middleware (exported as `proxy`). Edge-safe: it only does an OPTIMISTIC
-// session-cookie check (no DB) to gate routes. Real session validation + the
+// Next 16 middleware (exported as `proxy`, Node.js runtime). It does an
+// OPTIMISTIC session-cookie check (no DB) to gate routes, and applies the
+// general API rate limit (lib/api-limits.ts; one Redis INCR per API call). Real session validation + the
 // first-run /setup and role-based routing happen in server components (which can
 // hit the DB). See ADR-002.
 //
@@ -31,9 +35,21 @@ const PUBLIC_API_PREFIXES = [
 const underPrefix = (pathname: string, prefix: string) =>
   pathname === prefix || pathname.startsWith(prefix + "/")
 
-export function proxy(request: NextRequest) {
+const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 32)
+
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const hasSession = !!getSessionCookie(request)
+  const sessionToken = getSessionCookie(request)
+  const hasSession = !!sessionToken
+
+  // General API limit: per session, else per device token (sync), else per IP.
+  const tier = apiTierFor(pathname)
+  if (tier) {
+    const auth = request.headers.get("authorization")
+    const who = sessionToken ? `s:${hash(sessionToken)}` : auth ? `t:${hash(auth)}` : `ip:${clientIp(request)}`
+    const r = await rateLimit(`api:${tier.name}:${who}`, tier.limit, tier.windowSec)
+    if (!r.ok) return tooManyRequests(apiLimitMessage(tier, retryText(r.retryAfter)), r.retryAfter)
+  }
 
   const isProtectedPage = PROTECTED_PAGE_PREFIXES.some((p) => underPrefix(pathname, p))
   const isProtectedApi =

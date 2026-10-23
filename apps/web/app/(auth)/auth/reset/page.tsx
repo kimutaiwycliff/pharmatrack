@@ -49,7 +49,7 @@ export default function ResetPasswordPage() {
           <>
             <h1 className="text-lg font-bold">Reset your password</h1>
             <p className="text-sm text-[var(--pt-text-secondary)] mt-1">Enter your email and we&apos;ll send you a reset link.</p>
-            <form onSubmit={submit} className="mt-6 space-y-4">
+            <form method="post" onSubmit={submit} className="mt-6 space-y-4">
               <div>
                 <Label htmlFor="email" className="text-sm font-medium">Email</Label>
                 <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@pharmacy.co.ke" className="mt-1.5 h-11" required />
