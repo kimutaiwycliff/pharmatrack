@@ -17,7 +17,8 @@ interface Props {
   /** Whether STK push is available (plan includes it + tenant configured M-Pesa). */
   stkAvailable?: boolean
   onClose: () => void
-  onConfirm: (mpesaRef: string | null) => void
+  /** viaPrompt: confirmed after an STK prompt (vs. a code typed by hand — uploaded as unverified by offline tills). */
+  onConfirm: (mpesaRef: string | null, how: { viaPrompt: boolean }) => void
 }
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
@@ -209,7 +210,7 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, on
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => onConfirm(null)}
+                  onClick={() => onConfirm(null, { viaPrompt: true })}
                   className="bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white"
                 >
                   Confirm received
@@ -250,7 +251,7 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, on
                 </div>
               </div>
               <Button
-                onClick={() => onConfirm(trimmedCode || null)}
+                onClick={() => onConfirm(trimmedCode || null, { viaPrompt: false })}
                 disabled={codeBlocks}
                 className="w-full h-12 gap-2 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white rounded-xl text-base font-semibold"
               >

@@ -12,6 +12,10 @@ import { useQuery } from "@tanstack/react-query"
 import { formatKES } from "@/lib/store/cartStore"
 import { cacheProduct, cacheProducts, searchCachedProducts } from "@/lib/offline/db"
 import type { ProductWithStock } from "@pharmatrack/types"
+import { toast } from "sonner"
+import { useOnline } from "@/lib/offline/useOnline"
+import { useTillActive, useTillStore } from "@/lib/till/store"
+import { featuredTill, lookupTill, searchTill } from "@/lib/till/catalogue"
 
 interface Props {
   branchId: string
@@ -19,10 +23,16 @@ interface Props {
   scannerEnabled?: boolean
 }
 
-function useProductSearch(q: string, branchId: string) {
+/** Registered till: read this computer's copy of the catalogue (IndexedDB). */
+interface TillMode { active: boolean; online: boolean; version: number }
+
+function useProductSearch(q: string, branchId: string, till: TillMode) {
   return useQuery<{ products: ProductWithStock[] }>({
-    queryKey: ["productSearch", q, branchId],
+    queryKey: ["productSearch", q, branchId, till.active, till.active ? till.online : null, till.active ? till.version : null],
     queryFn: async () => {
+      if (till.active) {
+        return { products: q ? await searchTill(q, branchId, till.online) : await featuredTill(branchId, till.online) }
+      }
       try {
         const res = await fetch(
           `/api/products/search?q=${encodeURIComponent(q)}&branch_id=${branchId}`,
@@ -38,7 +48,7 @@ function useProductSearch(q: string, branchId: string) {
       }
     },
     enabled: branchId.length > 0,
-    staleTime: 30_000,
+    staleTime: till.active ? Infinity : 30_000,
     gcTime: 60_000,
     // Run the queryFn even when offline (default "online" PAUSES queries with no
     // network, which would skip the Dexie fallback above → offline search broken).
@@ -55,14 +65,19 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   const { scanner } = useDeviceHealth({ poll: false })
   const addItem = useCartStore((s) => s.addItem)
   const setSellUnit = useCartStore((s) => s.setSellUnit)
+  const tillActive = useTillActive()
+  const online = useOnline()
+  const tillVersion = useTillStore((s) => s.dataVersion)
+  const till: TillMode = { active: tillActive, online, version: tillVersion }
 
+  // A registered till looks barcodes up locally (handleScannedEvent below).
   const { data: lookupData, isFetching: lookupFetching } = useProductLookup(
-    scannedBarcode,
+    tillActive ? null : scannedBarcode,
     branchId,
   )
 
-  const { data: searchData, isFetching: searchFetching } = useProductSearch(searchText, branchId)
-  const { data: featuredData } = useProductSearch("", branchId)
+  const { data: searchData, isFetching: searchFetching } = useProductSearch(searchText, branchId, till)
+  const { data: featuredData } = useProductSearch("", branchId, till)
 
   // Learned most-sold products for this branch → lead the quick-add grid.
   const { data: topData } = useQuery<{ products: ProductWithStock[] }>({
@@ -78,7 +93,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
         return { products: [] } // offline → catalogue fills the grid below
       }
     },
-    enabled: branchId.length > 0,
+    enabled: branchId.length > 0 && !tillActive,
     staleTime: 5 * 60_000,
     networkMode: "always",
   })
@@ -95,7 +110,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
       await cacheProducts(json.products)
       return { cached: json.products.length }
     },
-    enabled: branchId.length > 0,
+    enabled: branchId.length > 0 && !tillActive,
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
     retry: false,
@@ -142,9 +157,25 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
   // Shared by the USB wedge and the camera scanner — both produce a parsed event.
   const handleScannedEvent = useCallback((event: BarcodeScanEvent) => {
     if (!event.gtin) return
-    setScannedBarcode(event.gtin)
     setSearchText("")
-  }, [])
+    if (!tillActive) {
+      setScannedBarcode(event.gtin)
+      return
+    }
+    const code = event.gtin
+    void lookupTill(code, branchId, online).then((r) => {
+      if (!r.found || !r.product) {
+        onBarcodeNotFound?.(code)
+        return
+      }
+      handleProductAdd(r.product)
+      if (r.pack) {
+        const pid = r.product.product_id!
+        const line = useCartStore.getState().items.find((i) => i.product_id === pid)
+        if (line?.sell_unit?.pack_size_id !== r.pack.pack_size_id) setSellUnit(pid, r.pack)
+      }
+    }).catch(() => toast.error("Couldn't read the product list on this computer. Reload the page and try again."))
+  }, [tillActive, branchId, online, onBarcodeNotFound, handleProductAdd, setSellUnit])
 
   useBarcodeScanner({
     enabled: scannerEnabled && !cameraOpen,
@@ -179,7 +210,9 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
             setSearchText(e.target.value)
             setScannedBarcode(null)
           }}
-          placeholder="Scan barcode or search product…"
+          id="pos-search"
+          aria-keyshortcuts="F2"
+          placeholder="Scan barcode or search product…  (F2)"
           className="w-full h-14 pl-12 pr-14 text-[15px] border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent bg-[var(--pt-surface)]"
         />
         <button

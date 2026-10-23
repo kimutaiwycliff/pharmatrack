@@ -15,7 +15,10 @@ export function OfflineSync() {
       if (running.current) return
       running.current = true
       try {
-        const { synced, dropped, rejected } = await syncOfflineSales()
+        const { synced, dropped, rejected, authRequired } = await syncOfflineSales()
+        if (authRequired) {
+          toast.error("Your sign-in expired, so offline sales can't upload yet. Sign out and back in — they're still saved on this computer.", { id: "offline-auth", duration: 12_000 })
+        }
         if (synced > 0) {
           toast.success(`Synced ${synced} offline sale${synced > 1 ? "s" : ""}`)
           // Server stock changed — refresh the POS product list + inventory /

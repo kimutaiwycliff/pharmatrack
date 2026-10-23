@@ -57,6 +57,12 @@ export async function proxy(request: NextRequest) {
   const needsAuth = isProtectedPage || isProtectedApi
 
   if (!hasSession && needsAuth) {
+    // APIs answer 401 instead of redirecting: a fetch() follows redirects, so a
+    // queued offline sale POSTed after sign-out would land on the login page's
+    // 200 and be marked "synced" — lost. Pages still go to /login.
+    if (isProtectedApi) {
+      return NextResponse.json({ error: "Your sign-in has expired. Sign in again.", code: "unauthenticated" }, { status: 401 })
+    }
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = "/login"
     return NextResponse.redirect(loginUrl)

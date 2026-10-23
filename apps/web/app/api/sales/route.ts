@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { nairobiYYMMDD } from "@pharmatrack/core/sync"
+import { saleTimestamp } from "@/lib/sales/sold-at"
 import { z } from "zod"
 import { and, eq, gt, gte, lte, asc, desc, ilike, inArray, sql } from "drizzle-orm"
 import {
@@ -67,12 +69,15 @@ const saleSchema = z.object({
   // Idempotency key for offline sales — the server dedupes on it so a re-synced
   // sale never creates a duplicate.
   offline_reference: z.string().nullable().optional(),
+  // When a queued offline sale actually happened. Only honoured together with
+  // offline_reference, never in the future and at most 30 days back —
+  // otherwise the sale is dated when it reaches the server.
+  sold_at: z.string().datetime({ offset: true }).optional(),
 })
 
-function receiptNumber(seq: number): string {
-  const d = new Date()
-  const yymmdd = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`
-  return `RCP-${yymmdd}-${String(seq).padStart(6, "0")}`
+function receiptNumber(seq: number, at: Date): string {
+  // Nairobi calendar day, whatever timezone the server runs in.
+  return `RCP-${nairobiYYMMDD(at.getTime())}-${String(seq).padStart(6, "0")}`
 }
 
 export async function GET(request: NextRequest) {
@@ -245,7 +250,8 @@ export async function POST(request: NextRequest) {
     if (shortfalls.length > 0) throw new InsufficientStockError(shortfalls)
 
     const seqRows = (await db.execute(sql`select nextval('receipt_number_seq')::int as n`)) as unknown as Array<{ n: number }>
-    const receipt = receiptNumber(seqRows[0]!.n)
+    const soldAt = saleTimestamp(data.offline_reference, data.sold_at)
+    const receipt = receiptNumber(seqRows[0]!.n, soldAt)
 
     const [saleRow] = await db.insert(sale).values({
       organization_id: ctx.organizationId,
@@ -264,6 +270,7 @@ export async function POST(request: NextRequest) {
       change_given: data.change_given != null ? String(data.change_given) : null,
       customer_name: data.customer_name,
       customer_phone: data.customer_phone,
+      created_at: soldAt,
     }).returning()
 
     // Build sale_item rows with FEFO batch deduction. `meta` runs parallel to the

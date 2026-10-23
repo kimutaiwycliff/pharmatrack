@@ -137,28 +137,31 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClo
         <Button
           variant="outline"
           onClick={() => onPay("cash")}
+          aria-keyshortcuts="F8"
           disabled={!hasItems || submitting}
           className="h-14 flex-col gap-1 text-sm font-bold"
         >
           <span className="text-lg">💵</span>
-          CASH
+          <span>CASH <kbd className="hidden lg:inline ml-1 text-[10px] font-semibold opacity-60">F8</kbd></span>
         </Button>
         <Button
           onClick={() => onPay("mpesa")}
+          aria-keyshortcuts="F9"
           disabled={!hasItems || submitting}
           className="h-14 flex-col gap-1 text-sm font-bold bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white"
         >
           <span className="font-black text-base tracking-tight">M·P</span>
-          M-PESA
+          <span>M-PESA <kbd className="hidden lg:inline ml-1 text-[10px] font-semibold opacity-70">F9</kbd></span>
         </Button>
         <Button
           variant="outline"
           onClick={() => onPay("split")}
+          aria-keyshortcuts="F4"
           disabled={!hasItems || submitting}
           className="h-14 flex-col gap-1 text-sm font-bold"
         >
           <span className="text-lg">⚡</span>
-          SPLIT
+          <span>SPLIT <kbd className="hidden lg:inline ml-1 text-[10px] font-semibold opacity-60">F4</kbd></span>
         </Button>
       </div>
     </div>
