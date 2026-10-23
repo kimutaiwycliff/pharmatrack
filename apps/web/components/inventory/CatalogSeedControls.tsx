@@ -5,21 +5,23 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Sparkles, Loader2, Trash2, Rocket, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { QuickStartDialog } from "./QuickStartDialog"
-import { CatalogReviewDialog } from "./CatalogReviewDialog"
+import { QuickStartPicker } from "./QuickStartPicker"
+import { QuickStartPrices } from "./QuickStartPrices"
 
-interface SeedStatus { catalogTotal: number; seeded: number }
+interface SeedStatus { catalogTotal: number; seeded: number; quickStart?: number }
 
 /**
- * Quick Start entry: load the Kenyan retail catalogue by department (products are
- * created active & priced), then tune price + opening stock in the review grid.
- * Owner/manager only (the API enforces this too).
+ * Quick Start entry: pick products from the PPB register + everyday range
+ * (QuickStartPicker), set their prices (QuickStartPrices), then do a stock
+ * take. Owner/manager only (the API enforces this too).
  */
-export function CatalogSeedControls({ canManage, branchId }: { canManage: boolean; branchId: string | null }) {
+export function CatalogSeedControls({ canManage }: { canManage: boolean; branchId?: string | null }) {
   const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [wizard, setWizard] = useState(false)
   const [review, setReview] = useState(false)
+  // Products the picker just added — the prices step shows only these.
+  const [justAdded, setJustAdded] = useState<string[] | undefined>(undefined)
 
   const { data } = useQuery<SeedStatus>({
     queryKey: ["catalog-seed-status"],
@@ -33,7 +35,8 @@ export function CatalogSeedControls({ canManage, branchId }: { canManage: boolea
   })
 
   if (!canManage || !data) return null
-  const hasSeeded = data.seeded > 0
+  const added = data.quickStart ?? data.seeded
+  const hasSeeded = added > 0
 
   async function unseed() {
     setBusy(true)
@@ -62,20 +65,20 @@ export function CatalogSeedControls({ canManage, branchId }: { canManage: boolea
             <p className="text-[13px] font-semibold text-[var(--pt-green-700)]">Quick Start catalogue</p>
             <p className="text-[12px] text-[var(--pt-text-secondary)]">
               {hasSeeded
-                ? `${data.seeded} of ${data.catalogTotal} products loaded — set prices & opening stock to sell`
-                : `Load common products by department in seconds — active & priced, ready to tune`}
+                ? `${added} products added with Quick Start — pick more, or set their prices`
+                : `Pick the products you stock from the PPB register and everyday range — then set prices and do your stock take`}
             </p>
           </div>
         </div>
         <div className="flex items-center flex-wrap gap-2 shrink-0">
           {hasSeeded && (
-            <Button variant="outline" onClick={unseed} disabled={busy} className="gap-1.5 h-9" title="Remove untouched seeded products">
+            <Button variant="outline" onClick={unseed} disabled={busy} className="gap-1.5 h-9" title="Undo Quick Start: remove its products that have no stock or sales yet" aria-label="Undo Quick Start">
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
             </Button>
           )}
           {hasSeeded && (
-            <Button variant="outline" onClick={() => setReview(true)} className="gap-1.5 h-9">
-              <Rocket size={14} /> Price &amp; stock
+            <Button variant="outline" onClick={() => { setJustAdded(undefined); setReview(true) }} className="gap-1.5 h-9">
+              <Rocket size={14} /> Set prices
             </Button>
           )}
           <Button onClick={() => setWizard(true)} className="gap-1.5 h-9 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white">
@@ -84,12 +87,19 @@ export function CatalogSeedControls({ canManage, branchId }: { canManage: boolea
         </div>
       </div>
 
-      <QuickStartDialog
-        open={wizard}
-        onClose={() => setWizard(false)}
-        onSeeded={() => { setWizard(false); setReview(true) }}
-      />
-      <CatalogReviewDialog open={review} onClose={() => setReview(false)} branchId={branchId} />
+      {wizard && (
+        <QuickStartPicker
+          onClose={() => setWizard(false)}
+          onAdded={(ids) => {
+            setWizard(false)
+            void qc.invalidateQueries({ queryKey: ["catalog-seed-status"] })
+            void qc.invalidateQueries({ queryKey: ["products"] })
+            void qc.invalidateQueries({ queryKey: ["categories"] })
+            if (ids.length) { setJustAdded(ids); setReview(true) }
+          }}
+        />
+      )}
+      {review && <QuickStartPrices ids={justAdded} onClose={() => setReview(false)} />}
     </>
   )
 }

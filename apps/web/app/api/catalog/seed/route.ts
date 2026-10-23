@@ -4,6 +4,7 @@ import { dbAdmin, withTenant, drug_catalog, product, product_batch, sale_item, c
 import { DEFAULT_TAXONOMY, findTaxonomyEntry, taxonomyKey } from "@pharmatrack/core"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { z } from "zod"
+import { zUuid } from "@/lib/api/validation"
 
 // Quick Start: materialise the shared drug_catalog into an org's products by
 // department — created ACTIVE and PRICED from the catalog's reference prices so
@@ -44,15 +45,20 @@ export async function GET() {
     .map((c) => ({ category: c.category!, total: c.total, seeded: seededMap.get(c.category) ?? 0 }))
     .sort((a, b) => b.total - a.total)
 
+  // Everything Quick Start added (curated or PPB picks) — the web banner's count.
+  const [qs] = await withTenant(ctx, (db) => db.select({ n: sql<number>`count(*)::int` }).from(product).where(eq(product.quick_start, true)))
   return NextResponse.json({
     departments,
     catalogTotal: departments.reduce((n, d) => n + d.total, 0),
     seeded: departments.reduce((n, d) => n + d.seeded, 0),
+    quickStart: qs?.n ?? 0,
   })
 }
 
 const seedBody = z.object({
-  categories: z.array(z.string()).optional(), // omit/empty => all departments
+  categories: z.array(z.string()).optional(), // omit/empty => all departments (Android Quick Start)
+  // The web picker: exactly these catalogue rows (curated or PPB).
+  catalog_ids: z.array(zUuid()).min(1).max(2000).optional(),
 }).optional()
 
 // POST — seed selected departments (or all). Idempotent: inserts products that
@@ -66,12 +72,14 @@ export async function POST(request: NextRequest) {
   const parsed = seedBody.safeParse(await request.json().catch(() => undefined))
   if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   const wantCats = parsed.data?.categories?.filter(Boolean) ?? []
+  const wantIds = parsed.data?.catalog_ids ?? []
 
-  const catalogRows = await dbAdmin().select().from(drug_catalog).where(and(
-    curated,
-    wantCats.length ? inArray(drug_catalog.category, wantCats) : isNotNull(drug_catalog.category),
-  ))
-  if (catalogRows.length === 0) return NextResponse.json({ seeded: 0, updated: 0, alreadyPresent: 0 })
+  const catalogRows = await dbAdmin().select().from(drug_catalog).where(
+    wantIds.length
+      ? inArray(drug_catalog.id, wantIds)
+      : and(curated, wantCats.length ? inArray(drug_catalog.category, wantCats) : isNotNull(drug_catalog.category)),
+  )
+  if (catalogRows.length === 0) return NextResponse.json({ seeded: 0, updated: 0, alreadyPresent: 0, created_ids: [] })
 
   const result = await withTenant(ctx, async (db) => {
     // Materialise a two-level taxonomy for this org: top-level departments
@@ -131,8 +139,13 @@ export async function POST(request: NextRequest) {
     const seeded = await db.select({ catalog_id: product.catalog_id, id: product.id, selling_price: product.selling_price })
       .from(product).where(isNotNull(product.catalog_id))
     const seededByCat = new Map(seeded.map((s) => [s.catalog_id, s]))
+    // Never a second copy of a product the pharmacy already has (added by hand
+    // or imported): same name + strength + form, like POST /api/products.
+    const key = (n: string, st?: string | null, f?: string | null) => `${n.trim().toLowerCase()}|${(st ?? "").trim().toLowerCase()}|${(f ?? "").trim().toLowerCase()}`
+    const own = await db.select({ name: product.name, strength: product.strength, dosage_form: product.dosage_form }).from(product)
+    const ownKeys = new Set(own.map((p) => key(p.name, p.strength, p.dosage_form)))
 
-    const toInsert = catalogRows.filter((c) => !seededByCat.has(c.id)).map((c) => ({
+    const toInsert = catalogRows.filter((c) => !seededByCat.has(c.id) && !ownKeys.has(key(c.name, c.strength, c.dosage_form))).map((c) => ({
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       catalog_id: c.id,
@@ -156,8 +169,9 @@ export async function POST(request: NextRequest) {
       // price") — they used to go live at KES 0. Setting a price in the
       // review grid switches them on.
       is_active: Number(c.default_selling_price ?? 0) > 0,
+      quick_start: true,
     }))
-    if (toInsert.length) await db.insert(product).values(toInsert)
+    const createdIds = toInsert.length ? (await db.insert(product).values(toInsert).returning({ id: product.id })).map((r) => r.id) : []
 
     // Back-fill the legacy inactive/unpriced rows so re-running Quick Start fixes them.
     let updated = 0
@@ -178,7 +192,7 @@ export async function POST(request: NextRequest) {
       updated++
     }
 
-    return { seeded: toInsert.length, updated, alreadyPresent: seededByCat.size }
+    return { seeded: toInsert.length, updated, alreadyPresent: catalogRows.length - toInsert.length, created_ids: createdIds }
   })
 
   return NextResponse.json(result)
@@ -191,9 +205,9 @@ export async function DELETE() {
   const { ctx } = r
 
   const result = await withTenant(ctx, async (db) => {
-    // Only Quick Start's own products — never ones a teammate added from a PPB match.
-    const seeded = await db.select({ id: product.id }).from(product)
-      .innerJoin(drug_catalog, eq(drug_catalog.id, product.catalog_id)).where(curated)
+    // Only Quick Start's own products (migration 038) — never ones a teammate
+    // added by hand from a catalogue match.
+    const seeded = await db.select({ id: product.id }).from(product).where(eq(product.quick_start, true))
     const ids = seeded.map((p) => p.id)
     if (ids.length === 0) return { removed: 0, kept: 0 }
     const [batched, sold] = await Promise.all([
