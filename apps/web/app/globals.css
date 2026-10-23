@@ -52,6 +52,9 @@
   /* PharmaTrack brand tokens */
   --pt-green: #16a34a;
   --pt-green-600: #15803d;
+  /* Chart series (validated pair, dataviz check): sales vs profit */
+  --pt-viz-sales: #2a78d6;
+  --pt-viz-profit: #16a34a;
   /* Fixed (non-theme-shifting) shade for white text on a green button — dark
      mode's --pt-green-600 equals light mode's --pt-green, which fails
      WCAG AA (4.5:1) for white text. This token stays constant across themes. */
@@ -113,6 +116,8 @@
   /* PharmaTrack brand tokens — dark */
   --pt-green: #22c55e;
   --pt-green-600: #16a34a;
+  --pt-viz-sales: #3987e5;
+  --pt-viz-profit: #16a34a;
   --pt-green-cta: #15803d;
   --pt-green-50: #0f2a1b;
   --pt-green-100: #173a26;

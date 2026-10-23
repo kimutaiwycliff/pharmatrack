@@ -12,6 +12,15 @@ import { Label } from "@/components/ui/label"
 import { PaymentPeriodDialog } from "@/components/platform/PaymentPeriodDialog"
 import { PreviousTrialsPanel, TrialRequestsPanel, type PreviousTrial, type TrialRequest } from "@/components/platform/TrialSignalsPanel"
 import { daysLeft, endOfNairobiDay, nairobiDay } from "@/lib/billing/period"
+import { TenantHealthLine, TenantInsightsTab, type InsightsTab } from "@/components/platform/insights/TenantInsights"
+
+type Tab = InsightsTab | "billing"
+const TABS: Array<{ key: Tab; label: string }> = [
+  { key: "overview", label: "Overview" },
+  { key: "usage", label: "Usage" },
+  { key: "team", label: "Team & devices" },
+  { key: "billing", label: "Billing" },
+]
 
 interface Plan { id: string; code: string; name: string; price_kes: number; interval: string }
 interface Sub {
@@ -55,6 +64,18 @@ export default function TenantDetailPage() {
   const [scheduling, setScheduling] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [purging, setPurging] = useState(false)
+  // ?tab=billing deep-links (e.g. from the tenants list's renewal column).
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("tab")
+    return TABS.some((x) => x.key === t) ? (t as Tab) : "overview"
+  })
+  function chooseTab(t: Tab) {
+    setTab(t)
+    const url = new URL(window.location.href)
+    if (t === "overview") url.searchParams.delete("tab")
+    else url.searchParams.set("tab", t)
+    window.history.replaceState(null, "", url)
+  }
 
   const { data, isLoading } = useQuery<TenantDetail>({
     queryKey: ["tenant", orgId],
@@ -201,16 +222,31 @@ export default function TenantDetailPage() {
   const t = data.tenant
   const nameMatches = confirmName.trim().toLowerCase() === t.name.trim().toLowerCase()
   return (
-    <div className="max-w-3xl">
-      <Link href="/platform" className="inline-flex items-center gap-1.5 text-sm text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)] mb-4"><ArrowLeft size={15} /> All tenants</Link>
+    <div className="max-w-7xl mx-auto">
+      <Link href="/platform" className="inline-flex items-center gap-1.5 text-sm text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)] mb-4"><ArrowLeft size={15} /> All pharmacies</Link>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">{t.name}</h1>
-        <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
-          Owner {t.owner_email ?? "—"}{t.email && t.email !== t.owner_email ? ` · ${t.email}` : ""}{t.registration_number ? ` · PPB ${t.registration_number}` : ""} · {data.branch_count} branches · {data.staff_count} staff · since {new Date(t.created_at).toLocaleDateString("en-KE", { month: "short", year: "numeric" })}
-        </p>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight">{t.name}</h1>
+          <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
+            Owner {t.owner_name ? `${t.owner_name} · ` : ""}{t.owner_email ?? "—"}{t.registration_number ? ` · PPB ${t.registration_number}` : ""} · {data.branch_count} branch{data.branch_count === 1 ? "" : "es"} · {data.staff_count} staff · since {new Date(t.created_at).toLocaleDateString("en-KE", { month: "short", year: "numeric" })}
+          </p>
+          <TenantHealthLine orgId={orgId} />
+        </div>
+        {sub && <SubscriptionSummary sub={sub} />}
       </div>
 
+      <div className="border-b border-[var(--pt-border)] mb-5 flex gap-1 overflow-x-auto" role="tablist" aria-label="Pharmacy sections">
+        {TABS.map((x) => (
+          <button key={x.key} role="tab" aria-selected={tab === x.key} onClick={() => chooseTab(x.key)}
+            className={`px-3.5 h-10 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap transition-colors ${tab === x.key ? "border-[var(--pt-green)] text-[var(--pt-text)]" : "border-transparent text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)]"}`}>
+            {x.label}{x.key === "billing" && data.trial_requests.some((r) => r.status === "pending") ? <span className="ml-1.5 inline-block w-2 h-2 rounded-full bg-blue-500 align-middle" aria-label="pending trial request" /> : null}
+          </button>
+        ))}
+      </div>
+
+      {tab !== "billing" ? <TenantInsightsTab orgId={orgId} tab={tab} /> : (
+      <div className="max-w-3xl">
       <TrialRequestsPanel orgId={orgId} requests={data.trial_requests} onChanged={() => void refresh()} />
 
       {/* Subscription */}
@@ -398,6 +434,8 @@ export default function TenantDetailPage() {
           </div>
         )}
       </section>
+      </div>
+      )}
       {dialog && (
         dialog.mode === "confirm"
           ? <PaymentPeriodDialog mode="confirm" claim={dialog.claim} orgId={orgId} sub={sub} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void refresh() }} />
@@ -421,7 +459,7 @@ function SubscriptionSummary({ sub }: { sub: Sub }) {
   const until = s === "trialing" ? sub.trial_ends_at : sub.current_period_end
   const left = until ? daysLeft(until) : null
   return (
-    <div className="text-right">
+    <div className="sm:text-right">
       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${STATUS_STYLE[s] ?? ""}`}>{s.replace("_", " ")}</span>
       {until && (
         <p className="text-xs text-[var(--pt-text-secondary)] mt-1">

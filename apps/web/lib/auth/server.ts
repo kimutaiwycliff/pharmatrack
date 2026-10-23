@@ -10,6 +10,7 @@ import { pinLogin } from "@/lib/auth/pin-plugin"
 import { assertNotLocked, failedAttempt, succeeded } from "@/lib/auth/lockout"
 import { authRateLimitStorage } from "@/lib/rate-limit"
 import { OFFLINE_MODE } from "@/lib/offline-mode"
+import { recordActivity, sourceFromUserAgent } from "@/lib/insights/activity"
 
 // Third-party integrations are opt-in via env so local/dev runs without keys.
 const googleConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
@@ -83,6 +84,17 @@ export const auth = betterAuth({
       if (r && typeof r === "object" && r.statusCode === 401) await failedAttempt("password", email)
       else if (!(r && typeof r === "object" && typeof r.statusCode === "number" && r.statusCode >= 400)) await succeeded("password", email)
     }),
+  },
+  // Operator insights: every new session is a sign-in (email, Google, PIN,
+  // the phone app). Fire-and-forget — recordActivity never throws.
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (s) => {
+          void recordActivity({ userId: s.userId, organizationId: s.activeOrganizationId as string | null | undefined, source: sourceFromUserAgent(s.userAgent), login: true })
+        },
+      },
+    },
   },
   emailAndPassword: {
     enabled: true,
