@@ -3,15 +3,14 @@
 import { useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { Search, PackagePlus, ChevronLeft, ChevronRight, Upload, Tag, Loader2, ClipboardCheck } from "lucide-react"
+import { Search, PackagePlus, ChevronLeft, ChevronRight, Tag, Loader2, ClipboardCheck } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
-import { BulkImportDialog } from "@/components/inventory/BulkImportDialog"
 import { CatalogSeedControls } from "@/components/inventory/CatalogSeedControls"
 import { LabelPrintDialog } from "@/components/labels/LabelPrintDialog"
-import { useSessionStore, useCan } from "@/lib/store/sessionStore"
+import { useCan } from "@/lib/store/sessionStore"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
 import type { Organization } from "@pharmatrack/types"
@@ -83,8 +82,6 @@ function useInventory(branchId: string | null, ready: boolean, q: string, status
 export default function InventoryPage() {
   const router = useRouter()
   const { branchId, ready, isAll } = useBranchScope()
-  const branches = useSessionStore((s) => s.branches)
-  const branchName = branches.find((b) => b.id === branchId)?.name
   const canManageCatalog = useCan("catalog.seed")
   const canPlanRestock = useCan("purchasing.manage")
   const canReceive = useCan("stock.receive")
@@ -92,7 +89,6 @@ export default function InventoryPage() {
   const [rawSearch, setRawSearch] = useState("")
   const [status, setStatus] = useState<StatusFilter>("all")
   const [page, setPage] = useState(1)
-  const [showImport, setShowImport] = useState(false)
   const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
   const [backfilling, setBackfilling] = useState(false)
 
@@ -153,14 +149,6 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowImport(true)}
-            className="gap-2"
-          >
-            <Upload size={16} />
-            Import CSV
-          </Button>
           <Button
             variant="outline"
             onClick={backfillAndPrint}
@@ -283,13 +271,6 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {showImport && (
-        <BulkImportDialog
-          branchId={branchId}
-          branchName={branchName}
-          onClose={() => setShowImport(false)}
-        />
-      )}
 
       <LabelPrintDialog
         open={labelItems !== null}

@@ -92,6 +92,8 @@ export const product = pgTable("product", {
   requires_prescription: boolean("requires_prescription").notNull().default(false),
   image_url: text("image_url"),
   is_active: boolean("is_active").notNull().default(true),
+  // Added by Quick Start — "Undo Quick Start" removes only these (migration 038).
+  quick_start: boolean("quick_start").notNull().default(false),
   created_by: text("created_by").references(() => user.id),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
