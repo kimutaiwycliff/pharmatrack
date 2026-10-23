@@ -9,6 +9,10 @@ import { Eye, EyeOff } from "lucide-react"
 import { authClient } from "@/lib/auth/client"
 import { Turnstile, turnstileEnabled } from "@/components/auth/Turnstile"
 import { GoogleButton } from "@/components/auth/GoogleButton"
+import { signInErrorMessage } from "@/lib/retry-text"
+import { useHydrated } from "@/lib/hooks/useHydrated"
+
+const retryAfterOf = (h: Headers) => Number(h.get("retry-after") ?? h.get("x-retry-after") ?? 0) || 0
 
 export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const [tab, setTab] = useState<"email" | "pin">("email")
@@ -20,17 +24,22 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
   const [captcha, setCaptcha] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const hydrated = useHydrated()
 
   async function onEmailSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setPending(true)
+    let retryAfter = 0
     const res = await authClient.signIn.email({
       email, password,
-      fetchOptions: captcha ? { headers: { "x-captcha-response": captcha } } : undefined,
+      fetchOptions: {
+        ...(captcha ? { headers: { "x-captcha-response": captcha } } : {}),
+        onError: (c) => { retryAfter = retryAfterOf(c.response.headers) },
+      },
     })
     if (res.error) {
-      setError(res.error.message ?? "Invalid email or password")
+      setError(signInErrorMessage(res.error.status, res.error.message, retryAfter, "Invalid email or password"))
       setPending(false)
       return
     }
@@ -50,7 +59,7 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
     })
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { message?: string }
-      setError(body.message ?? "Invalid phone or PIN")
+      setError(signInErrorMessage(res.status, body.message, retryAfterOf(res.headers), "Invalid phone or PIN"))
       setPending(false)
       return
     }
@@ -82,7 +91,7 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
         </div>
 
         {tab === "email" ? (
-          <form onSubmit={onEmailSubmit} className="space-y-4">
+          <form method="post" onSubmit={onEmailSubmit} className="space-y-4">
             {googleEnabled && (
               <>
                 <GoogleButton label="Continue with Google" />
@@ -117,13 +126,13 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
               <p className="text-sm text-[var(--pt-red)] bg-[var(--pt-red-50)] px-3 py-2 rounded-lg">{error}</p>
             )}
 
-            <Button type="submit" disabled={pending || (turnstileEnabled && !captcha)}
+            <Button type="submit" disabled={!hydrated || pending || (turnstileEnabled && !captcha)}
               className="w-full h-11 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white font-semibold mt-2">
               {pending ? "Signing in…" : "Sign in"}
             </Button>
           </form>
         ) : (
-          <form onSubmit={onPinSubmit} className="space-y-4">
+          <form method="post" onSubmit={onPinSubmit} className="space-y-4">
             <div>
               <Label htmlFor="phone" className="text-sm font-medium">Phone</Label>
               <Input id="phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phone}
@@ -140,7 +149,7 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
               <p className="text-sm text-[var(--pt-red)] bg-[var(--pt-red-50)] px-3 py-2 rounded-lg">{error}</p>
             )}
 
-            <Button type="submit" disabled={pending || pin.length < 4 || !phone}
+            <Button type="submit" disabled={!hydrated || pending || pin.length < 4 || !phone}
               className="w-full h-11 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white font-semibold mt-2">
               {pending ? "Signing in…" : "Sign in with PIN"}
             </Button>

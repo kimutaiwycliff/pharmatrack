@@ -23,7 +23,8 @@ export function httpMessage(status: number, serverText?: string | null): string 
   if (status === 403) return human ? text : NO_PERMISSION
   if (status === 404) return human ? text : "That item no longer exists. Go back and refresh."
   if (status === 408 || status === 504) return TIMEOUT_ERROR
-  if (status === 429) return "Too many attempts. Wait a minute and try again."
+  // The server says what was limited and for how long ("Too many wrong PINs…").
+  if (status === 429) return human ? text : "Too many attempts. Wait a minute and try again."
   if (status >= 500) return SERVER_ERROR
   return human ? text : GENERIC_ERROR
 }
