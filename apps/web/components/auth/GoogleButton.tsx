@@ -16,7 +16,7 @@ export function GoogleButton({ label = "Continue with Google" }: { label?: strin
       onClick={async () => {
         setPending(true)
         try {
-          await authClient.signIn.social({ provider: "google", callbackURL: "/home" })
+          await authClient.signIn.social({ provider: "google", callbackURL: "/home", errorCallbackURL: "/login" })
         } catch {
           setPending(false)
         }

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Bell, AlertTriangle, Clock, CreditCard, Phone, Tag } from "lucide-react"
+import { Bell, AlertTriangle, Clock, CreditCard, Phone, Tag, MonitorSmartphone } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -19,6 +19,7 @@ interface NotificationsData {
   trialEndingSoon: { trial_ends_at: string; daysLeft: number } | null
   needsPrice?: number
   toCall?: number
+  devicesWaiting?: number
 }
 
 export function NotificationsMenu({ branchId, ready }: { branchId: string | null; ready: boolean }) {
@@ -41,7 +42,21 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
   const trial = data?.trialEndingSoon ?? null
   const needsPrice = data?.needsPrice ?? 0
   const toCall = data?.toCall ?? 0
-  const count = lowStock.length + expiring.length + (trial ? 1 : 0) + (needsPrice > 0 ? 1 : 0) + (toCall > 0 ? 1 : 0)
+  // Someone may be standing at a new till waiting for approval (ADR-018), so
+  // check that more often than the rest of the bell. 403 = not an approver.
+  const { data: waitingNow } = useQuery<number>({
+    queryKey: ["device-requests-count"],
+    queryFn: async () => {
+      const res = await fetch("/api/device-requests")
+      if (!res.ok) return 0
+      return ((await res.json()) as { requests: unknown[] }).requests.length
+    },
+    enabled: ready && (data?.devicesWaiting !== undefined),
+    refetchInterval: 30_000,
+    retry: false,
+  })
+  const devicesWaiting = waitingNow ?? data?.devicesWaiting ?? 0
+  const count = lowStock.length + expiring.length + (trial ? 1 : 0) + (needsPrice > 0 ? 1 : 0) + (toCall > 0 ? 1 : 0) + (devicesWaiting > 0 ? 1 : 0)
   const hasAny = count > 0
 
   return (
@@ -101,6 +116,22 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
                   </div>
                 </DropdownMenuItem>
               ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+          </>
+        )}
+
+        {devicesWaiting > 0 && (
+          <>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Devices</DropdownMenuLabel>
+              <DropdownMenuItem className="gap-2 items-start py-2" onClick={() => router.push("/settings?tab=devices")}>
+                <MonitorSmartphone size={15} className="mt-0.5 text-amber-600 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium">{devicesWaiting} device{devicesWaiting === 1 ? "" : "s"} waiting for approval</p>
+                  <p className="text-xs text-[var(--pt-text-tertiary)]">Someone is trying to sign in on a new device</p>
+                </div>
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
           </>

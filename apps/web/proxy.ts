@@ -30,6 +30,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/auth", "/api/health", "/api/webhooks", "/api/mpesa", "/api/cron", "/api/setup", "/api/signup", "/api/contact",
   "/api/desktop", // installer downloads + updater manifest - anonymous marketing-site visitors need these
   "/api/sync", // registered devices authenticate with their own device token (lib/sync/device-auth.ts), not a session cookie
+  "/api/device-pairing", // a blocked device asks for approval before anyone is signed in (ADR-018); its request secret is the credential
 ]
 
 const underPrefix = (pathname: string, prefix: string) =>

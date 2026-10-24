@@ -9,11 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { ThisComputerCard } from "@/components/till/ThisComputerCard"
+import { DeviceLockCard } from "@/components/settings/DeviceLockCard"
 import { useTillStore } from "@/lib/till/store"
 
 interface DeviceRow {
   id: string; name: string; code: string; branch_name: string | null; platform: string | null; app_version: string | null
   allocation_percent: number | null; last_seen_at: string | null; last_sync_at: string | null; revoked_at: string | null
+  purpose: "till" | "office"
   created_at: string; units_held: number; open_issues: number
 }
 
@@ -47,6 +49,15 @@ export function DevicesPanel() {
     },
     refetchInterval: 60_000,
   })
+  const { data: settings } = useQuery<{ branches: { id: string; name: string }[] }>({
+    queryKey: ["settings-branches"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings")
+      if (!res.ok) throw new Error("Failed to load branches")
+      return res.json() as Promise<{ branches: { id: string; name: string }[] }>
+    },
+    staleTime: 5 * 60_000,
+  })
 
   async function patch(id: string, body: Record<string, unknown>, ok: string) {
     const res = await fetch(`/api/devices/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
@@ -58,7 +69,9 @@ export function DevicesPanel() {
   }
 
   async function revoke(d: DeviceRow) {
-    const yes = await confirm(`${d.name} (${d.code}) will stop syncing and selling offline immediately. Sales already on it that haven't synced will be stuck until it's registered again.`, {
+    const yes = await confirm(d.purpose === "office"
+      ? `${d.name} (${d.code}) is no longer approved. Anyone signed in on it is signed out straight away.`
+      : `${d.name} (${d.code}) will stop syncing and selling offline immediately, and anyone signed in on it is signed out. Sales already on it that haven't synced will be stuck until it's registered again.`, {
       title: "Remove this device?", confirmLabel: "Remove device",
     })
     if (yes) await patch(d.id, { revoke: true }, `${d.name} removed`)
@@ -70,7 +83,7 @@ export function DevicesPanel() {
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <h2 className="text-base font-bold">Selling devices</h2>
+        <h2 className="text-base font-bold">Devices</h2>
         <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
           Phones, tablets and computers registered here can sell offline all day. Each gets its own share of branch stock,
           so devices can never sell more than you have, and must sync before midnight. To add a phone, sign in on it as an
@@ -78,6 +91,8 @@ export function DevicesPanel() {
           card below on that computer.
         </p>
       </div>
+
+      <DeviceLockCard branches={(settings?.branches ?? []).map((b) => ({ id: b.id, name: b.name }))} />
 
       <ThisComputerCard onChanged={() => void qc.invalidateQueries({ queryKey: ["devices"] })} />
 
@@ -98,6 +113,9 @@ export function DevicesPanel() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm">{d.name}</span>
                       <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-[var(--pt-muted)] text-[var(--pt-text-secondary)]">{d.code}</span>
+                      {d.purpose === "office" && (
+                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--pt-muted)] text-[var(--pt-text-secondary)]">Back office</span>
+                      )}
                       {d.id === thisDeviceId && (
                         <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--pt-green-50)] text-[var(--pt-green-600)]">This computer</span>
                       )}
@@ -107,6 +125,11 @@ export function DevicesPanel() {
                         </Link>
                       )}
                     </div>
+                    {d.purpose === "office" ? (
+                      <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5">
+                        {d.branch_name ?? "—"} · approved for signing in · last used {ago(d.last_seen_at)}
+                      </p>
+                    ) : (<>
                     <p className="text-xs text-[var(--pt-text-secondary)] mt-0.5">
                       {d.branch_name ?? "—"} · last sync{" "}
                       <span className={today ? "text-[var(--pt-green-600)] font-semibold" : "text-amber-700 dark:text-amber-300 font-semibold"}>
@@ -119,10 +142,11 @@ export function DevicesPanel() {
                       {today ? <CheckCircle2 size={11} className="text-[var(--pt-green)]" /> : <AlertTriangle size={11} className="text-amber-500" />}
                       {today ? "Synced today" : "Not synced today — must sync before midnight"}
                     </p>
+                    </>)}
                   </div>
                   <Button variant="ghost" size="sm" className="gap-1.5 text-[var(--pt-red)]" onClick={() => revoke(d)}><ShieldOff size={14} /> Remove</Button>
                 </div>
-                <div className="mt-3 ml-12 flex flex-wrap items-center gap-2 text-xs">
+                {d.purpose !== "office" && <div className="mt-3 ml-12 flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-[var(--pt-text-secondary)]">Stock share:</span>
                   {editing === d.id ? (
                     <>
@@ -137,7 +161,7 @@ export function DevicesPanel() {
                       {d.allocation_percent == null ? "Automatic (by recent sales)" : `${d.allocation_percent}% fixed`}
                     </button>
                   )}
-                </div>
+                </div>}
               </div>
             )
           })}

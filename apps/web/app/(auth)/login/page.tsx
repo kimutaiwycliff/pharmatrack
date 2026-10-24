@@ -15,7 +15,8 @@ const FEATURES = [
   { icon: "🔒", label: "Role-based access control" },
 ]
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error: oauthError } = await searchParams
   // Brand-new install with no operator yet → send to first-run setup.
   const admins = await dbAdmin().select().from(platform_admin)
   if (admins.length === 0) redirect("/setup")
@@ -111,7 +112,7 @@ export default async function LoginPage() {
             </span>
           </div>
 
-          <LoginForm googleEnabled={!!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)} />
+          <LoginForm googleEnabled={!!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)} oauthError={oauthError ?? null} />
         </div>
       </div>
     </div>

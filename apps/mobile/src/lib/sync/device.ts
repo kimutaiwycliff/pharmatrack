@@ -6,6 +6,7 @@ import { httpMessage, userMessage } from "../errors"
 import { kvGetSync, kvSetSync } from "../kv"
 import { sqlite } from "../../db/database"
 import { EMPTY_ANCHORS } from "./core/clock"
+import { DEVICE_TOKEN_KEY, readDeviceToken } from "./device-key"
 
 // R1 rule 1 — a phone must be registered to sell. A manager/owner signed in
 // online (permission devices.manage) registers it once; the server returns a
@@ -14,7 +15,7 @@ import { EMPTY_ANCHORS } from "./core/clock"
 // Sync uses only the token, so an expired staff login can never block a
 // day's offline sales from uploading.
 
-const TOKEN_KEY = "pharmatrack_device_token"
+const TOKEN_KEY = DEVICE_TOKEN_KEY
 const DEVICE_KEY = "sync_device"
 export const META_KEY = "sync_meta"
 
@@ -27,14 +28,16 @@ export interface DeviceInfo {
   organizationName?: string | null
 }
 
-export const appVersion = (): string => Constants.expoConfig?.version ?? "0.0.0"
+// The JS bundle's own version, reported to the server as the device's
+// app_version. It moves on over-the-air updates, while the native `version`
+// (app.config.ts) only moves with a new APK — so the server can tell which
+// phones already have a JS-only feature, e.g. 1.3.1 sends its device key at
+// sign-in (ADR-018). Bump it whenever a server feature depends on new JS.
+export const APP_BUNDLE_VERSION = "1.3.1"
+export const appVersion = (): string => APP_BUNDLE_VERSION || (Constants.expoConfig?.version ?? "0.0.0")
 
 export async function getDeviceToken(): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(TOKEN_KEY)
-  } catch {
-    return null
-  }
+  return readDeviceToken()
 }
 
 export function getDeviceInfo(): DeviceInfo | null {
@@ -82,7 +85,17 @@ export async function registerDevice(name: string, branchId?: string | null): Pr
     branchId: body.device.branch_id,
     branchName: body.device.branch_name,
   }
-  await SecureStore.setItemAsync(TOKEN_KEY, body.token)
+  await adoptDeviceKey(body.token, device)
+  return { ok: true, device }
+}
+
+/**
+ * Make this phone a registered till with the given key — after registration,
+ * or after a device approval (ADR-018), where the approval request's secret
+ * became the key.
+ */
+export async function adoptDeviceKey(token: string, device: DeviceInfo): Promise<void> {
+  await SecureStore.setItemAsync(TOKEN_KEY, token)
   // A new registration starts a fresh download (cursor null) and a fresh
   // allowance. Pending outbox items are KEPT — they upload under the new token.
   sqlite.withTransactionSync(() => {
@@ -98,5 +111,4 @@ export async function registerDevice(name: string, branchId?: string | null): Pr
     })
     sqlite.runSync("DELETE FROM allowances")
   })
-  return { ok: true, device }
 }

@@ -50,12 +50,22 @@ export async function registerThisComputer(args: { name: string; branchId: strin
     id: body.device.id, name: body.device.name, code: body.device.code, branchId: body.device.branch_id,
     branchName: body.device.branch_name, organizationId: args.organizationId, organizationName: args.organizationName ?? null,
   }
+  await saveTillRegistration(body.token!, device)
+  return { ok: true, device }
+}
+
+/**
+ * Make this browser a registered till with the given key — after
+ * registration, or after a device approval (ADR-018) where the approval
+ * request's secret became the key.
+ */
+export async function saveTillRegistration(token: string, device: DeviceInfo): Promise<void> {
   const db = tillDB()
   const meta = await readMeta()
   // A new registration starts a fresh download (cursor null) and a fresh
   // allowance. Pending outbox items are KEPT — they upload under the new token.
   await db.transaction("rw", db.meta, db.allowances, async () => {
-    await setMeta("token", body.token!, db)
+    await setMeta("token", token, db)
     await setMeta("device", device, db)
     await setMeta("sync", { ...meta, cursor: null, deadline: null, revoked: false, subscriptionInactive: false, clock: meta.clock ?? EMPTY_ANCHORS }, db)
     await db.allowances.clear()
@@ -67,7 +77,6 @@ export async function registerThisComputer(args: { name: string; branchId: strin
     // not supported — fine
   }
   await refreshTillState()
-  return { ok: true, device }
 }
 
 export type ForgetResult = { ok: true } | { ok: false; error: string }

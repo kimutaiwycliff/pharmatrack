@@ -3,9 +3,11 @@ import { z } from "zod"
 import { eq } from "drizzle-orm"
 import { withTenant, device, device_stock_allocation, audit_log } from "@pharmatrack/db"
 import { getApiContext } from "@/lib/api-auth"
+import { endSessionsForDevice } from "@/lib/devices/lock"
 
 // Rename, pin a stock share, or revoke a registered device. Revoking releases
-// its stock allowance immediately and the device can no longer sync.
+// its stock allowance immediately, the device can no longer sync, and anyone
+// signed in on it is signed out (ADR-018).
 const schema = z.object({
   name: z.string().trim().min(2).max(60).optional(),
   allocation_percent: z.number().min(0).max(100).nullable().optional(),
@@ -36,5 +38,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return true
   })
   if (!out) return NextResponse.json({ error: "Device not found" }, { status: 404 })
-  return NextResponse.json({ ok: true })
+  const signedOut = d.revoke ? await endSessionsForDevice(id) : 0
+  return NextResponse.json({ ok: true, signed_out: signedOut })
 }

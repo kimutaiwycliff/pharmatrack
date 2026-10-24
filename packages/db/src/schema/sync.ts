@@ -3,7 +3,8 @@ import { organization, user } from "./auth"
 import { branch } from "./tenancy"
 import { product } from "./catalogue"
 
-// Mirrors infra/migrations/029_offline_sync.sql (offline-first mobile sync).
+// Mirrors infra/migrations/029_offline_sync.sql (offline-first mobile sync)
+// and 041_device_lock.sql (device purpose + approval requests).
 
 export const device = pgTable("device", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -20,6 +21,30 @@ export const device = pgTable("device", {
   last_sync_at: timestamp("last_sync_at", { withTimezone: true }),
   revoked_at: timestamp("revoked_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // 'till' sells (stock share, offline sync) · 'office' = sign-in only (ADR-018, migration 041)
+  purpose: text("purpose").notNull().default("till"),
+})
+
+// A blocked sign-in asking for this device to be approved (ADR-018,
+// migration 041). secret_hash becomes the device's token_hash on approval.
+export const device_request = pgTable("device_request", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organization_id: text("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  user_id: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  branch_id: uuid("branch_id").references(() => branch.id, { onDelete: "set null" }),
+  suggested_name: text("suggested_name").notNull(),
+  platform: text("platform"),
+  user_agent: text("user_agent"),
+  ip_address: text("ip_address"),
+  code: text("code").notNull(),
+  secret_hash: text("secret_hash").notNull(),
+  status: text("status").notNull().default("pending"),
+  device_id: uuid("device_id").references(() => device.id, { onDelete: "set null" }),
+  decided_by: text("decided_by").references(() => user.id, { onDelete: "set null" }),
+  decided_via: text("decided_via"),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+  decided_at: timestamp("decided_at", { withTimezone: true }),
 })
 
 export const device_stock_allocation = pgTable("device_stock_allocation", {
