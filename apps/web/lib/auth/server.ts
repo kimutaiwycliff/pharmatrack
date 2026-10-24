@@ -11,6 +11,7 @@ import { assertNotLocked, failedAttempt, succeeded } from "@/lib/auth/lockout"
 import { authRateLimitStorage } from "@/lib/rate-limit"
 import { OFFLINE_MODE } from "@/lib/offline-mode"
 import { recordActivity, sourceFromUserAgent } from "@/lib/insights/activity"
+import { checkSignInDevice } from "@/lib/devices/lock"
 
 // Third-party integrations are opt-in via env so local/dev runs without keys.
 const googleConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
@@ -90,6 +91,14 @@ export const auth = betterAuth({
   databaseHooks: {
     session: {
       create: {
+        // Approved devices only (ADR-018): one gate for every sign-in method.
+        // Throws DEVICE_NOT_APPROVED (no session) when the pharmacy's lock
+        // applies; otherwise records which approved device this session is on.
+        before: async (s, ctx) => {
+          const headers = ctx?.headers ?? ctx?.request?.headers ?? null
+          const { deviceId } = await checkSignInDevice({ userId: s.userId, headers })
+          if (deviceId) return { data: { ...s, deviceId } }
+        },
         after: async (s) => {
           void recordActivity({ userId: s.userId, organizationId: s.activeOrganizationId as string | null | undefined, source: sourceFromUserAgent(s.userAgent), login: true })
         },
@@ -127,6 +136,13 @@ export const auth = betterAuth({
   ...(googleConfigured
     ? { socialProviders: { google: { clientId: process.env.GOOGLE_CLIENT_ID!, clientSecret: process.env.GOOGLE_CLIENT_SECRET! } } }
     : {}),
+  // The approved device a session signed in on (ADR-018) — set by the
+  // session.create.before hook, never by the client.
+  session: {
+    additionalFields: {
+      deviceId: { type: "string", required: false, input: false },
+    },
+  },
   plugins: [
     // ADR-013 — Android app auth. Translates an incoming `Authorization: Bearer`
     // header into a request-scoped session cookie (so every plugin below this

@@ -50,7 +50,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             <AlertTriangle size={17} className={destructive ? "text-[var(--pt-red)]" : "text-[var(--pt-text-secondary)]"} />
             <h2 className="text-lg font-bold">{state?.options?.title ?? "Are you sure?"}</h2>
           </div>
-          <p className="text-sm text-[var(--pt-text-secondary)] mb-5">{state?.message}</p>
+          <p className="text-sm text-[var(--pt-text-secondary)] mb-5 whitespace-pre-line">{state?.message}</p>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => settle(false)}>
               {state?.options?.cancelLabel ?? "Cancel"}

@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, isNull } from "drizzle-orm"
 import { dbAdmin, device, type TenantArg } from "@pharmatrack/db"
@@ -19,8 +18,8 @@ export interface DeviceContext {
   tenant: TenantArg
 }
 
-export const hashDeviceToken = (token: string) => createHash("sha256").update(token).digest("hex")
-export const newDeviceToken = () => `ptd_${randomBytes(32).toString("base64url")}`
+export { hashDeviceToken, newDeviceToken } from "./device-token"
+import { hashDeviceToken } from "./device-token"
 
 /** Error bodies carry a `code` so the app can tell "retry later" from "re-register". */
 function fail(status: number, code: string, error: string) {
@@ -35,6 +34,8 @@ export async function getDeviceContext(request: NextRequest): Promise<DeviceCont
   const [row] = await dbAdmin().select().from(device)
     .where(and(eq(device.token_hash, hashDeviceToken(token)), isNull(device.revoked_at))).limit(1)
   if (!row) return fail(401, "device_revoked", "This device is not registered (or was removed). Ask a manager to register it again.")
+  // Back-office devices (ADR-018) are approved for sign-in only — they don't sell offline.
+  if (row.purpose === "office") return fail(403, "device_not_till", "This device is approved for back-office use only, not as a selling till.")
 
   const subErr = await requireActiveSubscription(row.organization_id)
   if (subErr) return fail(402, "subscription_inactive", "Subscription inactive — renew to keep syncing.")

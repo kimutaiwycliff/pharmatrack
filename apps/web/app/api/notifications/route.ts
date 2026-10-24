@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm"
-import { withTenant, appointment, customer, product, product_stock, subscription } from "@pharmatrack/db"
+import { withTenant, appointment, customer, device_request, product, product_stock, subscription } from "@pharmatrack/db"
 import { callWindow } from "@/lib/appointments/call-list"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { mergeAcrossBranches, resolveBranchScope } from "@/lib/inventory/aggregate"
@@ -101,6 +101,15 @@ export async function GET(request: NextRequest) {
       toCall = r?.n ?? 0
     }
 
-    return NextResponse.json({ lowStock, expiring, trialEndingSoon, needsPrice, toCall })
+    // Devices waiting for approval (ADR-018) — someone may be standing at a till.
+    // Only sent to approvers — the bell polls requests more often only for them.
+    let devicesWaiting: number | undefined
+    if (ctx.permissions.includes("devices.manage")) {
+      const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(device_request)
+        .where(and(eq(device_request.status, "pending"), sql`${device_request.expires_at} > now()`))
+      devicesWaiting = r?.n ?? 0
+    }
+
+    return NextResponse.json({ lowStock, expiring, trialEndingSoon, needsPrice, toCall, devicesWaiting })
   })
 }

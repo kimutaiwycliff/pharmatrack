@@ -71,7 +71,7 @@ async function deviceShare(db: DrizzleDB, dev: { id: string; branch_id: string; 
   if (dev.allocation_percent != null) return shareFor({ salesByParticipant: new Map(), me: dev.id, pinnedPercent: Number(dev.allocation_percent) })
   const since = sql`now() - make_interval(days => ${SHARE_WINDOW_DAYS})`
   const active = await db.select({ id: device.id }).from(device)
-    .where(and(eq(device.branch_id, dev.branch_id), isNull(device.revoked_at),
+    .where(and(eq(device.branch_id, dev.branch_id), isNull(device.revoked_at), eq(device.purpose, "till"),
       gte(device.last_seen_at, sql`now() - make_interval(days => ${ACTIVE_DEVICE_DAYS})`)))
   const counts = await db.select({
     device_id: sale.device_id, n: sql<string>`count(*)`,

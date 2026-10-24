@@ -42,6 +42,7 @@ interface TenantDetail {
   previous_trials: PreviousTrial[]
   trial_requests: TrialRequest[]
   messaging: { sms_enabled: boolean; whatsapp_enabled: boolean; provider_ready: { sms: boolean; whatsapp: boolean } }
+  device_lock?: { enabled: boolean; managers_exempt: boolean }
 }
 
 const selectCls = "w-full h-10 rounded-lg border border-[var(--pt-border)] px-3 text-sm bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
@@ -109,6 +110,22 @@ export default function TenantDetailPage() {
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ["tenant", orgId] })
     await qc.invalidateQueries({ queryKey: ["tenants"] })
+  }
+
+  // ADR-018 recovery: switch the pharmacy's "Only approved devices" lock off.
+  const [lockBusy, setLockBusy] = useState(false)
+  async function turnOffDeviceLock() {
+    setLockBusy(true)
+    try {
+      const res = await fetch(`/api/platform/tenants/${orgId}/device-lock`, { method: "DELETE" })
+      if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? "Couldn't switch it off")
+      toast.success("Approved-devices lock switched off — staff can sign in on any device")
+      await refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't switch it off")
+    } finally {
+      setLockBusy(false)
+    }
   }
 
   // Paid add-ons: SMS / WhatsApp reminders (lib/notifications/messaging).
@@ -312,6 +329,19 @@ export default function TenantDetailPage() {
                 onChange={(e) => void setAddon(a.key, e.target.checked)} />
             </label>
           ))}
+        </section>
+      ) : null}
+
+      {/* Approved devices only (ADR-018) — recovery for a stuck owner */}
+      {data?.device_lock?.enabled ? (
+        <section className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--pt-text-secondary)]">Approved devices only: on</h2>
+            <p className="text-xs text-[var(--pt-text-tertiary)] mt-1">
+              Staff can only sign in on devices the owner approved{data.device_lock.managers_exempt ? " (managers excepted)" : ""}. Switch it off only if the owner asks — they can turn it back on in Settings → Devices.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" disabled={lockBusy} onClick={() => void turnOffDeviceLock()}>Turn off</Button>
         </section>
       ) : null}
 

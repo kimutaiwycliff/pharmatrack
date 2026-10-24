@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, boolean, timestamp } from "drizzle-orm/pg-core"
 
 // Better Auth schema (core + organization + admin plugins), hand-authored to
 // match Better Auth 1.x defaults so the Drizzle adapter maps without extra
@@ -31,6 +31,8 @@ export const session = pgTable("session", {
   activeOrganizationId: text("activeOrganizationId"),
   // admin plugin
   impersonatedBy: text("impersonatedBy"),
+  // approved-devices lock (ADR-018): the device this session signed in on
+  deviceId: uuid("deviceId"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })

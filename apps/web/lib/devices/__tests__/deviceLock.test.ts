@@ -1,0 +1,75 @@
+import { describe, expect, it } from "vitest"
+import {
+  compareVersions, deviceLockApplies, deviceLockFrom, deviceNameFromUserAgent, formatPairingCode, lockedRoles,
+} from "@pharmatrack/core"
+import { deviceCookie, deviceTokenFrom, DEVICE_COOKIE, DEVICE_HEADER } from "@/lib/devices/lock"
+
+describe("deviceLockFrom", () => {
+  it("is off for pharmacies that never set it", () => {
+    expect(deviceLockFrom({})).toEqual({ enabled: false, managers_exempt: false })
+    expect(deviceLockFrom(null)).toEqual({ enabled: false, managers_exempt: false })
+    expect(deviceLockFrom({ receipt: { show_branch: true } })).toEqual({ enabled: false, managers_exempt: false })
+  })
+  it("only treats a real true as on", () => {
+    expect(deviceLockFrom({ device_lock: { enabled: "yes", managers_exempt: 1 } })).toEqual({ enabled: false, managers_exempt: false })
+    expect(deviceLockFrom({ device_lock: { enabled: true, managers_exempt: true } })).toEqual({ enabled: true, managers_exempt: true })
+  })
+})
+
+describe("deviceLockApplies", () => {
+  const on = { enabled: true, managers_exempt: false }
+  it("never applies to the owner", () => {
+    expect(deviceLockApplies(on, "owner")).toBe(false)
+    expect(deviceLockApplies({ enabled: true, managers_exempt: true }, "owner")).toBe(false)
+  })
+  it("applies to every other role when on", () => {
+    for (const r of ["manager", "pharmacist", "cashier"]) expect(deviceLockApplies(on, r)).toBe(true)
+  })
+  it("frees managers only when the box is ticked", () => {
+    expect(deviceLockApplies({ enabled: true, managers_exempt: true }, "manager")).toBe(false)
+    expect(deviceLockApplies({ enabled: true, managers_exempt: true }, "cashier")).toBe(true)
+  })
+  it("does nothing when off or for people without a role", () => {
+    expect(deviceLockApplies({ enabled: false, managers_exempt: false }, "cashier")).toBe(false)
+    expect(deviceLockApplies(on, null)).toBe(false)
+  })
+  it("lists the roles it covers", () => {
+    expect(lockedRoles(on)).toEqual(["manager", "pharmacist", "cashier"])
+    expect(lockedRoles({ enabled: false, managers_exempt: true })).toEqual(["pharmacist", "cashier"])
+  })
+})
+
+describe("device key on a request", () => {
+  it("reads the Android header first, then the browser cookie", () => {
+    expect(deviceTokenFrom(new Headers({ [DEVICE_HEADER]: "ptd_header", cookie: `${DEVICE_COOKIE}=ptd_cookie` }))).toBe("ptd_header")
+    expect(deviceTokenFrom(new Headers({ cookie: `a=1; ${DEVICE_COOKIE}=ptd_cookie; b=2` }))).toBe("ptd_cookie")
+    expect(deviceTokenFrom(new Headers({ cookie: "better-auth.session_token=x" }))).toBeNull()
+    expect(deviceTokenFrom(null)).toBeNull()
+  })
+  it("stores the key as an httpOnly, long-lived cookie", () => {
+    const c = deviceCookie("ptd_abc")
+    expect(c).toContain(`${DEVICE_COOKIE}=ptd_abc`)
+    expect(c).toContain("HttpOnly")
+    expect(c).toContain("SameSite=Lax")
+    expect(c).toMatch(/Max-Age=\d{8,}/)
+  })
+})
+
+describe("display helpers", () => {
+  it("splits the pairing code for reading aloud", () => {
+    expect(formatPairingCode("482913")).toBe("482 913")
+    expect(formatPairingCode("12")).toBe("12")
+  })
+  it("names a device from its browser", () => {
+    expect(deviceNameFromUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36")).toBe("Chrome on Windows")
+    expect(deviceNameFromUserAgent("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 Edg/130.0")).toBe("Edge on Windows")
+    expect(deviceNameFromUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15")).toBe("Safari on Mac")
+    expect(deviceNameFromUserAgent("okhttp/4.12", "android")).toBe("Android phone")
+    expect(deviceNameFromUserAgent(null)).toBe("This device")
+  })
+  it("compares app versions numerically", () => {
+    expect(compareVersions("1.3.0", "1.4.0")).toBe(-1)
+    expect(compareVersions("1.10.0", "1.9.9")).toBe(1)
+    expect(compareVersions("1.4.0", "1.4")).toBe(0)
+  })
+})

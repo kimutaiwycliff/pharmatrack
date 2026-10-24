@@ -24,6 +24,7 @@ async function cleanup() {
     await admin.delete(s.trial_grant).where(eq(s.trial_grant.organization_id, orgId))
     await admin.delete(s.trial_extension_request).where(eq(s.trial_extension_request.organization_id, orgId))
     await admin.delete(s.sync_issue).where(eq(s.sync_issue.organization_id, orgId))
+    await admin.delete(s.device_request).where(eq(s.device_request.organization_id, orgId))
     await admin.delete(s.device).where(eq(s.device.organization_id, orgId))
     await admin.delete(s.purchase_order).where(eq(s.purchase_order.organization_id, orgId))
     await admin.delete(s.role_permission).where(eq(s.role_permission.organization_id, orgId))
@@ -57,6 +58,11 @@ async function seed(orgId: string, tag: string) {
   await admin.insert(s.reminder_digest).values({ organization_id: orgId, user_id: `rls-user-${orgId}`, digest_date: "2026-10-16", appointment_count: 1, email_status: "sent" })
   await admin.insert(s.user_activity_day).values({ organization_id: orgId, user_id: `rls-user-${orgId}`, day: "2026-10-23", logins: 1, pings: 3, sources: ["web"] })
   await admin.insert(s.platform_tenant_note).values({ organization_id: orgId, kind: "call", body: `${tag} owner said stock is late` })
+  // ADR-018 approval requests (needs the user row above).
+  await admin.insert(s.device_request).values({
+    organization_id: orgId, user_id: `rls-user-${orgId}`, suggested_name: `${tag} counter`, code: "123456",
+    secret_hash: `req-${tag}`, expires_at: new Date(Date.now() + 900_000),
+  })
   await admin.insert(s.idempotency_key).values({ organization_id: orgId, key: `k-rls-test-${tag}`, scope: "batch.create", status_code: 201, response: { tag } })
 }
 
@@ -70,6 +76,7 @@ async function run() {
     ["role_permission", s.role_permission], ["purchase_order", s.purchase_order],
     ["device", s.device], ["sync_issue", s.sync_issue], ["sync_tombstone", s.sync_tombstone],
     ["trial_extension_request", s.trial_extension_request], ["idempotency_key", s.idempotency_key],
+    ["device_request", s.device_request],
   ]
 
   // Each org sees only its own rows on each table.

@@ -6,6 +6,7 @@ import { env } from "./env"
 import { useStaffStore } from "../store/staff"
 import { useSyncStore } from "../store/sync"
 import { confirm as askConfirm } from "./confirm"
+import { readDeviceToken } from "./sync/device-key"
 
 // ADR-013 — @better-auth/expo manages its own cookie jar in SecureStore
 // (captures Set-Cookie, replays it as a Cookie header on later authClient
@@ -22,6 +23,17 @@ import { confirm as askConfirm } from "./confirm"
 // @better-auth/expo publishes a TS 6-compatible types release.
 export const authClient = createAuthClient({
   baseURL: env.EXPO_PUBLIC_API_URL,
+  // ADR-018: a pharmacy can allow only approved devices. Every auth request
+  // carries this phone's device key (when it has one) so the server can tell
+  // an approved till from an unknown phone.
+  fetchOptions: {
+    onRequest: async (ctx) => {
+      const token = await readDeviceToken()
+      if (token) ctx.headers.set("x-pt-device", token)
+      ctx.headers.set("x-pt-platform", "android")
+      return ctx
+    },
+  },
   plugins: [
     expoClient({
       scheme: "pharmatrack",

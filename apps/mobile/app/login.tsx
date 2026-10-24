@@ -18,6 +18,8 @@ import { useTheme } from "../src/theme/useTheme"
 import { radius, space } from "../src/theme/tokens"
 import { Button, Chip, FormScroll, Screen, Text, TextField, useShake } from "../src/components"
 import { CaptchaSheet } from "../src/components/CaptchaSheet"
+import { deviceRequestFrom, useDeviceApprovalStore, type DeviceRequestInfo } from "../src/store/deviceApproval"
+import { toast } from "../src/lib/toast"
 
 type Mode = "email" | "pin"
 
@@ -69,6 +71,13 @@ export default function Login() {
     if (error) shake()
   }, [error, shake])
 
+  // ADR-018: the pharmacy only allows approved devices and this phone isn't
+  // one yet — show the approval screen, which calls `retry` once approved.
+  function openApproval(request: DeviceRequestInfo, retry: () => Promise<void>) {
+    useDeviceApprovalStore.getState().start(request, retry)
+    router.push("/device-approval")
+  }
+
   // A ref, not `pending`: two quick taps (or Return + tap) land before the
   // re-render, so a state guard would let both submit.
   const busy = useRef(false)
@@ -107,6 +116,16 @@ export default function Login() {
           }
           ;({ error: signInError } = await signInEmail(email, password, token))
         }
+        const emailBlocked = deviceRequestFrom(signInError)
+        if (emailBlocked) {
+          // Email sign-in needs a fresh security check, so after approval the
+          // person signs in again here (the phone now counts as approved).
+          openApproval(emailBlocked, async () => {
+            router.replace("/login")
+            toast.success("Phone approved — sign in to continue.")
+          })
+          return
+        }
         if (signInError) {
           setError(isCaptchaFailure(signInError) ? "The security check didn't go through. Please try again." : signInErrorMessage(signInError, "email"))
           return
@@ -121,6 +140,22 @@ export default function Login() {
         let reached = true
         try {
           const { error: pinError } = await signInPin(phone, pin)
+          const pinBlocked = deviceRequestFrom(pinError)
+          if (pinBlocked) {
+            const [p, n] = [phone, pin]
+            openApproval(pinBlocked, async () => {
+              const again = await signInPin(p, n)
+              if (again.error) {
+                toast.error(signInErrorMessage(again.error as AuthFailure, "pin"))
+                router.replace("/login")
+                return
+              }
+              await cacheDeviceUserAfterPinLogin(p, n)
+              await adoptSignedInUser()
+              router.replace("/checking")
+            })
+            return
+          }
           if (pinError) {
             setError(signInErrorMessage(pinError as AuthFailure, "pin"))
             return

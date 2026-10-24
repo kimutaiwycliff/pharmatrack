@@ -216,8 +216,24 @@ const empty = (outcome: SyncOutcome, message?: string): SyncResult => ({
   ok: false, outcome, pushed: 0, rejected: 0, productsUpdated: 0, deleted: 0, message,
 })
 
+// ADR-018: a till registered before the approved-devices lock existed keeps
+// its key only in IndexedDB. Once per page load, hand it to the server so it
+// comes back as the httpOnly `pt_device` cookie — then staff sign-ins on this
+// computer count as being on an approved device. Best effort.
+let cookieBound = false
+async function bindDeviceCookie(token: string): Promise<void> {
+  if (cookieBound) return
+  try {
+    const res = await fetch("/api/device-pairing/bind", { method: "POST", headers: { Authorization: `Device ${token}` } })
+    if (res.ok) cookieBound = true
+  } catch {
+    // offline — try again on the next sync
+  }
+}
+
 async function runSync(): Promise<SyncResult> {
   const token = await getMeta("token")
+  if (token && navigator.onLine) void bindDeviceCookie(token)
   const device = await getMeta("device")
   if (!token || !device) {
     await refreshTillState()

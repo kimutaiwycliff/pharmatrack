@@ -11,10 +11,26 @@ import { Turnstile, turnstileEnabled } from "@/components/auth/Turnstile"
 import { GoogleButton } from "@/components/auth/GoogleButton"
 import { signInErrorMessage } from "@/lib/retry-text"
 import { useHydrated } from "@/lib/hooks/useHydrated"
+import { DeviceApproval, type DeviceRequestInfo } from "@/components/auth/DeviceApproval"
 
 const retryAfterOf = (h: Headers) => Number(h.get("retry-after") ?? h.get("x-retry-after") ?? 0) || 0
 
-export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
+/** The approval request when the pharmacy only allows approved devices (ADR-018). */
+function deviceRequestOf(body: unknown): DeviceRequestInfo | null {
+  const b = body as { code?: string; request?: DeviceRequestInfo } | null
+  return b?.code === "DEVICE_NOT_APPROVED" && b.request?.secret ? b.request : null
+}
+
+/** Google sign-in can't carry the approval details through its redirect, so
+ *  a blocked Google sign-in lands back here with ?error= (ADR-018). */
+function oauthErrorMessage(code: string | null): string | null {
+  if (!code) return null
+  return /device/i.test(code)
+    ? "This device isn't approved for your pharmacy. Sign in with your email or PIN here to ask for it to be approved."
+    : "Google sign-in didn't work. Try again, or sign in with your email or PIN."
+}
+
+export function LoginForm({ googleEnabled = false, oauthError = null }: { googleEnabled?: boolean; oauthError?: string | null }) {
   const [tab, setTab] = useState<"email" | "pin">("email")
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
@@ -22,22 +38,34 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
   const [phone, setPhone] = useState("")
   const [pin, setPin] = useState("")
   const [captcha, setCaptcha] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(() => oauthErrorMessage(oauthError))
   const [pending, setPending] = useState(false)
+  const [deviceRequest, setDeviceRequest] = useState<{ info: DeviceRequestInfo; via: "email" | "pin" } | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const hydrated = useHydrated()
 
   async function onEmailSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setNotice(null)
     setPending(true)
     let retryAfter = 0
+    let device: DeviceRequestInfo | null = null
     const res = await authClient.signIn.email({
       email, password,
       fetchOptions: {
         ...(captcha ? { headers: { "x-captcha-response": captcha } } : {}),
-        onError: (c) => { retryAfter = retryAfterOf(c.response.headers) },
+        onError: async (c) => {
+          retryAfter = retryAfterOf(c.response.headers)
+          device = deviceRequestOf(await c.response.clone().json().catch(() => null))
+        },
       },
     })
+    if (device) {
+      setDeviceRequest({ info: device, via: "email" })
+      setPending(false)
+      return
+    }
     if (res.error) {
       setError(signInErrorMessage(res.error.status, res.error.message, retryAfter, "Invalid email or password"))
       setPending(false)
@@ -47,9 +75,10 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
     window.location.href = "/home"
   }
 
-  async function onPinSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function onPinSubmit(e?: React.FormEvent) {
+    e?.preventDefault()
     setError(null)
+    setNotice(null)
     setPending(true)
     // Custom Better Auth endpoint (lib/auth/pin-plugin); sets the same session cookie.
     const res = await fetch("/api/auth/sign-in/pin", {
@@ -59,6 +88,12 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
     })
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { message?: string }
+      const device = deviceRequestOf(body)
+      if (device) {
+        setDeviceRequest({ info: device, via: "pin" })
+        setPending(false)
+        return
+      }
       setError(signInErrorMessage(res.status, body.message, retryAfterOf(res.headers), "Invalid phone or PIN"))
       setPending(false)
       return
@@ -66,11 +101,33 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
     window.location.href = "/home"
   }
 
+  if (deviceRequest) {
+    return (
+      <div className="w-full">
+        <DeviceApproval
+          request={deviceRequest.info}
+          onCancel={() => { setDeviceRequest(null); setPin("") }}
+          onApproved={async () => {
+            if (deviceRequest.via === "pin") {
+              setDeviceRequest(null)
+              await onPinSubmit()
+            } else {
+              // A fresh captcha is needed, so hand back to the (still filled-in) form.
+              setDeviceRequest(null)
+              setNotice("This device is approved. Sign in to continue.")
+            }
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="w-full">
       <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] shadow-sm p-8">
         <h1 className="text-xl font-bold tracking-tight text-[var(--pt-text)] mb-1">Welcome back</h1>
         <p className="text-sm text-[var(--pt-text-secondary)] mb-6">Sign in to start your shift</p>
+        {notice && <p className="text-sm text-[var(--pt-green-700)] bg-[var(--pt-green-50)] px-3 py-2 rounded-lg mb-4" role="status">{notice}</p>}
 
         <div className="grid grid-cols-2 bg-[var(--pt-muted-strong)] rounded-lg p-1 mb-5">
           {(["email", "pin"] as const).map((t) => (

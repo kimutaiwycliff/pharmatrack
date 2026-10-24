@@ -10,6 +10,7 @@ import { purgeTenant } from "@/lib/platform/purge"
 import { effectiveSubscriptionStatus } from "@/lib/billing/subscription-status"
 import { ownerContact } from "@/lib/notifications/billing"
 import { duplicateSignalsForOrg } from "@/lib/trials/eligibility"
+import { deviceLockFrom } from "@pharmatrack/core"
 
 type OrgSettings = { email?: string; phone?: string; address?: string; registration_number?: string; sms_enabled?: boolean; whatsapp_enabled?: boolean }
 
@@ -60,6 +61,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       whatsapp_enabled: s.whatsapp_enabled === true,
       provider_ready: { sms: smsConfigured(), whatsapp: whatsappConfigured() },
     },
+    // ADR-018 — shown so the operator can switch it off if an owner is stuck.
+    device_lock: deviceLockFrom(s),
     branch_count: bc?.n ?? 0,
     staff_count: sc?.n ?? 0,
     plans: plans.map((p) => ({ ...p, price_kes: Number(p.price_kes) })),
