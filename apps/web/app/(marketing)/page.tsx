@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import { Hero } from "@/components/marketing/Hero"
 import { TrustBar } from "@/components/marketing/TrustBar"
 import { ProblemSolution } from "@/components/marketing/ProblemSolution"
@@ -10,6 +11,8 @@ import { Faq } from "@/components/marketing/Faq"
 import { FinalCta } from "@/components/marketing/FinalCta"
 import { Reveal } from "@/components/marketing/Reveal"
 import { StructuredData } from "@/components/marketing/StructuredData"
+
+export const metadata: Metadata = { alternates: { canonical: "/" } }
 
 export default function LandingPage() {
   return (

@@ -1,17 +1,31 @@
+import { Suspense } from "react"
 import Link from "next/link"
-import { ArrowRight, ShieldCheck, WifiOff, Smartphone, TrendingUp } from "lucide-react"
+import { ArrowRight, ShieldCheck, WifiOff, Smartphone, TrendingUp, MessageCircle } from "lucide-react"
 import { trialDaysForSignup } from "@/lib/launch-offer"
 import { getLatestDesktopRelease } from "@/lib/desktop/release"
 import { DesktopDownload } from "@/components/marketing/DesktopDownload"
 import { getLatestAndroidRelease } from "@/lib/android/release"
 import { AndroidDownload } from "@/components/marketing/AndroidDownload"
+import { platformContact } from "@/lib/platform-contact"
+import { CATALOGUE_SIZE_LABEL } from "@/lib/marketing/content"
 
-export async function Hero() {
+const WHATSAPP_FALLBACK = `https://wa.me/254756412487?text=${encodeURIComponent("Hi! I'd like a quick demo of PharmaTrack for my pharmacy.")}`
+
+// The download buttons read live release manifests; streaming them in keeps
+// those fetches off the page's first byte.
+async function AppDownloads() {
+  const [desktopRelease, androidRelease] = await Promise.all([getLatestDesktopRelease(), getLatestAndroidRelease()])
+  return (
+    <>
+      <DesktopDownload release={desktopRelease} />
+      <AndroidDownload release={androidRelease} />
+    </>
+  )
+}
+
+export function Hero() {
   const trialDays = trialDaysForSignup()
-  const [desktopRelease, androidRelease] = await Promise.all([
-    getLatestDesktopRelease(),
-    getLatestAndroidRelease(),
-  ])
+  const whatsapp = platformContact().whatsappLink ?? WHATSAPP_FALLBACK
   return (
     <section className="relative overflow-hidden mk-mesh mk-grain">
       <div className="absolute inset-0 mk-crosses pointer-events-none" />
@@ -20,7 +34,7 @@ export async function Hero() {
         <div>
           <span className="mk-rise inline-flex items-center gap-2 rounded-full border border-[var(--pt-green-100)] bg-[var(--pt-surface)]/70 backdrop-blur px-3 py-1.5 text-xs font-semibold text-[var(--pt-green-700)]" style={{ animationDelay: "0ms" }}>
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--pt-green)] animate-pulse" />
-            Built for Kenyan pharmacies · PPB-compliant
+            Pharmacy POS &amp; stock software for Kenya
           </span>
 
           <h1 className="mk-rise font-[family-name:var(--font-display)] font-extrabold tracking-tight text-[var(--pt-text)] mt-5 text-[2.6rem] leading-[1.05] sm:text-6xl sm:leading-[1.02]" style={{ animationDelay: "70ms" }}>
@@ -29,8 +43,9 @@ export async function Hero() {
           </h1>
 
           <p className="mk-rise mt-5 text-lg text-[var(--pt-text-secondary)] max-w-xl leading-relaxed" style={{ animationDelay: "140ms" }}>
-            POS, inventory, M-Pesa and Kenyan compliance — together in one platform that
-            keeps selling even when the internet doesn&apos;t. Go live in minutes, not weeks.
+            Sell, receive stock, track expiry and take M-Pesa from one app — on your
+            Android phone, Windows PC or browser. It keeps selling when the internet
+            drops, and {CATALOGUE_SIZE_LABEL} medicines are already loaded for you.
           </p>
 
           <div className="mk-rise mt-8 flex flex-col sm:flex-row gap-3" style={{ animationDelay: "210ms" }}>
@@ -38,13 +53,13 @@ export async function Hero() {
               Start your {trialDays}-day free trial
               <ArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
             </Link>
-            <Link href="#demo" className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-[var(--pt-surface)] border border-[var(--pt-border-strong)] text-[var(--pt-text)] font-semibold hover:bg-[var(--pt-muted-strong)] transition-colors">
-              Book a demo
-            </Link>
+            <a href={whatsapp} className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-[var(--pt-surface)] border border-[var(--pt-border-strong)] text-[var(--pt-text)] font-semibold hover:bg-[var(--pt-muted-strong)] transition-colors">
+              <MessageCircle size={18} className="text-[var(--pt-green-600)]" /> Get a demo on WhatsApp
+            </a>
           </div>
 
           <p className="mk-rise mt-4 text-sm text-[var(--pt-text-tertiary)]" style={{ animationDelay: "280ms" }}>
-            No card required · Free catalogue &amp; CSV import · Cancel anytime
+            No card required · Import from Excel · From KES 1,500/month
           </p>
         </div>
 
@@ -110,10 +125,11 @@ export async function Hero() {
       {/* device hint strip + desktop app download */}
       <div className="relative mx-auto max-w-6xl px-5 pb-10 space-y-4">
         <p className="flex items-center gap-2 text-xs text-[var(--pt-text-tertiary)]">
-          <Smartphone size={14} /> Works on any phone, tablet or till — installs like an app, runs offline.
+          <Smartphone size={14} /> Android app · Windows app · any browser — all three sell offline.
         </p>
-        <DesktopDownload release={desktopRelease} />
-        <AndroidDownload release={androidRelease} />
+        <Suspense fallback={null}>
+          <AppDownloads />
+        </Suspense>
       </div>
     </section>
   )

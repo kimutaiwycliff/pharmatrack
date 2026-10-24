@@ -1,12 +1,15 @@
-import { ScanBarcode, Boxes, BarChart3, CalendarClock, Smartphone, Users } from "lucide-react"
+import { ScanBarcode, Boxes, BarChart3, CalendarClock, Users, Truck, ClipboardList, Wallet, Receipt } from "lucide-react"
 
 const FEATURES = [
-  { icon: ScanBarcode, title: "Point of sale & payments", points: ["Barcode scan & GS1 parsing", "Cash, M-Pesa STK, card & split", "Thermal + A4 receipts"] },
-  { icon: Boxes, title: "Inventory & FEFO", points: ["Batch & expiry tracking", "Stock adjustments + audit", "CSV import & catalogue seed"] },
-  { icon: BarChart3, title: "Reports & dashboard", points: ["Daily revenue & profit", "By-cashier & top products", "Africa/Nairobi accurate"] },
-  { icon: CalendarClock, title: "Appointments & reminders", points: ["Recurring services (e.g. Depo)", "Day-before SMS / WhatsApp / email", "Customer opt-in tracking"] },
-  { icon: Users, title: "Staff & roles", points: ["Owner → cashier permissions", "4-digit PIN till login", "Activate / deactivate staff"] },
-  { icon: Smartphone, title: "Offline-first PWA", points: ["Installs like an app", "Full catalogue cached on device", "Auto-sync on reconnect"] },
+  { icon: ScanBarcode, title: "Till & payments", points: ["Barcode scanners & GS1 codes", "Cash, M-Pesa, card & split", "Sell by tablet, strip or box"] },
+  { icon: Boxes, title: "Stock, batches & expiry", points: ["Earliest expiry sells first (FEFO)", "Expiring-soon & low-stock alerts", "Adjustments with reasons & audit"] },
+  { icon: Truck, title: "Purchasing", points: ["Purchase orders to suppliers", "Receive stock by batch & expiry", "Supplier list & stock value"] },
+  { icon: ClipboardList, title: "Prescriptions", points: ["Prescriptions linked to customers", "Drug-interaction checks", "Controlled-substances register"] },
+  { icon: Wallet, title: "Shifts & cash-up", points: ["Opening float per shift", "Cash variance at close", "Sales by payment method"] },
+  { icon: BarChart3, title: "Reports & dashboard", points: ["Daily sales & profit", "By cashier & top products", "Export to Excel / CSV"] },
+  { icon: CalendarClock, title: "Return-visit reminders", points: ["Recurring services, e.g. Depo", "Daily list of clients to call", "Morning email & phone alerts"] },
+  { icon: Users, title: "Staff & branches", points: ["Owner → cashier permissions", "4-digit PIN at the till", "One branch or many"] },
+  { icon: Receipt, title: "Receipts", points: ["Your logo & details", "Thermal or A4", "Share by WhatsApp or PDF"] },
 ]
 
 export function Features() {
