@@ -79,7 +79,7 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
       <h1 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight mt-2 leading-[1.1]">
         {post.title}
       </h1>
-      <div className="mt-8 text-[var(--pt-text)] text-[17px] [&_h2]:font-[family-name:var(--font-display)] [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-9 [&_h2]:mb-1 [&_p]:mt-4 [&_p]:leading-relaxed [&_p]:text-[var(--pt-text-secondary)] [&_ul]:mt-4 [&_ul]:ml-5 [&_ul]:list-disc [&_ul]:space-y-1.5 [&_li]:text-[var(--pt-text-secondary)] [&_a]:text-[var(--pt-green-600)] [&_a]:font-medium [&_a]:underline [&_strong]:text-[var(--pt-text)] [&_em]:italic">
+      <div className="mt-8 text-[var(--pt-text)] text-[17px] [&_h2]:font-[family-name:var(--font-display)] [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-9 [&_h2]:mb-1 [&_p]:mt-4 [&_p]:leading-relaxed [&_p]:text-[var(--pt-text-secondary)] [&_ul]:mt-4 [&_ul]:ml-5 [&_ul]:list-disc [&_ul]:space-y-1.5 [&_ol]:mt-4 [&_ol]:ml-5 [&_ol]:list-decimal [&_ol]:space-y-1.5 [&_h3]:font-semibold [&_h3]:text-lg [&_h3]:mt-6 [&_h3]:text-[var(--pt-text)] [&_blockquote]:mt-5 [&_blockquote]:border-l-4 [&_blockquote]:border-[var(--pt-green)] [&_blockquote]:bg-[var(--pt-green-50)] [&_blockquote]:rounded-r-xl [&_blockquote]:px-4 [&_blockquote]:py-3 [&_blockquote_p]:mt-0 [&_li]:text-[var(--pt-text-secondary)] [&_a]:text-[var(--pt-green-600)] [&_a]:font-medium [&_a]:underline [&_strong]:text-[var(--pt-text)] [&_em]:italic">
         {post.body}
       </div>
 
