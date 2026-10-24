@@ -158,12 +158,12 @@ const CHAPTERS: Chapter[] = [
   },
   {
     id: "appointments", num: "09", title: "Book appointments",
-    intro: "Depo-Provera refills, vaccinations, consultations — anything that brings a customer back on a schedule. PharmaTrack tracks the customer, the service, and sends the reminder for you.",
+    intro: "Depo-Provera refills, vaccinations, consultations — anything that brings a customer back on a schedule. PharmaTrack tracks the customer and the service, and tells your team who to call.",
     steps: [
       "Click **Book appointment** and start typing a customer's name — existing customers autocomplete.",
       "Pick a service. Recurring ones (like Depo-Provera, every 12 weeks) will suggest the next booking automatically once this one's done.",
       "Set the date, time, branch, and who it's assigned to.",
-      "Leave **Send appointment reminders** on and a WhatsApp or SMS goes out the day before — to the customer, and an SMS to the assigned staff member.",
+      "Leave **Send appointment reminders** on and the customer shows up on the **Clients to call** list on the dashboard the day before. The assigned staff member (or the owner and managers) also gets a morning email, and the Android app sends a phone notification.",
     ],
     tip: { kind: "tip", text: "Manage the list of bookable services yourself under Settings → Services — add whatever your pharmacy offers and set a recurrence interval for anything that repeats." },
     shots: [

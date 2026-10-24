@@ -40,12 +40,12 @@ export default function OgImage() {
             Run your whole pharmacy in one place.
           </div>
           <div style={{ fontSize: 32, color: "#bbf7d0", maxWidth: 900 }}>
-            Offline-capable POS, inventory, M-Pesa &amp; PPB compliance — built for Kenyan pharmacies.
+            Offline till, stock &amp; expiry, M-Pesa and the PPB register — on Android, Windows or the browser.
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {["Offline POS", "M-Pesa", "Multi-branch", "PPB register", `${STANDARD_TRIAL_DAYS}-day free trial`].map((t) => (
+          {["Sells offline", "M-Pesa", "Android & Windows", "PPB register", `${STANDARD_TRIAL_DAYS}-day free trial`].map((t) => (
             <div
               key={t}
               style={{

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Menu, X, Cross } from "lucide-react"
+import { useSession } from "@/lib/auth/client"
 
 const LINKS = [
   { href: "/#features", label: "Features" },
@@ -12,7 +13,11 @@ const LINKS = [
   { href: "/blog", label: "Blog" },
 ]
 
-export function MarketingNav({ signedIn }: { signedIn: boolean }) {
+// Signed-in state is read in the browser so marketing pages don't wait on a
+// session lookup before the first byte (speed is a ranking factor).
+export function MarketingNav() {
+  const { data: session } = useSession()
+  const signedIn = !!session?.user
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
 

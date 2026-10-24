@@ -1,28 +1,28 @@
-import { WifiOff, Server, Building2, ShieldCheck } from "lucide-react"
+import { WifiOff, FileSpreadsheet, MonitorSmartphone, ShieldCheck } from "lucide-react"
 
 const PILLARS = [
   {
     icon: WifiOff,
-    title: "Sells even when the internet drops",
-    body: "Our POS caches your whole catalogue on the device and queues sales offline — indefinitely, not for 24 hours. When you reconnect, everything syncs automatically with no duplicates.",
-    proof: "Indefinite offline POS",
+    title: "Sells all day when the internet drops",
+    body: "Each till keeps your products, prices and its share of the stock on the device. Search, scan and sell from opening to closing with no connection — sales send themselves when you're back online, once each, and the till never sells stock you don't have.",
+    proof: "Offline on every device",
   },
   {
-    icon: Server,
-    title: "Your data stays yours",
-    body: "Self-host the whole platform on a single server with one command, or let us run it. Either way your pharmacy's data isn't locked inside someone else's cloud.",
-    proof: "Self-hostable · no lock-in",
+    icon: FileSpreadsheet,
+    title: "Switch from your old system in an afternoon",
+    body: "Upload the Excel export from the system you use today. Columns are matched for you, medicines are recognised against the catalogue to fill in generic names and prescription flags, and you preview everything before it's saved.",
+    proof: "Excel & CSV import",
   },
   {
-    icon: Building2,
-    title: "Built for one shop or fifty",
-    body: "Run hundreds of isolated pharmacies on one server with database-level tenant isolation. Add branches, switch between them, and roll reports up across all of them.",
-    proof: "Multi-branch, securely isolated",
+    icon: MonitorSmartphone,
+    title: "Phone, tablet or counter PC",
+    body: "Use the Android app on a phone or tablet, the Windows app on the counter PC, or any browser — with the same stock and reports behind all of them. Owners check sales from anywhere.",
+    proof: "Android · Windows · Web",
   },
   {
     icon: ShieldCheck,
     title: "Compliance without the paperwork",
-    body: "The PPB controlled-substances register fills itself from every dispensed sale — dispensing pharmacist, prescriber and batch captured automatically, ready to export in a PPB-friendly format.",
+    body: "The PPB controlled-substances register fills itself from every dispensed sale — pharmacist, prescriber, patient and batch — ready to export for an inspection. Every stock adjustment is logged with a reason.",
     proof: "PPB register, automated",
   },
 ]
@@ -34,7 +34,7 @@ export function WhySection() {
         <div className="max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--pt-green-600)]">Why PharmaTrack</p>
           <h2 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight mt-2">
-            Four things the others can&apos;t match.
+            Why pharmacies switch to PharmaTrack.
           </h2>
         </div>
 

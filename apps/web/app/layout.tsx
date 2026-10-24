@@ -37,7 +37,8 @@ export const metadata: Metadata = {
   creator: "PharmaTrack",
   publisher: "PharmaTrack",
   category: "Business Software",
-  alternates: { canonical: "/" },
+  // No site-wide canonical: each public page declares its own, otherwise every
+  // page would point Google at the homepage.
   // Optional HTML-tag verification for Search Console / Bing (env-gated; DNS
   // verification needs nothing here).
   verification: {

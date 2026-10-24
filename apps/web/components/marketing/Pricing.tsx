@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { Check, Sparkles } from "lucide-react"
 import { launchOfferActive, LAUNCH_TRIAL_DAYS, LAUNCH_OFFER_ENDS_AT, trialDaysForSignup } from "@/lib/launch-offer"
+import { PLAN_PRICE_KES } from "@/lib/marketing/content"
 import { PLAN_MATRIX, PLAN_ORDER, FEATURE_LABELS, type PlanCode, type Feature } from "@pharmatrack/core"
 
 // Feature bullets are DERIVED from PLAN_MATRIX (packages/core/entitlements.ts)
@@ -9,11 +10,11 @@ import { PLAN_MATRIX, PLAN_ORDER, FEATURE_LABELS, type PlanCode, type Feature } 
 // are hand-written here, since those aren't Feature entitlements.
 const MARKETING: Record<PlanCode, { price: string; tagline: string; cta: string; extras: string[] }> = {
   starter: {
-    price: "1,500", tagline: "Single pharmacy finding its feet.",
+    price: PLAN_PRICE_KES.starter!.toLocaleString("en-KE"), tagline: "Single pharmacy finding its feet.",
     cta: "Start free trial", extras: ["Email support"],
   },
   growth: {
-    price: "4,500", tagline: "Busy shops & small chains.",
+    price: PLAN_PRICE_KES.growth!.toLocaleString("en-KE"), tagline: "Busy shops & small chains.",
     cta: "Start free trial", extras: ["Priority support"],
   },
   enterprise: {

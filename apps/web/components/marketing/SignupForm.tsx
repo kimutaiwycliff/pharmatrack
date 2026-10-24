@@ -233,6 +233,9 @@ export function SignupForm({ googleEnabled = false }: { googleEnabled?: boolean 
       <p className="text-xs text-[var(--pt-text-tertiary)] text-center">
         We&apos;ll email you a code to verify your address · No card · {trialDays}-day trial
       </p>
+      <p className="text-xs text-[var(--pt-text-tertiary)] text-center">
+        By continuing you agree to our <Link href="/terms" className="underline hover:text-[var(--pt-text-secondary)]">Terms</Link> and <Link href="/privacy" className="underline hover:text-[var(--pt-text-secondary)]">Privacy Policy</Link>.
+      </p>
       <p className="text-sm text-center text-[var(--pt-text-secondary)]">
         Already have an account? <Link href="/login" className="font-semibold text-[var(--pt-green-700)] hover:underline">Sign in</Link>
       </p>

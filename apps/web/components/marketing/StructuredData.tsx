@@ -1,17 +1,9 @@
+import { PLAN_MATRIX, PLAN_ORDER } from "@pharmatrack/core"
 import { platformContact } from "@/lib/platform-contact"
+import { FAQ, PLAN_PRICE_KES, CATALOGUE_SIZE_LABEL } from "@/lib/marketing/content"
 
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://pharmatrack.co.ke"
 
-// Mirrors the FAQ section — kept in sync with Faq.tsx.
-const FAQ: { q: string; a: string }[] = [
-  { q: "How long does setup take?", a: "Most pharmacies are selling the same day. Load the Kenyan catalogue in one click, set your prices and opening stock in a bulk grid, and you're live — usually in under an hour." },
-  { q: "Does it really work offline?", a: "Yes. The POS caches your full branch catalogue on the device and queues sales while offline — with no time limit. When the connection returns, sales sync automatically and duplicates are removed." },
-  { q: "Can I move my existing data in?", a: "Import products and opening stock from a CSV (up to 2,000 rows) with column auto-mapping and a preview before anything is created." },
-  { q: "Is M-Pesa included?", a: "Yes — M-Pesa STK Push runs at checkout and confirmations are matched to the sale. Cash, card and split payments are supported too." },
-  { q: "Can I run more than one branch?", a: "Yes. Growth covers up to three branches and Enterprise is unlimited, each with its own stock, staff and reports." },
-  { q: "Do I own my data?", a: "Always. You can self-host the entire platform on your own server, or we host it for you. There's no lock-in and you can export your data." },
-  { q: "Is it compliant with PPB?", a: "The controlled-substances register is built in and fills itself from every dispensed controlled sale, ready to export in a PPB-friendly format." },
-]
 
 // JSON-LD for rich results: the product (SoftwareApplication with pricing), the
 // organization, and an FAQ block (eligible for FAQ rich snippets).
@@ -47,25 +39,31 @@ export function StructuredData() {
         name: "PharmaTrack",
         applicationCategory: "BusinessApplication",
         applicationSubCategory: "Pharmacy Management / Point of Sale",
-        operatingSystem: "Web, iOS, Android (PWA)",
+        operatingSystem: "Android, Windows, Web",
         url: SITE_URL,
         description:
-          "Offline-capable pharmacy POS, inventory, M-Pesa payments and PPB compliance for Kenyan pharmacies. Multi-branch, works offline, sell in minutes.",
+          `Pharmacy POS, inventory and M-Pesa software for Kenyan pharmacies. Sells offline all day on Android, Windows or the browser, with a ${CATALOGUE_SIZE_LABEL} medicine catalogue including the PPB register.`,
         provider: { "@id": `${SITE_URL}/#organization` },
         featureList: [
-          "Offline-capable Point of Sale",
-          "M-Pesa STK Push payments",
-          "FEFO inventory & batch expiry tracking",
-          "Multi-branch management",
+          "Point of sale that works offline",
+          "M-Pesa, cash, card and split payments (STK Push on Growth)",
+          "Batch and expiry tracking with FEFO selling",
+          `${CATALOGUE_SIZE_LABEL} medicine catalogue including the PPB register`,
+          "Excel and CSV import from your old system",
+          "Purchase orders and suppliers",
           "PPB controlled-substances register",
-          "Appointments & SMS/WhatsApp reminders",
-          "Reports & dashboards",
+          "Prescriptions with drug-interaction checks",
+          "Multi-branch stock, staff and reports",
+          "Shift cash-up with variance",
         ],
-        offers: [
-          { "@type": "Offer", name: "Starter", price: "2500", priceCurrency: "KES", category: "monthly subscription", url: `${SITE_URL}/#pricing` },
-          { "@type": "Offer", name: "Growth", price: "6000", priceCurrency: "KES", category: "monthly subscription", url: `${SITE_URL}/#pricing` },
-          { "@type": "Offer", name: "Enterprise", priceCurrency: "KES", category: "custom", url: `${SITE_URL}/#pricing` },
-        ],
+        offers: PLAN_ORDER.map((code) => ({
+          "@type": "Offer",
+          name: PLAN_MATRIX[code].label,
+          ...(PLAN_PRICE_KES[code] != null ? { price: String(PLAN_PRICE_KES[code]) } : {}),
+          priceCurrency: "KES",
+          category: PLAN_PRICE_KES[code] != null ? "monthly subscription" : "custom",
+          url: `${SITE_URL}/#pricing`,
+        })),
       },
       {
         "@type": "FAQPage",

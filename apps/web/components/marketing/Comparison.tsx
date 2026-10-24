@@ -2,13 +2,13 @@ import { Check, Minus } from "lucide-react"
 
 // Honest, capability-level comparison (no competitor metrics we can't verify).
 const ROWS: { label: string; us: boolean | string; them: boolean | string }[] = [
-  { label: "Offline POS", us: "Unlimited", them: "Time-limited" },
-  { label: "Self-hosted option (own your data)", us: true, them: false },
-  { label: "Multi-branch on one server", us: true, them: "Add-on" },
-  { label: "M-Pesa STK Push at checkout", us: true, them: true },
-  { label: "PPB controlled-substances register", us: true, them: "Partial" },
-  { label: "Appointment reminders (SMS/WhatsApp)", us: true, them: false },
-  { label: "Transparent pricing", us: true, them: "Varies" },
+  { label: "Starting price per month", us: "KES 1,500", them: "KES 2,500–3,000" },
+  { label: "Sells offline all day", us: true, them: "Varies" },
+  { label: "Android, Windows & browser apps", us: true, them: "Varies" },
+  { label: "Medicine catalogue incl. PPB register", us: true, them: "Varies" },
+  { label: "Import from your old system's Excel", us: true, them: "Varies" },
+  { label: "PPB controlled-substances register", us: true, them: true },
+  { label: "M-Pesa at the till", us: true, them: true },
 ]
 
 function Cell({ v, accent }: { v: boolean | string; accent?: boolean }) {

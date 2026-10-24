@@ -6,6 +6,7 @@ export interface Post {
   title: string
   description: string
   date: string // ISO
+  updated?: string // ISO — bump when a post is materially revised
   readingMins: number
   keywords: string[]
   body: ReactNode
@@ -16,6 +17,7 @@ export interface Post {
 export const POSTS: Post[] = [
   {
     slug: "best-pharmacy-pos-software-kenya",
+    updated: "2026-10-23",
     title: "Best Pharmacy POS Software in Kenya (2026): What to Look For",
     description:
       "A practical buyer’s guide to choosing pharmacy POS and inventory software in Kenya — offline selling, M-Pesa, PPB compliance, multi-branch and pricing.",
@@ -25,8 +27,8 @@ export const POSTS: Post[] = [
     body: (
       <>
         <p>Choosing pharmacy software in Kenya is really about five things: does it keep selling when the internet drops, does it take M-Pesa cleanly, does it keep you compliant with the Pharmacy and Poisons Board, can it grow to more than one branch, and can you actually afford it. Here’s what to weigh.</p>
-        <h2>1. It must work offline — indefinitely</h2>
-        <p>Kenyan connectivity is not guaranteed, and a till that stops when the line drops costs you sales. Look for a POS that caches your full branch catalogue on the device and queues sales locally with no time limit, then syncs automatically when the connection returns — without creating duplicates.</p>
+        <h2>1. It must keep selling offline — all day</h2>
+        <p>Kenyan connectivity is not guaranteed, and a till that stops when the line drops costs you sales. Look for a POS that keeps your full branch catalogue on the device, lets you sell from opening to closing with no connection, and syncs automatically when the line comes back — without duplicates, and without selling stock you don’t have.</p>
         <h2>2. M-Pesa should be first-class</h2>
         <p>Most pharmacy customers pay by M-Pesa. The software should support STK Push (auto-prompting the customer’s phone) using <em>your own</em> till, plus cash, card and split payments. If STK isn’t set up, a clean manual-confirm flow should still record the sale.</p>
         <h2>3. PPB compliance built in</h2>
@@ -34,13 +36,14 @@ export const POSTS: Post[] = [
         <h2>4. Multi-branch and roles</h2>
         <p>Even if you have one shop today, pick software that supports multiple branches with per-branch stock and reports, and role-based access so cashiers see the till while owners see the numbers.</p>
         <h2>5. Honest, local pricing</h2>
-        <p>Look for KES pricing, a free trial, and no lock-in — ideally the option to self-host and export your data.</p>
+        <p>Look for KES pricing, a free trial, and no lock-in — you should be able to export your products, stock and reports whenever you like. Ask too whether the vendor can import the Excel export from your current system, so switching doesn’t mean retyping hundreds of products.</p>
         <p><strong>PharmaTrack</strong> was built around exactly these needs for Kenyan pharmacies. You can <a href="/signup">start a {STANDARD_TRIAL_DAYS}-day free trial</a> and be selling the same day.</p>
       </>
     ),
   },
   {
     slug: "accept-mpesa-at-your-pharmacy-till",
+    updated: "2026-10-23",
     title: "How to Accept M-Pesa at Your Pharmacy Till (STK Push, the right way)",
     description:
       "Set up M-Pesa STK Push at your pharmacy POS so payments land in your own till — what you need from Safaricom Daraja and how to switch it on in PharmaTrack.",
@@ -60,7 +63,7 @@ export const POSTS: Post[] = [
         <p>A single shared app can’t push money into arbitrary tills — Safaricom ties STK Push to the shortcode that owns the app. That’s why each pharmacy configures its <em>own</em> credentials: it’s the only way the payment reaches your own till directly and safely.</p>
         <h2>Switching it on in PharmaTrack</h2>
         <p>Go to <strong>Settings → Payments</strong>, paste your shortcode, consumer key/secret and passkey, choose sandbox or production, then use <strong>Test connection</strong> and <strong>Send test STK</strong> to confirm end-to-end before going live. Secrets are encrypted at rest and never shown again.</p>
-        <p>Once verified, the till auto-prompts customers. If it isn’t set up, PharmaTrack quietly falls back to manual confirm, so you’re never stuck. <a href="/signup">Try it free</a>.</p>
+        <p>STK Push is included on the Growth plan and above. Once verified, the till auto-prompts customers. If it isn’t set up, PharmaTrack quietly falls back to manual confirm, so you’re never stuck. <a href="/signup">Try it free</a>.</p>
       </>
     ),
   },
@@ -87,6 +90,7 @@ export const POSTS: Post[] = [
   },
   {
     slug: "offline-pharmacy-pos-kenya",
+    updated: "2026-10-23",
     title: "Offline Pharmacy POS: How to Keep Selling When the Internet Drops",
     description:
       "Kenyan pharmacies can't afford a till that stops working every time the connection drops. Here's what offline-capable POS software actually needs to do — and how to test it before you buy.",
@@ -104,10 +108,11 @@ export const POSTS: Post[] = [
         <ul>
           <li>Ask the vendor to demo with Wi-Fi and mobile data both switched off — not just a slow connection.</li>
           <li>Ask what happens to a sale that <em>fails</em> to sync. It should land somewhere visible for retry, not disappear silently.</li>
-          <li>Ask if there’s a time limit on how long the POS can run offline. Some products cap it at 24 hours; a pharmacy that loses connectivity over a weekend shouldn’t lose its till.</li>
+          <li>Ask how long the till can run offline and what it needs to keep going — a full trading day with no connection is the minimum a Kenyan pharmacy should accept.</li>
+          <li>Ask what stops two tills selling the same last box while both are offline. Without a rule for this, offline selling quietly creates negative stock.</li>
         </ul>
         <h2>How PharmaTrack does it</h2>
-        <p>The POS caches your full branch catalogue on the device on load, queues sales with a unique offline reference, and syncs automatically the moment connectivity returns — the server dedupes on that reference, and anything that fails to sync lands in a visible retry queue instead of vanishing. There’s no time limit on how long it can run offline.</p>
+        <p>Every till — the Android app, the Windows app or a browser — keeps your branch catalogue on the device, along with its own share of the stock so two tills can never sell the same last box. You can sell all day with no connection. Each sale carries a unique reference, so when the till reconnects it syncs exactly once, and anything that can’t sync lands in a Sync issues list for a manager instead of vanishing. A till only needs to connect once before midnight, and a manager can extend that to noon the next day.</p>
         <p>See it for yourself — <a href="/signup">start a {STANDARD_TRIAL_DAYS}-day free trial</a> and try switching your Wi-Fi off mid-sale.</p>
       </>
     ),

@@ -7,18 +7,19 @@ const COLS: { title: string; links: { label: string; href: string }[] }[] = [
   {
     title: "Product",
     links: [
-      { label: "Features", href: "#features" },
-      { label: "Pricing", href: "#pricing" },
+      { label: "Features", href: "/#features" },
+      { label: "Pricing", href: "/#pricing" },
       { label: "Guide", href: "/guide" },
-      { label: "Offline POS", href: "#why" },
-      { label: "Compliance", href: "#features" },
+      { label: "Offline POS", href: "/blog/offline-pharmacy-pos-kenya" },
+      { label: "PPB register", href: "/blog/ppb-controlled-substances-register-kenya" },
+      { label: "Blog", href: "/blog" },
     ],
   },
   {
     title: "Company",
     links: [
-      { label: "Why PharmaTrack", href: "#why" },
-      { label: "Book a demo", href: "#demo" },
+      { label: "Why PharmaTrack", href: "/#why" },
+      { label: "FAQ", href: "/#faq" },
       { label: "Contact sales", href: "mailto:sales@pharmatrack.co.ke" },
     ],
   },
@@ -66,8 +67,8 @@ export function MarketingFooter() {
         <div className="mx-auto max-w-6xl px-5 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--pt-text-secondary)]">
           <p>© {new Date().getFullYear()} PharmaTrack. Built in Kenya.</p>
           <div className="flex items-center gap-5">
-            <Link href="#" className="hover:text-[var(--pt-text-secondary)]">Privacy</Link>
-            <Link href="#" className="hover:text-[var(--pt-text-secondary)]">Terms</Link>
+            <Link href="/privacy" className="hover:text-[var(--pt-text-secondary)]">Privacy</Link>
+            <Link href="/terms" className="hover:text-[var(--pt-text-secondary)]">Terms</Link>
             <span>PPB-ready · Offline-capable</span>
           </div>
         </div>
