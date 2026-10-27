@@ -9,6 +9,7 @@ import { Clock, ArrowLeft, CloudOff } from "lucide-react"
 import { useSessionStore, useCan } from "@/lib/store/sessionStore"
 import { useUIStore } from "@/lib/store/uiStore"
 import { SetupTillDialog } from "@/components/till/SetupTill"
+import { FirstShiftTip } from "@/components/onboarding/PosCoach"
 
 interface ClockInDialogProps {
   onSuccess: () => void
@@ -114,6 +115,7 @@ export function ClockInDialog({ onSuccess }: ClockInDialogProps) {
               </p>
             )}
           </div>
+          <FirstShiftTip />
 
           {error && (
             <p className="text-sm text-[var(--pt-red)] bg-[var(--pt-red-50)] px-3 py-2 rounded-lg">

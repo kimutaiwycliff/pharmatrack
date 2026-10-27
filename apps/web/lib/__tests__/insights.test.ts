@@ -75,7 +75,7 @@ describe("weekly digest", () => {
   function tenant(id: string, over: Partial<TenantOverview>): TenantOverview {
     return {
       id, name: `Pharmacy ${id}`, createdAt: NOW - 90 * DAY, subscriptionStatus: "active", renewsAt: null, lastNoteAt: null, followUpOn: null,
-      health: computeHealth(base), revenue30: 0, revenuePrev30: 0, ...over,
+      health: computeHealth(base), revenue30: 0, revenuePrev30: 0, setupStage: "selling", ...over,
     }
   }
 

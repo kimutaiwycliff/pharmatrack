@@ -16,6 +16,7 @@ import { closeShift, expectedCashCents, openShift, ShiftError } from "@/lib/till
 import { listRoster, switchStaff, verifyRosterPin } from "@/lib/till/staff"
 import { useTillStore } from "@/lib/till/store"
 import type { TillShift, TillStaff } from "@/lib/till/db"
+import { FirstShiftTip } from "@/components/onboarding/PosCoach"
 
 // Full-screen gates and dialogs for a registered till — all of them work
 // with no internet: clock in/out, switching cashier by PIN, the midnight
@@ -198,6 +199,7 @@ export function TillClockIn() {
             className="mt-1.5 h-11 text-lg font-semibold" autoFocus />
           {float && Number.isFinite(toCents(float)) && <p className="text-xs text-[var(--pt-text-secondary)] mt-1">{kes(toCents(float))}</p>}
         </div>
+        <FirstShiftTip />
         {error && <ErrorText>{error}</ErrorText>}
         <Button onClick={() => void start()} disabled={busy || !staff} className="w-full h-11 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white font-semibold">
           {busy ? "Starting shift…" : "Start shift"}

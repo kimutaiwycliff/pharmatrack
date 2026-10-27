@@ -52,6 +52,9 @@
   /* PharmaTrack brand tokens */
   --pt-green: #16a34a;
   --pt-green-600: #15803d;
+  /* Green for text and links on light surfaces (was referenced across the
+     app but never defined, so it fell back to the plain text colour). */
+  --pt-green-700: #166534;
   /* Chart series (validated pair, dataviz check): sales vs profit */
   --pt-viz-sales: #2a78d6;
   --pt-viz-profit: #16a34a;
@@ -116,6 +119,7 @@
   /* PharmaTrack brand tokens — dark */
   --pt-green: #22c55e;
   --pt-green-600: #16a34a;
+  --pt-green-700: #4ade80;
   --pt-viz-sales: #3987e5;
   --pt-viz-profit: #16a34a;
   --pt-green-cta: #15803d;
@@ -298,3 +302,20 @@ body {
   .mk-float { animation: none; }
   .mk-reveal { opacity: 1; transform: none; transition: none; }
 }
+
+/* Setup guide coach marks (driver.js, ADR-019) — in PharmaTrack's colours. */
+.driver-popover.pt-coach {
+  background: var(--pt-surface);
+  color: var(--pt-text);
+  border: 1px solid var(--pt-border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+  max-width: 320px;
+}
+.driver-popover.pt-coach .driver-popover-title { font-size: 15px; font-weight: 700; }
+.driver-popover.pt-coach .driver-popover-description { font-size: 13px; color: var(--pt-text-secondary); line-height: 1.45; }
+.driver-popover.pt-coach .driver-popover-close-btn { color: var(--pt-text-tertiary); }
+.driver-popover.pt-coach .driver-popover-arrow-side-bottom { border-bottom-color: var(--pt-surface); }
+.driver-popover.pt-coach .driver-popover-arrow-side-top { border-top-color: var(--pt-surface); }
+.driver-popover.pt-coach .driver-popover-arrow-side-left { border-left-color: var(--pt-surface); }
+.driver-popover.pt-coach .driver-popover-arrow-side-right { border-right-color: var(--pt-surface); }

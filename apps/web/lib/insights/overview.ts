@@ -18,13 +18,18 @@ export interface TenantOverview extends Partial<TenantRollup> {
   lastNoteAt: number | null
   /** the next "follow up on" date from the notes log (YYYY-MM-DD), if any */
   followUpOn: string | null
+  /** How far setup got (ADR-019): the first setup-guide step not done yet. */
+  setupStage: SetupStage
 }
+
+export type SetupStage = "no_products" | "no_prices" | "no_stock" | "no_sale" | "selling"
+export const SETUP_STAGES: readonly SetupStage[] = ["no_products", "no_prices", "no_stock", "no_sale", "selling"]
 
 export async function buildOverview() {
   const db = dbAdmin()
   const orgs = await db.select({ id: organization.id, name: organization.name, createdAt: organization.createdAt }).from(organization)
   const ids = orgs.map((o) => o.id)
-  const [subs, staffCounts, rollups, billing, daily, notes] = await Promise.all([
+  const [subs, staffCounts, rollups, billing, daily, notes, setup] = await Promise.all([
     ids.length ? db.select().from(subscription).where(inArray(subscription.organization_id, ids)) : Promise.resolve([]),
     ids.length
       ? db.select({ org: staff_profile.organization_id, n: sql<number>`count(*) FILTER (WHERE ${staff_profile.is_active})::int` })
@@ -37,10 +42,19 @@ export async function buildOverview() {
       SELECT organization_id AS org, max(created_at) AS last_note,
              min(follow_up_on) FILTER (WHERE follow_up_on >= (now() AT TIME ZONE 'Africa/Nairobi')::date - 7)::text AS follow_up
       FROM platform_tenant_note GROUP BY 1`) as unknown as Promise<Array<{ org: string; last_note: string | null; follow_up: string | null }>>,
+    // Setup stage per pharmacy: products, priced products, batches with stock.
+    db.execute(sql`
+      SELECT o.id AS org,
+             (SELECT count(*) FROM product p WHERE p.organization_id = o.id)::int AS products,
+             (SELECT count(*) FROM product p WHERE p.organization_id = o.id AND p.selling_price > 0)::int AS priced,
+             EXISTS (SELECT 1 FROM product_batch b WHERE b.organization_id = o.id AND b.quantity_remaining > 0) AS stocked
+      FROM organization o`) as unknown as Promise<Array<{ org: string; products: number; priced: number; stocked: boolean }>>,
   ])
   const subMap = new Map(subs.map((s) => [s.organization_id, s]))
   const staffMap = new Map(staffCounts.map((r) => [r.org, r.n]))
   const noteMap = new Map(notes.map((r) => [r.org, r]))
+  const setupMap = new Map(setup.map((r) => [r.org, r]))
+  const funnel: Record<SetupStage, number> = { no_products: 0, no_prices: 0, no_stock: 0, no_sale: 0, selling: 0 }
 
   const now = Date.now()
   const counts: Record<HealthLevel, number> = { healthy: 0, new: 0, slipping: 0, at_risk: 0, never_started: 0, inactive: 0 }
@@ -73,7 +87,14 @@ export async function buildOverview() {
     if (status === "trialing" && renewsAt != null && renewsAt >= now && renewsAt - now <= 7 * 86_400_000) trialsEnding7++
     if (now - o.createdAt.getTime() <= 30 * 86_400_000) newSignups30++
     const note = noteMap.get(o.id)
+    const su = setupMap.get(o.id)
+    const setupStage: SetupStage = r?.firstSaleAt ? "selling"
+      : !su || Number(su.products) === 0 ? "no_products"
+        : Number(su.priced) === 0 ? "no_prices"
+          : !su.stocked ? "no_stock" : "no_sale"
+    funnel[setupStage]++
     tenants.push({
+      setupStage,
       ...(r ?? {}), id: o.id, name: o.name, createdAt: o.createdAt.getTime(), subscriptionStatus: status, renewsAt, health,
       lastNoteAt: note?.last_note ? new Date(note.last_note).getTime() : null, followUpOn: note?.follow_up ?? null,
     })
@@ -88,6 +109,7 @@ export async function buildOverview() {
       active7, trialsEnding7, newSignups30,
       atRisk: counts.slipping + counts.at_risk + counts.inactive + counts.never_started,
       health: counts,
+      setupFunnel: funnel,
     },
     daily,
     tenants,

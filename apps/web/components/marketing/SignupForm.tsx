@@ -99,7 +99,7 @@ export function SignupForm({ googleEnabled = false }: { googleEnabled?: boolean 
         return
       }
       if (!res.ok) { showError(json, "Could not create your account"); setPending(false); return }
-      window.location.href = json.signedIn ? "/home" : "/login"
+      window.location.href = json.signedIn ? "/home?welcome=1" : "/login"
     } catch {
       setError("Network error — please try again")
       setPending(false)

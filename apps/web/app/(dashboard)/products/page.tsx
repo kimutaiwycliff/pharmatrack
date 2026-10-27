@@ -68,12 +68,17 @@ export default function ProductsPage() {
   const [newOpen, setNewOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
-  // Deep links from Settings → Branches ("set up a new branch"): ?export=1 / ?import=1.
+  // Bumping this opens the Quick Start picker (setup guide, empty state).
+  const [quickStartSignal, setQuickStartSignal] = useState(0)
+  // Deep links: Settings → Branches ("set up a new branch") ?export=1 / ?import=1;
+  // the setup guide (ADR-019) ?quickstart=1 / ?needsPrice=1.
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
     const t = setTimeout(() => {
       if (sp.get("export") === "1") setExportOpen(true)
       else if (sp.get("import") === "1") setImportOpen(true)
+      else if (sp.get("quickstart") === "1") setQuickStartSignal((n) => n + 1)
+      if (sp.get("needsPrice") === "1") setNeedsPrice(true)
     }, 0)
     return () => clearTimeout(t)
   }, [])
@@ -225,7 +230,7 @@ export default function ProductsPage() {
       {/* Table */}
       <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
         {/* Quick Start: load the Kenyan retail catalogue by department, then price & stock */}
-        <CatalogSeedControls canManage={canSeedCatalog} branchId={branchId} />
+        <CatalogSeedControls canManage={canSeedCatalog} branchId={branchId} openSignal={quickStartSignal} />
 
         {(unpriced?.total ?? 0) > 0 && !needsPrice ? (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
@@ -249,6 +254,37 @@ export default function ProductsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : products.length === 0 && !rawSearch && !categoryId && !needsPrice && (canSeedCatalog || canImport) ? (
+          // A brand-new pharmacy: show the three ways in (ADR-019).
+          <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-6 sm:p-8">
+            <div className="text-center max-w-md mx-auto">
+              <Pill size={34} strokeWidth={1.5} className="mx-auto text-[var(--pt-green-600)]" />
+              <h2 className="text-lg font-bold mt-2">Add the products you stock</h2>
+              <p className="text-sm text-[var(--pt-text-secondary)] mt-1">Most pharmacies start with Quick Start — you don&apos;t type anything in.</p>
+            </div>
+            <div className="mt-6 grid sm:grid-cols-3 gap-3">
+              {canSeedCatalog && (
+                <button type="button" onClick={() => setQuickStartSignal((n) => n + 1)}
+                  className="text-left rounded-xl border-2 border-[var(--pt-green)] bg-[var(--pt-green-50)] p-4 hover:shadow-md transition-shadow">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--pt-green-700)]">Recommended</span>
+                  <span className="block font-semibold mt-1">Quick Start</span>
+                  <span className="block text-xs text-[var(--pt-text-secondary)] mt-1">Tick what you stock from 3,800+ medicines, including the PPB register.</span>
+                </button>
+              )}
+              {canImport && (
+                <button type="button" onClick={() => setImportOpen(true)}
+                  className="text-left rounded-xl border border-[var(--pt-border)] p-4 hover:border-[var(--pt-green)] hover:shadow-md transition-all">
+                  <span className="block font-semibold mt-5">Import from Excel</span>
+                  <span className="block text-xs text-[var(--pt-text-secondary)] mt-1">Upload your old system&apos;s export — columns are matched for you.</span>
+                </button>
+              )}
+              <button type="button" onClick={() => setNewOpen(true)}
+                className="text-left rounded-xl border border-[var(--pt-border)] p-4 hover:border-[var(--pt-green)] hover:shadow-md transition-all">
+                <span className="block font-semibold mt-5">Add one product</span>
+                <span className="block text-xs text-[var(--pt-text-secondary)] mt-1">Search the catalogue or scan its barcode.</span>
+              </button>
+            </div>
           </div>
         ) : products.length === 0 ? (
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] flex flex-col items-center justify-center py-20 text-[var(--pt-text-tertiary)]">

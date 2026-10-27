@@ -9,6 +9,8 @@ import { formatKES } from "@/lib/store/cartStore"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
 import { useCan } from "@/lib/store/sessionStore"
 import { ClientsToCallCard } from "@/components/dashboard/ClientsToCallCard"
+import { SetupGuideCard } from "@/components/onboarding/SetupGuide"
+import { WelcomeDialog } from "@/components/onboarding/WelcomeDialog"
 
 interface DashboardData {
   kpis: {
@@ -142,6 +144,10 @@ export default function DashboardPage() {
         </p>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
       </div>
+
+      {/* New pharmacies: the setup guide until the first sale (ADR-019) */}
+      <SetupGuideCard />
+      <WelcomeDialog />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
