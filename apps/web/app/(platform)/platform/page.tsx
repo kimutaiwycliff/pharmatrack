@@ -9,7 +9,7 @@ import { ProvisionDialog } from "@/components/platform/ProvisionDialog"
 import { DailyBars } from "@/components/platform/insights/charts"
 import { ago, Card, change, Delta, HealthBadge, Kpi, kesShort, Sparkline } from "@/components/platform/insights/ui"
 import type { HealthLevel } from "@/lib/insights/health"
-import type { TenantOverview } from "@/lib/insights/overview"
+import type { SetupStage, TenantOverview } from "@/lib/insights/overview"
 import type { TenantSummary, SubscriptionStatus } from "@pharmatrack/types"
 
 // Operator console home: how the platform is doing and which pharmacies need
@@ -37,20 +37,27 @@ interface InsightsResponse {
   platform: {
     mrr: number; collected30: number; tenants: number; revenue30: number; profit30: number; stockCost: number; stockRetail: number
     active7: number; trialsEnding7: number; newSignups30: number; atRisk: number; health: Record<HealthLevel, number>
+    setupFunnel?: Record<SetupStage, number>
   }
   daily: Array<{ day: string; revenue: number; activePharmacies: number }>
   tenants: Record<string, TenantOverview>
 }
 
-type Filter = "all" | "attention" | "healthy" | "new" | "trials" | "followups"
+type Filter = "all" | "attention" | "healthy" | "new" | "trials" | "followups" | "setup"
 type Sort = "attention" | "active" | "sales" | "profit" | "stock" | "newest"
 const followUpLabel = (ymd: string) => new Date(`${ymd}T12:00:00+03:00`).toLocaleDateString("en-KE", { day: "numeric", month: "short" })
 const ATTENTION = new Set<HealthLevel>(["slipping", "at_risk", "never_started", "inactive"])
+const SETUP_STAGES: readonly SetupStage[] = ["no_products", "no_prices", "no_stock", "no_sale", "selling"]
+const STAGE_LABEL: Record<SetupStage, string> = {
+  no_products: "No products yet", no_prices: "Products, no prices", no_stock: "Priced, no stock", no_sale: "Stocked, no sale yet", selling: "Selling",
+}
 
 export default function PlatformTenantsPage() {
   const router = useRouter()
   const [provision, setProvision] = useState(false)
   const [filter, setFilter] = useState<Filter>("all")
+  // With filter "setup": one stage, or null for every pharmacy not selling yet.
+  const [stage, setStage] = useState<SetupStage | null>(null)
   const [sort, setSort] = useState<Sort>("attention")
   const [q, setQ] = useState("")
 
@@ -88,6 +95,7 @@ export default function PlatformTenantsPage() {
     new: rows.filter((r) => r.i?.health.level === "new").length,
     trials: rows.filter(isTrialEnding).length,
     followups: rows.filter(followUpDue).length,
+    setup: rows.filter((r) => r.i && r.i.setupStage !== "selling").length,
   }
 
   const shown = rows
@@ -97,6 +105,7 @@ export default function PlatformTenantsPage() {
       if (filter === "new") return r.i?.health.level === "new"
       if (filter === "trials") return isTrialEnding(r)
       if (filter === "followups") return followUpDue(r)
+      if (filter === "setup") return !!r.i && r.i.setupStage !== "selling" && (!stage || r.i.setupStage === stage)
       return true
     })
     .filter((r) => {
@@ -119,7 +128,7 @@ export default function PlatformTenantsPage() {
 
   const p = insights?.platform
   const chips: Array<[Filter, string]> = [
-    ["all", "All"], ["attention", "Needs attention"], ["healthy", "Healthy"], ["new", "Getting started"], ["trials", "Trials ending"], ["followups", "Follow-ups due"],
+    ["all", "All"], ["attention", "Needs attention"], ["healthy", "Healthy"], ["new", "Getting started"], ["trials", "Trials ending"], ["followups", "Follow-ups due"], ["setup", "Stuck in setup"],
   ]
 
   return (
@@ -160,11 +169,32 @@ export default function PlatformTenantsPage() {
         </Card>
       </div>
 
+      {/* Setup funnel (ADR-019): where new pharmacies stop before their first sale */}
+      {insights?.platform.setupFunnel && (
+        <Card title="Setup funnel · where pharmacies are stuck">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {SETUP_STAGES.map((k) => {
+              const n = insights.platform.setupFunnel![k]
+              const selling = k === "selling"
+              const active = filter === "setup" && stage === k
+              return (
+                <button key={k} type="button" disabled={selling || n === 0}
+                  onClick={() => { setFilter("setup"); setStage(k) }}
+                  className={`text-left rounded-lg border p-3 transition-colors ${active ? "border-[var(--pt-text)]" : "border-[var(--pt-border)]"} ${selling || n === 0 ? "cursor-default" : "hover:bg-[var(--pt-muted)]"}`}>
+                  <span className={`block text-xl font-bold tabular-nums ${selling ? "text-[var(--pt-green-600)]" : n > 0 ? "" : "text-[var(--pt-text-tertiary)]"}`}>{n}</span>
+                  <span className="block text-xs text-[var(--pt-text-secondary)] mt-0.5">{STAGE_LABEL[k]}</span>
+                </button>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
       {/* Filters */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-3">
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Filter pharmacies">
           {chips.map(([k, label]) => (
-            <button key={k} role="radio" aria-checked={filter === k} onClick={() => setFilter(k)}
+            <button key={k} role="radio" aria-checked={filter === k} onClick={() => { setFilter(k); setStage(null) }}
               className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium border transition-colors ${filter === k ? "bg-[var(--pt-text)] text-[var(--pt-surface)] border-[var(--pt-text)]" : "border-[var(--pt-border)] text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"}`}>
               {label}
               <span className={`text-xs tabular-nums ${filter === k ? "opacity-80" : "text-[var(--pt-text-tertiary)]"}`}>{counts[k]}</span>

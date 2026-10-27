@@ -36,7 +36,7 @@ export function OnboardingForm() {
         return
       }
       if (!res.ok) { setError(json.error ?? "Something went wrong"); setPending(false); return }
-      window.location.href = "/home"
+      window.location.href = "/home?welcome=1"
     } catch {
       setError("Network error — please try again")
       setPending(false)

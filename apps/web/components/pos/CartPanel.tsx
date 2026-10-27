@@ -133,7 +133,7 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClo
       </div>
 
       {/* Payment buttons */}
-      <div className="px-4 sm:px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] grid grid-cols-3 gap-2.5 shrink-0">
+      <div id="pos-pay" className="px-4 sm:px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] grid grid-cols-3 gap-2.5 shrink-0">
         <Button
           variant="outline"
           onClick={() => onPay("cash")}

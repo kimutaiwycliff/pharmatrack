@@ -7,6 +7,7 @@ import {
   BranchSwitcher, EmptyState, ErrorState, ListRow, Money, NeedsInternet, Screen, ScreenHeader, SkeletonBlock, SkeletonCards, Text, useIsOnline,
 } from "../../src/components"
 import { ClientsToCallCard } from "../../src/features/call-list/components/ClientsToCallCard"
+import { SetupCard } from "../../src/features/onboarding/SetupCard"
 import { BarChart } from "../../src/features/insights/components/BarChart"
 import { KpiGrid, type Kpi } from "../../src/features/insights/components/KpiGrid"
 import { PaymentSplitBar } from "../../src/features/insights/components/PaymentSplitBar"
@@ -137,7 +138,7 @@ export default function Dashboard() {
           data={q.data}
           canOpenInventory={can("products.view")}
           canSell={can("pos.sell")}
-          callList={OFFLINE ? null : <ClientsToCallCard branchId={scope.branchId} refreshSignal={refreshSignal} />}
+          callList={OFFLINE ? null : <><SetupCard refreshSignal={refreshSignal} /><ClientsToCallCard branchId={scope.branchId} refreshSignal={refreshSignal} /></>}
         />
       </ScrollView>
     </Screen>

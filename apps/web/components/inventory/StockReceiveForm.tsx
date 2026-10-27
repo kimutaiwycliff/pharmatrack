@@ -315,7 +315,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
               />
               <input
                 type="text"
-                placeholder="Scan or type barcode…"
+                placeholder="Scan or type barcode…" data-tour="receive-find"
                 value={scannedBarcode ?? ""}
                 onChange={(e) => setScannedBarcode(e.target.value || null)}
                 className="w-full h-14 pl-12 pr-28 text-[15px] border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
@@ -403,7 +403,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
                     value={pendingBatch}
                     onChange={(e) => setPendingBatch(e.target.value)}
                     className="w-full h-9 px-3 border border-[var(--pt-border)] rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
-                    placeholder="BN240815"
+                    placeholder="BN240815" data-tour="receive-batch"
                   />
                 </div>
                 <div>
@@ -448,7 +448,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
                 </div>
               </div>
 
-              <Button
+              <Button data-tour="receive-save"
                 onClick={addToList}
                 disabled={!canAdd}
                 className="w-full gap-2 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white h-10"
@@ -520,6 +520,7 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
             </div>
           )}
           <Button
+            data-tour="receive-post"
             onClick={postReceiving}
             disabled={receiveList.length === 0 || posting}
             className="w-full h-11 gap-2 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white font-semibold"

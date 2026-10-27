@@ -10,6 +10,7 @@ import { CashModal } from "@/components/pos/CashModal"
 import { MpesaModal } from "@/components/pos/MpesaModal"
 import { SplitModal } from "@/components/pos/SplitModal"
 import { ReceiptModal } from "@/components/pos/ReceiptModal"
+import { FirstSaleCelebration, PosCoach } from "@/components/onboarding/PosCoach"
 import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { useCartStore, cartTotal, formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
@@ -472,6 +473,10 @@ export default function PosPage() {
           })
         }
       />
+
+      {/* First sale coaching + celebration (ADR-019) */}
+      <PosCoach cartCount={items.length} paused={payModal !== null || receiptData !== null || newProductOpen} />
+      <FirstSaleCelebration receiptOpen={receiptData !== null} />
 
       {/* Receipt */}
       <ReceiptModal

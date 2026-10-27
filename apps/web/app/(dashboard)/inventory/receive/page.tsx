@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { StockReceiveForm } from "@/components/inventory/StockReceiveForm"
+import { ReceiveTour } from "@/components/onboarding/ReceiveTour"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
 import { useSuppliers } from "@/lib/hooks/useSuppliers"
@@ -55,6 +56,7 @@ export default function ReceiveStockPage() {
         </div>
       </div>
 
+      <ReceiveTour />
       <StockReceiveForm
         branchId={branchId}
         suppliers={suppliers}

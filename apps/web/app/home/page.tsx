@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic"
 // their role permissions allow (dashboard → inventory → POS). A page that
 // refuses a permission redirects here with ?denied=<capability>, which is
 // forwarded so the destination can explain why.
-export default async function HomeRouter({ searchParams }: { searchParams: Promise<{ denied?: string }> }) {
+export default async function HomeRouter({ searchParams }: { searchParams: Promise<{ denied?: string; welcome?: string }> }) {
   const session = await getSession()
   if (!session?.user) redirect("/login")
 
@@ -19,7 +19,9 @@ export default async function HomeRouter({ searchParams }: { searchParams: Promi
   const ctx = await getTenantContext()
   // Signed in but no pharmacy yet (e.g. a fresh Google sign-up) → finish onboarding.
   if (!ctx) redirect("/onboarding")
-  const { denied } = await searchParams
+  const { denied, welcome } = await searchParams
   const home = homeRouteFor(ctx.permissions)
-  redirect(denied ? `${home}?denied=${encodeURIComponent(denied)}` : home)
+  // ?welcome=1 — straight after sign-up: the dashboard greets the new owner (ADR-019).
+  if (denied) redirect(`${home}?denied=${encodeURIComponent(denied)}`)
+  redirect(welcome === "1" ? `${home}?welcome=1` : home)
 }

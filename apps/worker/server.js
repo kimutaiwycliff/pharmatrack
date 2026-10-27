@@ -35,6 +35,11 @@ const SUBSCRIPTION_REMINDER_URL = `${TARGET.replace(/\/$/, "")}/api/cron/subscri
 const DIGEST_INTERVAL_MS = Number(process.env.PLATFORM_DIGEST_INTERVAL_MS || 60 * 60 * 1000)
 const DIGEST_URL = `${TARGET.replace(/\/$/, "")}/api/cron/platform-digest`
 
+// Hourly: activation emails for new trial pharmacies (ADR-019). The endpoint
+// answers "disabled" until ACTIVATION_EMAILS_ENABLED=1 on the web app.
+const ACTIVATION_INTERVAL_MS = Number(process.env.ACTIVATION_INTERVAL_MS || 60 * 60 * 1000)
+const ACTIVATION_URL = `${TARGET.replace(/\/$/, "")}/api/cron/activation-emails`
+
 function log(level, msg, extra) {
   process.stdout.write(
     JSON.stringify({ ts: new Date().toISOString(), level, svc: "worker", msg, ...extra }) + "\n",
@@ -78,12 +83,14 @@ const runReminders = () => runTick("reminder", REMINDER_URL)
 const runSubscriptionSweep = () => runTick("subscription-expiry", SUBSCRIPTION_URL)
 const runSubscriptionReminders = () => runTick("subscription-reminder", SUBSCRIPTION_REMINDER_URL)
 const runPlatformDigest = () => runTick("platform-digest", DIGEST_URL)
+const runActivationEmails = () => runTick("activation-emails", ACTIVATION_URL)
 
 log("info", "worker started", {
   reminderTarget: REMINDER_URL, reminderIntervalMs: INTERVAL_MS,
   subscriptionTarget: SUBSCRIPTION_URL, subscriptionIntervalMs: SUBSCRIPTION_INTERVAL_MS,
   subscriptionReminderTarget: SUBSCRIPTION_REMINDER_URL, subscriptionReminderIntervalMs: REMINDER_SWEEP_INTERVAL_MS,
   digestTarget: DIGEST_URL, digestIntervalMs: DIGEST_INTERVAL_MS,
+  activationTarget: ACTIVATION_URL, activationIntervalMs: ACTIVATION_INTERVAL_MS,
 })
 
 // Run once each on boot (web is gated by depends_on: service_healthy), then on interval.
@@ -91,10 +98,12 @@ runReminders()
 runSubscriptionSweep()
 runSubscriptionReminders()
 runPlatformDigest()
+runActivationEmails()
 const timer = setInterval(runReminders, INTERVAL_MS)
 const subscriptionTimer = setInterval(runSubscriptionSweep, SUBSCRIPTION_INTERVAL_MS)
 const subscriptionReminderTimer = setInterval(runSubscriptionReminders, REMINDER_SWEEP_INTERVAL_MS)
 const digestTimer = setInterval(runPlatformDigest, DIGEST_INTERVAL_MS)
+const activationTimer = setInterval(runActivationEmails, ACTIVATION_INTERVAL_MS)
 
 function shutdown(signal) {
   log("info", "shutting down", { signal })
@@ -102,6 +111,7 @@ function shutdown(signal) {
   clearInterval(subscriptionTimer)
   clearInterval(subscriptionReminderTimer)
   clearInterval(digestTimer)
+  clearInterval(activationTimer)
   process.exit(0)
 }
 process.on("SIGTERM", () => shutdown("SIGTERM"))

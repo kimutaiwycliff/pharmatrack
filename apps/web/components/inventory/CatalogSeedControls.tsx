@@ -15,13 +15,20 @@ interface SeedStatus { catalogTotal: number; seeded: number; quickStart?: number
  * (QuickStartPicker), set their prices (QuickStartPrices), then do a stock
  * take. Owner/manager only (the API enforces this too).
  */
-export function CatalogSeedControls({ canManage }: { canManage: boolean; branchId?: string | null }) {
+export function CatalogSeedControls({ canManage, openSignal = 0 }: { canManage: boolean; branchId?: string | null; openSignal?: number }) {
   const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [wizard, setWizard] = useState(false)
   const [review, setReview] = useState(false)
   // Products the picker just added — the prices step shows only these.
   const [justAdded, setJustAdded] = useState<string[] | undefined>(undefined)
+
+  // The parent bumps openSignal to open the picker (setup guide, empty state).
+  const [seenSignal, setSeenSignal] = useState(0)
+  if (openSignal !== seenSignal) {
+    setSeenSignal(openSignal)
+    if (openSignal > 0) setWizard(true)
+  }
 
   const { data } = useQuery<SeedStatus>({
     queryKey: ["catalog-seed-status"],

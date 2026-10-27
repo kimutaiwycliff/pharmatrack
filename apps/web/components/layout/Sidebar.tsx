@@ -21,11 +21,13 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Rocket,
 } from "lucide-react"
 import { hasFeature, type Feature, type Capability } from "@pharmatrack/core"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import { LogoutButton } from "@/components/LogoutButton"
+import { ProgressRing, useSetupProgress } from "@/components/onboarding/SetupGuide"
 
 interface NavItem {
   label: string
@@ -62,6 +64,34 @@ function initials(name: string) {
     .map((n) => n[0])
     .join("")
     .toUpperCase()
+}
+
+// Setup guide entry (ADR-019) for owners/managers: at the top with a progress
+// ring while the pharmacy isn't selling yet, then quietly at the bottom.
+function GettingStartedLink({ collapsed, active, onNavigate, placement }: {
+  collapsed: boolean; active: boolean; onNavigate: () => void; placement: "top" | "bottom"
+}) {
+  const { data } = useSetupProgress()
+  const p = data?.audience ? data.progress : undefined
+  if (!p || (placement === "top") !== !p.ready) return null
+  return (
+    <Link
+      href="/getting-started"
+      onClick={onNavigate}
+      title={collapsed ? `Getting started (${p.coreDone}/${p.coreTotal})` : undefined}
+      className={[
+        "flex items-center gap-3 rounded-lg px-3 h-9 text-[13.5px] font-medium transition-colors",
+        active ? "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
+          : p.ready ? "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] hover:text-[var(--pt-text)]"
+            : "text-[var(--pt-green-700)] bg-[var(--pt-green-50)]/60 hover:bg-[var(--pt-green-50)]",
+        collapsed ? "lg:justify-center lg:px-0" : "",
+      ].join(" ")}
+    >
+      {p.ready ? <Rocket size={18} className="shrink-0" /> : <ProgressRing done={p.coreDone} total={p.coreTotal} size={18} />}
+      <span className={collapsed ? "lg:hidden" : ""}>Getting started</span>
+      {!p.ready && <span className={`ml-auto text-[11px] font-bold tabular-nums ${collapsed ? "lg:hidden" : ""}`}>{p.coreDone}/{p.coreTotal}</span>}
+    </Link>
+  )
 }
 
 export function Sidebar() {
@@ -117,6 +147,7 @@ export function Sidebar() {
 
         {/* Nav */}
         <nav className="flex flex-col gap-0.5 px-2 flex-1 py-2 overflow-y-auto">
+          <GettingStartedLink placement="top" collapsed={collapsed} active={pathname === "/getting-started"} onNavigate={() => setMobileNavOpen(false)} />
           {visibleNav.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/")
             return (
@@ -138,6 +169,7 @@ export function Sidebar() {
               </Link>
             )
           })}
+          <GettingStartedLink placement="bottom" collapsed={collapsed} active={pathname === "/getting-started"} onNavigate={() => setMobileNavOpen(false)} />
         </nav>
 
         {/* Collapse toggle (desktop only) */}

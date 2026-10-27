@@ -21,7 +21,7 @@ import { clientIp, rateLimit, retryText, tooManyRequests } from "@/lib/rate-limi
 const PROTECTED_PAGE_PREFIXES = [
   "/home", "/dashboard", "/pos", "/platform", "/onboarding",
   "/appointments", "/inventory", "/prescriptions", "/products",
-  "/reports", "/settings", "/shifts", "/staff", "/suppliers",
+  "/reports", "/settings", "/shifts", "/staff", "/suppliers", "/getting-started",
 ]
 
 // API routes that self-authenticate (Better Auth, webhooks/callbacks, cron, health,

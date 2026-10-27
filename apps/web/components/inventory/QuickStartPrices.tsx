@@ -5,12 +5,14 @@ import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, Download, Loader2, PackagePlus, Percent, Search, X } from "lucide-react"
 import { toast } from "sonner"
+import { QuickStartStock } from "@/components/inventory/QuickStartStock"
 import { Button } from "@/components/ui/button"
 
 // Quick Start step 2 — prices for the products just picked (or every Quick
 // Start product, from the banner): units per pack, cost per pack, selling
 // price per unit. Products without a price stay off sale ("Needs a price").
-// Step 3 — done: stock comes from a stock take with batch numbers + expiry.
+// Step 3 — stock: count what's on the shelf with its expiry (QuickStartStock),
+// or later from Receive stock / a count sheet.
 
 interface Row {
   product_id: string; name: string; brand_name: string | null; strength: string | null; dosage_form: string | null
@@ -38,6 +40,7 @@ export function QuickStartPrices({ ids, onClose }: { ids?: string[]; onClose: ()
   const [markup, setMarkup] = useState("30")
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<{ priced: number; unpriced: number } | null>(null)
+  const [stocking, setStocking] = useState(false)
 
   const rows = useMemo(() => data?.products ?? [], [data])
   const editOf = (r: Row): Edit => edits[r.product_id] ?? {
@@ -102,13 +105,16 @@ export function QuickStartPrices({ ids, onClose }: { ids?: string[]; onClose: ()
       <div className="flex h-full w-full max-w-5xl flex-col bg-[var(--pt-surface)] sm:h-[90vh] sm:rounded-2xl sm:shadow-xl">
         <div className="flex items-center justify-between border-b border-[var(--pt-border)] px-5 py-3">
           <div>
-            <h2 id="qsp-title" className="text-base font-bold">{done ? "You're set up" : "Set your prices"}</h2>
+            <h2 id="qsp-title" className="text-base font-bold">{stocking ? "Add your stock" : done ? "Prices saved" : "Set your prices"}</h2>
+            {stocking && <p className="text-xs text-[var(--pt-text-secondary)]">How many of each do you have on the shelf, and when does that batch expire? The till sells the earliest expiry first.</p>}
             {!done && <p className="text-xs text-[var(--pt-text-secondary)]">Cost per pack from your invoice, selling price per unit. Leave a price blank to set it later — that product stays off sale until then.</p>}
           </div>
           <button onClick={onClose} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)]"><X size={18} /></button>
         </div>
 
-        {done ? (
+        {stocking ? (
+          <QuickStartStock ids={ids} onClose={onClose} />
+        ) : done ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
             <CheckCircle2 size={44} className="text-[var(--pt-green-600)]" />
             <div>
@@ -116,10 +122,13 @@ export function QuickStartPrices({ ids, onClose }: { ids?: string[]; onClose: ()
               {done.unpriced > 0 && <p className="text-sm text-[var(--pt-text-secondary)]">{done.unpriced} still need a price — find them under Products → “Needs a price”.</p>}
             </div>
             <div className="max-w-md rounded-xl border border-[var(--pt-border)] p-4 text-left">
-              <p className="text-sm font-semibold">Next: your stock take</p>
+              <p className="text-sm font-semibold">Next: your stock</p>
               <p className="mt-0.5 text-xs text-[var(--pt-text-secondary)]">Count what&apos;s on the shelves and record each batch with its expiry date, so first-expiry-first-out and expiry alerts work from day one.</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Link href="/inventory/receive" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--pt-green)] px-3 text-sm font-semibold text-white hover:bg-[var(--pt-green-600)]"><PackagePlus size={15} /> Receive stock</Link>
+                {done.priced > 0 && (
+                  <button type="button" onClick={() => setStocking(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--pt-green)] px-3 text-sm font-semibold text-white hover:bg-[var(--pt-green-600)]"><PackagePlus size={15} /> Add stock now</button>
+                )}
+                <Link href="/inventory/receive" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--pt-border)] px-3 text-sm font-semibold hover:bg-[var(--pt-muted)]">Receive stock</Link>
                 <Link href="/products?export=1" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--pt-border)] px-3 text-sm font-semibold hover:bg-[var(--pt-muted)]"><Download size={15} /> Export a count sheet</Link>
               </div>
             </div>
