@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Plus, Building2, Download, Search, CalendarClock, ChevronRight } from "lucide-react"
+import { Plus, Building2, Download, Search, CalendarClock, ChevronRight, Mail } from "lucide-react"
 import { ProvisionDialog } from "@/components/platform/ProvisionDialog"
 import { DailyBars } from "@/components/platform/insights/charts"
 import { ago, Card, change, Delta, HealthBadge, Kpi, kesShort, Sparkline } from "@/components/platform/insights/ui"
@@ -140,9 +140,14 @@ export default function PlatformTenantsPage() {
             {p ? `${p.tenants} on PharmaTrack · ${p.newSignups30} joined in the last 30 days` : "Pharmacies on PharmaTrack"}
           </p>
         </div>
-        <button onClick={() => setProvision(true)} className="inline-flex items-center gap-2 px-4 h-9 rounded-lg bg-[var(--pt-green)] text-white text-sm font-semibold hover:bg-[var(--pt-green-600)] transition-colors shrink-0">
-          <Plus size={16} /> Add pharmacy
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/platform/updates" className="inline-flex items-center gap-2 px-4 h-9 rounded-lg border border-[var(--pt-border)] bg-[var(--pt-surface)] text-sm font-semibold hover:bg-[var(--pt-muted)] transition-colors">
+            <Mail size={16} /> Send an update
+          </Link>
+          <button onClick={() => setProvision(true)} className="inline-flex items-center gap-2 px-4 h-9 rounded-lg bg-[var(--pt-green)] text-white text-sm font-semibold hover:bg-[var(--pt-green-600)] transition-colors">
+            <Plus size={16} /> Add pharmacy
+          </button>
+        </div>
       </div>
 
       {/* Platform totals */}
