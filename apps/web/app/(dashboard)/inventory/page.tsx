@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { Search, PackagePlus, ChevronLeft, ChevronRight, Tag, Loader2, ClipboardCheck } from "lucide-react"
+import { Search, PackagePlus, ChevronLeft, ChevronRight, Tag, Loader2, ClipboardCheck, ClipboardList } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -85,6 +85,7 @@ export default function InventoryPage() {
   const canManageCatalog = useCan("catalog.seed")
   const canPlanRestock = useCan("purchasing.manage")
   const canReceive = useCan("stock.receive")
+  const canCount = useCan("stock.count")
 
   const [rawSearch, setRawSearch] = useState("")
   const [status, setStatus] = useState<StatusFilter>("all")
@@ -162,6 +163,12 @@ export default function InventoryPage() {
             <Button variant="outline" onClick={() => router.push("/purchase-orders/new")} className="gap-2">
               <ClipboardCheck size={16} />
               Restock
+            </Button>
+          )}
+          {canCount && (
+            <Button variant="outline" onClick={() => router.push("/inventory/stock-take")} className="gap-2">
+              <ClipboardList size={16} />
+              Stock take
             </Button>
           )}
           {canReceive && (

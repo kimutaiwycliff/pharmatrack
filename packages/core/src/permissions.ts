@@ -67,6 +67,7 @@ export const CAPABILITIES = {
   // ── Inventory & purchasing ─────────────────────────────────────────────────
   "stock.receive": { group: "Inventory & purchasing", label: "Receive stock", description: "Add new batches (batch number, expiry, quantity) and bulk-import stock.", defaults: OMP, requires: ["products.view"] },
   "stock.adjust": { group: "Inventory & purchasing", label: "Adjust & write off stock", description: "Correct counts, record damage, expiry write-offs and losses.", defaults: OM, requires: ["products.view"] },
+  "stock.count": { group: "Inventory & purchasing", label: "Do stock takes", description: "Count shelves in Stock take and post small differences. Bigger differences and controlled drugs wait for someone who can adjust stock.", defaults: OMP, requires: ["products.view"] },
   "suppliers.manage": { group: "Inventory & purchasing", label: "Edit suppliers", description: "Edit supplier contact details (anyone who can receive stock can add a new supplier).", defaults: OM, requires: ["products.view"] },
   "purchasing.manage": { group: "Inventory & purchasing", label: "Create & send purchase orders", description: "Build restock orders, see the budget and send them to suppliers.", defaults: OM, requires: ["products.view"] },
   "purchasing.receive": { group: "Inventory & purchasing", label: "Receive purchase orders", description: "Check in deliveries against a purchase order and record their batches.", defaults: OMP, requires: ["stock.receive"] },

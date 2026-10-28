@@ -22,6 +22,20 @@ export function isStaleGap(gapMs: number): boolean {
   return gapMs > SCANNER_THRESHOLD_MS * 2
 }
 
+/** GS1 group separator (FNC1 inside a code), ASCII 29. */
+export const WEDGE_GS = "\x1D"
+
+// What one keystroke adds to a scan buffer, or null to ignore it. A wedge
+// scanner can't type ASCII 29, so in keyboard mode it sends Ctrl+] (US layout)
+// for the separator between variable-length GS1 fields (batch, serial). Read
+// as a plain "]" it would glue the batch to the next field and break expiry.
+export function wedgeKeyChar(e: { key: string; code?: string; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean }): string | null {
+  if (e.key === WEDGE_GS) return WEDGE_GS
+  if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === "]" || e.code === "BracketRight")) return WEDGE_GS
+  if (e.ctrlKey || e.altKey || e.metaKey) return null
+  return e.key.length === 1 ? e.key : null
+}
+
 // True when a completed buffer is long enough, and far enough past the last
 // accepted scan, to be treated as a genuine new scan rather than noise or an
 // accidental double-read of the same label.
