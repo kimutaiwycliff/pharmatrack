@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Bell, AlertTriangle, Clock, CreditCard, Phone, Tag, MonitorSmartphone } from "lucide-react"
+import { Bell, AlertTriangle, ClipboardList, Clock, CreditCard, Phone, Tag, MonitorSmartphone } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -20,6 +20,7 @@ interface NotificationsData {
   needsPrice?: number
   toCall?: number
   devicesWaiting?: number
+  stockTake?: { waiting: number; dueShelf: { name: string; products: number } | null }
 }
 
 export function NotificationsMenu({ branchId, ready }: { branchId: string | null; ready: boolean }) {
@@ -56,7 +57,9 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
     retry: false,
   })
   const devicesWaiting = waitingNow ?? data?.devicesWaiting ?? 0
-  const count = lowStock.length + expiring.length + (trial ? 1 : 0) + (needsPrice > 0 ? 1 : 0) + (toCall > 0 ? 1 : 0) + (devicesWaiting > 0 ? 1 : 0)
+  const countsWaiting = data?.stockTake?.waiting ?? 0
+  const dueShelf = data?.stockTake?.dueShelf ?? null
+  const count = lowStock.length + expiring.length + (trial ? 1 : 0) + (needsPrice > 0 ? 1 : 0) + (toCall > 0 ? 1 : 0) + (devicesWaiting > 0 ? 1 : 0) + (countsWaiting > 0 ? 1 : 0) + (dueShelf ? 1 : 0)
   const hasAny = count > 0
 
   return (
@@ -132,6 +135,33 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
                   <p className="text-xs text-[var(--pt-text-tertiary)]">Someone is trying to sign in on a new device</p>
                 </div>
               </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+          </>
+        )}
+
+        {(countsWaiting > 0 || dueShelf) && (
+          <>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Stock take</DropdownMenuLabel>
+              {countsWaiting > 0 && (
+                <DropdownMenuItem className="gap-2 items-start py-2" onClick={() => router.push("/inventory/stock-take")}>
+                  <ClipboardList size={15} className="mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium">{countsWaiting} count{countsWaiting === 1 ? "" : "s"} waiting for your approval</p>
+                    <p className="text-xs text-[var(--pt-text-tertiary)]">Check the differences and post them</p>
+                  </div>
+                </DropdownMenuItem>
+              )}
+              {dueShelf && (
+                <DropdownMenuItem className="gap-2 items-start py-2" onClick={() => router.push("/inventory/stock-take")}>
+                  <ClipboardList size={15} className="mt-0.5 text-[var(--pt-green-600)] shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium">This week&apos;s stock take: {dueShelf.name}</p>
+                    <p className="text-xs text-[var(--pt-text-tertiary)]">{dueShelf.products} product{dueShelf.products === 1 ? "" : "s"} · one shelf a week keeps stock right</p>
+                  </div>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
           </>

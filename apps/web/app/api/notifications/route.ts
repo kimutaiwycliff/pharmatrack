@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm"
-import { withTenant, appointment, customer, device_request, product, product_stock, subscription } from "@pharmatrack/db"
+import { withTenant, appointment, customer, device_request, product, product_stock, stock_count, subscription } from "@pharmatrack/db"
+import { listShelves } from "@/lib/stockTake/server"
 import { callWindow } from "@/lib/appointments/call-list"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { mergeAcrossBranches, resolveBranchScope } from "@/lib/inventory/aggregate"
@@ -110,6 +111,31 @@ export async function GET(request: NextRequest) {
       devicesWaiting = r?.n ?? 0
     }
 
-    return NextResponse.json({ lowStock, expiring, trialEndingSoon, needsPrice, toCall, devicesWaiting })
+    // Stock take (ADR-020): counts waiting for an approver, and a weekly nudge
+    // — when nothing was counted at this branch in 7 days, the biggest shelf
+    // not counted in 90. One shelf a week instead of a dreaded yearly count.
+    let stockTake: { waiting: number; dueShelf: { name: string; products: number } | null } | undefined
+    if (ctx.permissions.includes("stock.count")) {
+      let waiting = 0
+      if (ctx.permissions.includes("stock.adjust")) {
+        const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(stock_count)
+          .where(and(eq(stock_count.status, "review"), branchId ? eq(stock_count.branch_id, branchId) : undefined))
+        waiting = r?.n ?? 0
+      }
+      let dueShelf: { name: string; products: number } | null = null
+      if (branchId) {
+        const [recent] = await db.select({ n: sql<number>`count(*)::int` }).from(stock_count)
+          .where(and(eq(stock_count.branch_id, branchId), eq(stock_count.status, "posted"), gte(stock_count.posted_at, new Date(now - 7 * 86_400_000))))
+        if (!recent?.n) {
+          const due = (await listShelves(db, branchId))
+            .filter((s) => s.products > 0 && (!s.lastCounted || now - new Date(s.lastCounted).getTime() > 90 * 86_400_000))
+            .sort((a, b) => b.products - a.products)[0]
+          if (due) dueShelf = { name: due.name, products: due.products }
+        }
+      }
+      stockTake = { waiting, dueShelf }
+    }
+
+    return NextResponse.json({ lowStock, expiring, trialEndingSoon, needsPrice, toCall, devicesWaiting, stockTake })
   })
 }
