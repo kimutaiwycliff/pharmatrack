@@ -105,6 +105,9 @@ export default function Inventory() {
       right={
         <>
           {OFFLINE ? null : <BranchSwitcher />}
+          {!OFFLINE && can("stock.count") ? (
+            <IconButton icon="clipboard-outline" accessibilityLabel="Stock take" onPress={() => router.push("/stock-take")} />
+          ) : null}
           {canReceive ? (
             <IconButton icon="add-circle-outline" variant="tonal" accessibilityLabel="Receive stock" onPress={() => router.push("/receive-stock")} />
           ) : null}

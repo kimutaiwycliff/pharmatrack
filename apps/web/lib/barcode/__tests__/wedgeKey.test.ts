@@ -18,6 +18,22 @@ describe("wedgeKeyChar", () => {
     expect(wedgeKeyChar({ key: "Shift" })).toBeNull()
     expect(wedgeKeyChar({ key: "Tab" })).toBeNull()
   })
+  it("reads a bare code with no prefix or separator (Android, prefix off)", () => {
+    const r = parseBarcode("01069010280759091727113010LOT7A")
+    expect(r.type).toBe("GS1_128")
+    expect(r.gtin).toBe("6901028075909")
+    expect(r.batchNumber).toBe("LOT7A")
+    expect(r.expiryDate?.getMonth()).toBe(10)
+  })
+  it("splits an expiry glued onto the batch when the separator was dropped", () => {
+    const r = parseBarcode("010690102807590910LOT7A17271130")
+    expect(r.batchNumber).toBe("LOT7A")
+    expect(r.expiryDate?.getFullYear()).toBe(2027)
+    expect(r.expiryDate?.getDate()).toBe(30)
+  })
+  it("leaves a plain EAN-13 alone", () => {
+    expect(parseBarcode("6901028075909").type).toBe("EAN13")
+  })
   it("lets the parser split batch from expiry", () => {
     const raw = keys("]d20106901028075909" + "10LOT7A|" + "17271130").map(wedgeKeyChar).join("")
     const r = parseBarcode(raw)

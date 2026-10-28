@@ -62,9 +62,37 @@ them stall.
 ## Consequences
 - Wedge scanners now send the GS1 separator correctly in the browser
   (Ctrl+] → ASCII 29, `wedgeKeyChar`), so a 2D pack fills batch and expiry.
-  Android reads scans as text and may still drop the separator; that needs a
-  native key hook (phase 3).
+  Android reads scans as text and drops the separator (and scanners are often
+  set up without the "]d2" prefix), so the parser also reads bare
+  "01"+GTIN element strings and splits a trailing 17+valid date back off a
+  batch. A serial (AI 21) glued to a batch still needs the batch edited by
+  hand; a native key hook would fix that fully.
+- Android (phase 3) counts offline once a count is open: the shelf is cached
+  in kv_store and counted lines queue there, sent when the connection
+  returns (line ids from the phone make resends upserts). Starting a count,
+  searching the catalogue, reviewing and posting need the internet. It is
+  JS-only, so it ships by OTA update.
+- Reminders live in the notification bell (no new tables): counts waiting for
+  approval, and — when nothing was counted at a branch in 7 days — "this
+  week's stock take" for the biggest shelf not counted in 90 days.
 - The catalogue has no GTINs. A scan that matches nothing can be attached to
   the row being counted, which teaches the pharmacy's barcodes as it goes.
 - Quick Start stays as the 15-minute "try the till" route. It still seeds
   catalogue reference prices; setup mode is the careful route.
+
+## Phase 3 (Android, reminders) — 2026-10-28
+- **Android** (`apps/mobile/app/stock-take`) uses the same API. Starting a
+  count needs the internet; once open, the shelf is cached on the phone and
+  every counted line is queued in `kv_store` and sent when the connection
+  returns (even after a restart). Line ids are made on the phone, so a resend
+  is an upsert. Review and posting need the internet. JS-only — ships as an
+  OTA update, no new APK.
+- **Scanner separator without native code:** Android text input never sees a
+  wedge scanner's Ctrl+]. The shared parser now reads bare GS1 element strings
+  ("01"+GTIN-14+AI, no "]d2" prefix) and, when no separator arrived, splits a
+  trailing "17"+valid date back off the batch. A batch followed by a serial
+  (AI 21) can still run together; the batch stays editable on screen.
+- **Reminders:** the notification bell shows counts waiting for approval
+  (approvers) and, when nothing was counted at the branch in 7 days, "This
+  week's stock take" for the biggest shelf not counted in 90 days. No emails.
+

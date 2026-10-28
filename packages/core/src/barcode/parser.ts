@@ -18,9 +18,15 @@ const FNC1 = "\x1D"
 // Symbology identifiers for GS1
 const GS1_PREFIXES = ["]d2", "]C1", "]e0"]
 
+// A scanner typing into Android (or set up without its symbology prefix) can
+// drop both the "]d2" prefix and the FNC1 separator, so a pack's DataMatrix
+// arrives as bare element strings: "01" + GTIN-14, then another AI.
+const BARE_GS1 = /^01\d{14}(?:10|11|15|17|21)./
+
 export function isGS1(raw: string): boolean {
   if (raw.includes(FNC1)) return true
   if (GS1_PREFIXES.some((p) => raw.startsWith(p))) return true
+  if (BARE_GS1.test(raw)) return true
   // GS1-128 often detected by leading ] symbology identifier
   return false
 }
@@ -77,6 +83,17 @@ export function parseGS1(raw: string): Partial<BarcodeScanEvent> {
     const batchAI = reader.lookup["10"]
     if (batchAI) {
       result.batchNumber = batchAI.value as string
+    }
+
+    // No separator arrived, so a batch read up to the end may have swallowed
+    // the expiry that followed it ("10LOT7A" + "17271130"). Split it back off
+    // only when it ends in a real date — the batch stays editable on screen.
+    if (!code.includes(FNC1) && result.batchNumber && !result.expiryDate) {
+      const m = /^(.+?)17(\d{2}(?:0[1-9]|1[0-2])(?:[0-2]\d|3[01]))$/.exec(result.batchNumber)
+      if (m) {
+        result.batchNumber = m[1]
+        result.expiryDate = parseExpiryYYMMDD(m[2]!)
+      }
     }
 
     // AI (21) = Serial number
