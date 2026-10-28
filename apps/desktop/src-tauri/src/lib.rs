@@ -134,7 +134,18 @@ pub fn run() {
                 // build creates its own "main" window once local Postgres +
                 // the app server are healthy, and wires the same close
                 // behaviour there (see offline::bootstrap_and_launch).
+                // The SaaS window is declared in tauri.conf.json with
+                // "create": false and built here, so it can take a download
+                // handler (desktop::handle_download) — config windows can't.
                 #[cfg(not(feature = "offline-edition"))]
+                // Only if the config didn't already create it (never fail to open).
+                if app.get_webview_window("main").is_none() {
+                    if let Some(config) = app.config().app.windows.iter().find(|w| w.label == "main").cloned() {
+                        tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+                            .on_download(desktop::handle_download)
+                            .build()?;
+                    }
+                }                #[cfg(not(feature = "offline-edition"))]
                 if let Some(window) = app.get_webview_window("main") {
                     let window_clone = window.clone();
                     window.on_window_event(move |event| {

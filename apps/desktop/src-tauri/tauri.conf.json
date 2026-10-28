@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PharmaTrack",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "ke.co.pharmatrack.desktop",
   "build": {
     "frontendDist": "../launcher"
@@ -15,7 +15,8 @@
         "width": 1280,
         "height": 800,
         "minWidth": 1024,
-        "minHeight": 700
+        "minHeight": 700,
+        "create": false
       }
     ]
   },

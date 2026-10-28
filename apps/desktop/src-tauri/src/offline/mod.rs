@@ -112,6 +112,7 @@ pub fn bootstrap_and_launch(app: &AppHandle) -> Result<(), String> {
         .title("PharmaTrack")
         .inner_size(1280.0, 800.0)
         .min_inner_size(1024.0, 700.0)
+        .on_download(crate::desktop::handle_download)
         .build()
         .map_err(|e| format!("failed to open main window: {e}"))?;
 
