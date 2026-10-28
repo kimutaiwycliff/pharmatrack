@@ -26,6 +26,7 @@ async function cleanup() {
     await admin.delete(s.sync_issue).where(eq(s.sync_issue.organization_id, orgId))
     await admin.delete(s.device_request).where(eq(s.device_request.organization_id, orgId))
     await admin.delete(s.device).where(eq(s.device.organization_id, orgId))
+    await admin.delete(s.stock_count).where(eq(s.stock_count.organization_id, orgId))
     await admin.delete(s.purchase_order).where(eq(s.purchase_order.organization_id, orgId))
     await admin.delete(s.role_permission).where(eq(s.role_permission.organization_id, orgId))
     await admin.delete(s.sale).where(eq(s.sale.organization_id, orgId))
@@ -63,6 +64,9 @@ async function seed(orgId: string, tag: string) {
     organization_id: orgId, user_id: `rls-user-${orgId}`, suggested_name: `${tag} counter`, code: "123456",
     secret_hash: `req-${tag}`, expires_at: new Date(Date.now() + 900_000),
   })
+  // ADR-020 stock take session + one counted line.
+  const [sc] = await admin.insert(s.stock_count).values({ organization_id: orgId, branch_id: b.id, kind: "count", title: `${tag} shelf` }).returning()
+  await admin.insert(s.stock_count_line).values({ id: crypto.randomUUID(), organization_id: orgId, count_id: sc.id, product_id: p.id, expiry_date: "2027-06-30", counted_qty: 3 })
   await admin.insert(s.idempotency_key).values({ organization_id: orgId, key: `k-rls-test-${tag}`, scope: "batch.create", status_code: 201, response: { tag } })
 }
 
@@ -77,6 +81,7 @@ async function run() {
     ["device", s.device], ["sync_issue", s.sync_issue], ["sync_tombstone", s.sync_tombstone],
     ["trial_extension_request", s.trial_extension_request], ["idempotency_key", s.idempotency_key],
     ["device_request", s.device_request],
+    ["stock_count", s.stock_count], ["stock_count_line", s.stock_count_line],
   ]
 
   // Each org sees only its own rows on each table.
