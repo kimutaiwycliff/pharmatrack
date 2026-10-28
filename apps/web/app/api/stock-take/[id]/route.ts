@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { and, asc, eq, ilike, inArray, or } from "drizzle-orm"
-import { withTenant, product, product_batch, stock_count, stock_count_line, user, type DrizzleDB } from "@pharmatrack/db"
+import { and, eq, ilike, inArray, or } from "drizzle-orm"
+import { withTenant, dbAdmin, drug_catalog, product, product_batch, stock_count, stock_count_line, user, type DrizzleDB } from "@pharmatrack/db"
 import { zUuid } from "@/lib/api/validation"
 import { zodErrorResponse } from "@/lib/api/errors"
 import { canViewCost } from "@/lib/auth/costVisibility"
-import { loadShelfItems, stockTakeContext, type StockTakeItem } from "@/lib/stockTake/server"
+import { catalogItem, loadShelfItems, productItems, stockTakeContext } from "@/lib/stockTake/server"
 
 // One stock-take session: GET what's on the shelf and what has been counted,
 // PUT autosaves counted lines, PATCH cancels or reopens it (ADR-020).
@@ -42,30 +42,14 @@ export async function GET(request: NextRequest, { params }: Params) {
     })
     if (q) {
       // "Found something not on this list": the pharmacy's own products from
-      // any shelf, then catalogue matches.
+      // any shelf first, then catalogue matches.
       const needle = q.toLowerCase()
-      items = items.filter((i) => i.name.toLowerCase().includes(needle) || i.detail.toLowerCase().includes(needle) || i.barcodes.includes(q))
+      items = items.filter((i) => !i.productId || i.name.toLowerCase().includes(needle) || i.barcodes.includes(q))
       const have = new Set(items.map((i) => i.productId).filter(Boolean))
-      const own = await db.select({
-        id: product.id, name: product.name, strength: product.strength, dosage_form: product.dosage_form, base_unit: product.base_unit,
-        pack_label: product.pack_label, units_per_pack: product.units_per_pack, cost_price: product.cost_price, selling_price: product.selling_price,
-        is_active: product.is_active, is_controlled: product.is_controlled, gtin: product.gtin, barcode_raw: product.barcode_raw, catalog_id: product.catalog_id,
-      }).from(product).where(or(ilike(product.name, `%${q}%`), eq(product.gtin, q), eq(product.barcode_raw, q))).orderBy(asc(product.name)).limit(20)
-      const extra = own.filter((p) => !have.has(p.id))
-      const batches = extra.length ? await db.select({ id: product_batch.id, product_id: product_batch.product_id, batch_number: product_batch.batch_number, expiry_date: product_batch.expiry_date, qty: product_batch.quantity_remaining, cost_price: product_batch.cost_price })
-        .from(product_batch).where(and(inArray(product_batch.product_id, extra.map((p) => p.id)), eq(product_batch.branch_id, session.branch_id))).orderBy(asc(product_batch.expiry_date)) : []
-      const mapped: StockTakeItem[] = extra.map((p) => ({
-        key: `p:${p.id}`, productId: p.id, catalogId: p.catalog_id, name: p.name, detail: [p.strength, p.dosage_form, p.pack_label].filter(Boolean).join(" · "),
-        group: "Found on this shelf", baseUnit: p.base_unit, packLabel: p.pack_label, unitsPerPack: p.units_per_pack ?? 1, controlled: p.is_controlled,
-        needsPrice: !(Number(p.selling_price ?? 0) > 0) || !p.is_active, sellingPrice: p.selling_price == null ? null : Number(p.selling_price),
-        suggestedSell: null, suggestedCost: null, costPrice: showCost && p.cost_price != null ? Number(p.cost_price) : null,
-        barcodes: [p.gtin, p.barcode_raw].filter(Boolean) as string[], common: true,
-        batches: batches.filter((b) => b.product_id === p.id && b.qty > 0).map((b) => ({
-          id: b.id, batchNumber: b.batch_number, expiry: String(b.expiry_date), qty: hideQty ? null : b.qty,
-          unitCost: showCost && b.cost_price != null ? Number(b.cost_price) : null,
-        })),
-      }))
-      items = [...mapped, ...items]
+      const own = await productItems(db, or(ilike(product.name, `%${q}%`), eq(product.gtin, q), eq(product.barcode_raw, q)), {
+        branchId: session.branch_id, showCost, hideQty, group: "Found on this shelf", limit: 20,
+      })
+      items = [...own.filter((i) => !have.has(i.productId)), ...items]
     }
     const lines = await db.select({
       id: stock_count_line.id, product_id: stock_count_line.product_id, catalog_id: stock_count_line.catalog_id, batch_id: stock_count_line.batch_id,
@@ -74,6 +58,12 @@ export async function GET(request: NextRequest, { params }: Params) {
       selling_price: stock_count_line.selling_price, cost_price: stock_count_line.cost_price, price_confirmed: stock_count_line.price_confirmed,
       counted_by: user.name, counted_at: stock_count_line.counted_at,
     }).from(stock_count_line).leftJoin(user, eq(user.id, stock_count_line.counted_by)).where(eq(stock_count_line.count_id, id))
+    // Keep everything already counted on screen, even if it lives on another shelf.
+    const shown = new Set(items.map((i) => i.key))
+    const missingProducts = [...new Set(lines.map((l) => l.product_id).filter((x): x is string => !!x && !shown.has(`p:${x}`)))]
+    const missingCatalog = [...new Set(lines.filter((l) => !l.product_id).map((l) => l.catalog_id).filter((x): x is string => !!x && !shown.has(`k:${x}`)))]
+    if (missingProducts.length) items.push(...await productItems(db, inArray(product.id, missingProducts), { branchId: session.branch_id, showCost, hideQty, group: "Found on this shelf" }))
+    if (missingCatalog.length) items.push(...(await dbAdmin().select().from(drug_catalog).where(inArray(drug_catalog.id, missingCatalog))).map((c) => catalogItem(c, showCost, "Found on this shelf")))
     return {
       session: {
         id: session.id, kind: session.kind, title: session.title, status: session.status, hide_expected: session.hide_expected,

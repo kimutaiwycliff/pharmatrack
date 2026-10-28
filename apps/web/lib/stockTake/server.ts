@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, ilike, inArray, isNotNull, max, or, sql } from "drizzle-orm"
+import { and, asc, eq, gt, ilike, inArray, isNotNull, max, or, sql, type SQL } from "drizzle-orm"
 import {
   category, drug_catalog, product, product_batch, stock_count, stock_count_line, dbAdmin, type DrizzleDB,
 } from "@pharmatrack/db"
@@ -164,25 +164,18 @@ async function scopeCategoryIds(db: DrizzleDB, scope: { categoryId: string | nul
   return [...ids]
 }
 
-/**
- * What's on a shelf: the pharmacy's products in it with their batches at this
- * branch, and (for setup, or when asked) common catalogue items it doesn't
- * have yet — most-stocked first. `all` adds the PPB register; `q` searches it.
- */
-export async function loadShelfItems(db: DrizzleDB, args: {
-  organizationId: string; branchId: string; scope: { categoryId: string | null; key: string | null }
-  includeCatalog: boolean; all?: boolean; q?: string; showCost: boolean; hideQty: boolean
-}): Promise<StockTakeItem[]> {
-  const catIds = await scopeCategoryIds(db, args.scope)
+const detail = (st: string | null, f: string | null, pack: string | null) => [st, f, pack].filter(Boolean).join(" · ")
+
+/** The pharmacy's products (matching `where`) as count rows, with their batches at this branch. */
+export async function productItems(db: DrizzleDB, where: SQL | undefined, args: { branchId: string; showCost: boolean; hideQty: boolean; group?: string; limit?: number }): Promise<StockTakeItem[]> {
   const catNames = new Map((await db.select({ id: category.id, name: category.name }).from(category)).map((c) => [c.id, c.name]))
-  const own = catIds.length
-    ? await db.select({
-      id: product.id, name: product.name, strength: product.strength, dosage_form: product.dosage_form, base_unit: product.base_unit,
-      pack_label: product.pack_label, units_per_pack: product.units_per_pack, cost_price: product.cost_price, selling_price: product.selling_price,
-      is_active: product.is_active, is_controlled: product.is_controlled, gtin: product.gtin, barcode_raw: product.barcode_raw,
-      catalog_id: product.catalog_id, category_id: product.category_id,
-    }).from(product).where(inArray(product.category_id, catIds)).orderBy(asc(product.name))
-    : []
+  const q = db.select({
+    id: product.id, name: product.name, strength: product.strength, dosage_form: product.dosage_form, base_unit: product.base_unit,
+    pack_label: product.pack_label, units_per_pack: product.units_per_pack, cost_price: product.cost_price, selling_price: product.selling_price,
+    is_active: product.is_active, is_controlled: product.is_controlled, gtin: product.gtin, barcode_raw: product.barcode_raw,
+    catalog_id: product.catalog_id, category_id: product.category_id,
+  }).from(product).where(where).orderBy(asc(product.name))
+  const own = args.limit ? await q.limit(args.limit) : await q
   const batches = own.length
     ? await db.select({ id: product_batch.id, product_id: product_batch.product_id, batch_number: product_batch.batch_number, expiry_date: product_batch.expiry_date, qty: product_batch.quantity_remaining, cost_price: product_batch.cost_price })
       .from(product_batch)
@@ -195,25 +188,51 @@ export async function loadShelfItems(db: DrizzleDB, args: {
     list.push({ id: b.id, batchNumber: b.batch_number, expiry: String(b.expiry_date), qty: args.hideQty ? null : b.qty, unitCost: args.showCost ? num(b.cost_price) : null })
     batchesOf.set(b.product_id, list)
   }
-  const detail = (st: string | null, f: string | null, pack: string | null) => [st, f, pack].filter(Boolean).join(" · ")
-  const items: StockTakeItem[] = own.map((p) => ({
+  return own.map((p) => ({
     key: `p:${p.id}`, productId: p.id, catalogId: p.catalog_id, name: p.name, detail: detail(p.strength, p.dosage_form, p.pack_label),
-    group: (p.category_id && catNames.get(p.category_id)) || "Other", baseUnit: p.base_unit, packLabel: p.pack_label, unitsPerPack: p.units_per_pack ?? 1,
+    group: args.group ?? ((p.category_id && catNames.get(p.category_id)) || "Other"), baseUnit: p.base_unit, packLabel: p.pack_label, unitsPerPack: p.units_per_pack ?? 1,
     controlled: p.is_controlled, needsPrice: !(Number(p.selling_price ?? 0) > 0) || !p.is_active, sellingPrice: num(p.selling_price),
     suggestedSell: null, suggestedCost: null, costPrice: args.showCost ? num(p.cost_price) : null,
     barcodes: [p.gtin, p.barcode_raw].filter(Boolean) as string[], common: true, batches: batchesOf.get(p.id) ?? [],
   }))
+}
 
-  if (!args.includeCatalog || !args.scope.key) return items
-  const entry = findTaxonomyEntry(args.scope.key)
-  const dept = entry ? entry.category : departmentForKey(args.scope.key)
-  if (!dept) return items
-  const where = and(
-    eq(drug_catalog.category, dept),
-    entry ? eq(drug_catalog.subcategory, entry.subcategory) : undefined,
-    args.q ? or(ilike(drug_catalog.name, `%${args.q}%`), ilike(drug_catalog.generic_name, `%${args.q}%`)) : args.all ? undefined : curated,
-  )
-  const rows = await dbAdmin().select().from(drug_catalog).where(where).orderBy(asc(drug_catalog.name)).limit(args.q ? 100 : args.all ? 800 : 600)
+/** A shared catalogue row as a count row (setup: creates the product when posted). */
+export function catalogItem(c: typeof drug_catalog.$inferSelect, showCost: boolean, group?: string): StockTakeItem {
+  return {
+    key: `k:${c.id}`, productId: null, catalogId: c.id, name: c.name, detail: detail(c.strength, c.dosage_form, c.default_pack_label),
+    group: group ?? c.subcategory ?? c.category ?? "Other", baseUnit: c.base_unit, packLabel: c.default_pack_label, unitsPerPack: c.default_units_per_pack ?? 1,
+    controlled: c.is_controlled, needsPrice: true, sellingPrice: null,
+    suggestedSell: Number(c.default_selling_price ?? 0) > 0 ? Number(c.default_selling_price) : null,
+    suggestedCost: showCost && Number(c.default_cost_price ?? 0) > 0 ? Number(c.default_cost_price) : null,
+    costPrice: null, barcodes: [], common: c.source === "curated", batches: [],
+  }
+}
+
+/**
+ * What's on a shelf: the pharmacy's products in it with their batches at this
+ * branch, and (for setup, or when searching) catalogue items it doesn't have
+ * yet — most-stocked first. `all` adds the PPB register; `q` searches the
+ * whole catalogue ("found something not on this list").
+ */
+export async function loadShelfItems(db: DrizzleDB, args: {
+  organizationId: string; branchId: string; scope: { categoryId: string | null; key: string | null }
+  includeCatalog: boolean; all?: boolean; q?: string; showCost: boolean; hideQty: boolean
+}): Promise<StockTakeItem[]> {
+  const catIds = await scopeCategoryIds(db, args.scope)
+  const items = catIds.length ? await productItems(db, inArray(product.category_id, catIds), args) : []
+  if (!args.includeCatalog) return items
+
+  let where: SQL | undefined
+  if (args.q) {
+    where = or(ilike(drug_catalog.name, `%${args.q}%`), ilike(drug_catalog.generic_name, `%${args.q}%`))
+  } else {
+    const entry = args.scope.key ? findTaxonomyEntry(args.scope.key) : null
+    const dept = entry ? entry.category : args.scope.key ? departmentForKey(args.scope.key) : null
+    if (!dept) return items
+    where = and(eq(drug_catalog.category, dept), entry ? eq(drug_catalog.subcategory, entry.subcategory) : undefined, args.all ? undefined : curated)
+  }
+  const rows = await dbAdmin().select().from(drug_catalog).where(where).orderBy(asc(drug_catalog.name)).limit(args.q ? 60 : args.all ? 800 : 600)
   // Never offer what the pharmacy already has (anywhere, not just this shelf).
   const mine = await db.select({ catalog_id: product.catalog_id, name: product.name, strength: product.strength, dosage_form: product.dosage_form }).from(product)
   const ownCatalog = new Set(mine.map((m) => m.catalog_id).filter(Boolean))
@@ -226,16 +245,7 @@ export async function loadShelfItems(db: DrizzleDB, args: {
     : []
   const popularity = new Map(pop.map((p) => [p.id, p.n]))
   fresh.sort((a, b) => Number(b.source === "curated") - Number(a.source === "curated") || (popularity.get(b.id) ?? 0) - (popularity.get(a.id) ?? 0) || a.name.localeCompare(b.name))
-  for (const c of fresh) {
-    items.push({
-      key: `k:${c.id}`, productId: null, catalogId: c.id, name: c.name, detail: detail(c.strength, c.dosage_form, c.default_pack_label),
-      group: c.subcategory ?? dept, baseUnit: c.base_unit, packLabel: c.default_pack_label, unitsPerPack: c.default_units_per_pack ?? 1,
-      controlled: c.is_controlled, needsPrice: true, sellingPrice: null,
-      suggestedSell: Number(c.default_selling_price ?? 0) > 0 ? Number(c.default_selling_price) : null,
-      suggestedCost: args.showCost && Number(c.default_cost_price ?? 0) > 0 ? Number(c.default_cost_price) : null,
-      costPrice: null, barcodes: [], common: c.source === "curated", batches: [],
-    })
-  }
+  for (const c of fresh) items.push(catalogItem(c, args.showCost))
   return items
 }
 
