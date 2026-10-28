@@ -8,6 +8,8 @@ import {
   MIN_BARCODE_LENGTH,
   isStaleGap,
   canAcceptScan,
+  wedgeKeyChar,
+  WEDGE_GS,
 } from "@pharmatrack/core"
 import { useDeviceStore } from "@/lib/printing/config"
 
@@ -43,8 +45,10 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScanner)
     if (!enabled) return
 
     function handleKeyDown(e: KeyboardEvent) {
-      // Ignore modifier-only keys
-      if (e.key.length > 1 && e.key !== "Enter") return
+      // Ignore modifier-only and other non-character keys; Ctrl+] is the GS1
+      // separator from a wedge scanner (wedgeKeyChar).
+      const ch = e.key === "Enter" ? null : wedgeKeyChar(e)
+      if (e.key !== "Enter" && ch === null) return
 
       // If focused on an input/textarea, don't intercept unless it's Enter
       const target = e.target as HTMLElement
@@ -76,7 +80,8 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScanner)
         bufferRef.current = ""
       }
 
-      bufferRef.current += e.key
+      if (ch === WEDGE_GS) e.preventDefault()
+      bufferRef.current += ch ?? ""
 
       // Schedule auto-processing if no Enter arrives
       if (completionTimerRef.current) clearTimeout(completionTimerRef.current)
