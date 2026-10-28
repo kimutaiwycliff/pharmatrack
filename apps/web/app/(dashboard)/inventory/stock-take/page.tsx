@@ -5,11 +5,13 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { ArrowLeft, ChevronRight, ClipboardList, Download, Layers, Loader2, Sparkles } from "lucide-react"
+import { ArrowLeft, ChevronRight, ClipboardList, Download, Layers, Loader2, Search, Sparkles, X } from "lucide-react"
 import { StockTakeTabs } from "@/components/stockTake/StockTakeTabs"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
 import { useUIStore } from "@/lib/store/uiStore"
+import { useDebounce } from "@/lib/hooks/useDebounce"
 import type { Shelf } from "@/lib/stockTake/server"
+import type { StockTakeSearchResult } from "@/app/api/stock-take/search/route"
 
 // Stock take, shelf by shelf (ADR-020): pick a department or subcategory and
 // count it. "Set up from the catalogue" is the same walk for a new pharmacy —
@@ -49,6 +51,18 @@ export default function StockTakePage() {
   const [hideQty, setHideQty] = useState(true)
   const [showEmpty, setShowEmpty] = useState(false)
   const [starting, setStarting] = useState<string | null>(null)
+  // Find one drug and count it now — its shelf opens with the drug ready.
+  const [drug, setDrug] = useState("")
+  const term = useDebounce(drug.trim(), 300)
+  const found = useQuery<{ results: StockTakeSearchResult[] }>({
+    queryKey: ["stock-take-search", term],
+    enabled: term.length >= 2,
+    queryFn: async () => {
+      const res = await fetch(`/api/stock-take/search?q=${encodeURIComponent(term)}`)
+      if (!res.ok) throw new Error("Search failed")
+      return res.json()
+    },
+  })
 
   const shelves = useMemo(() => {
     const list = data?.shelves ?? []
@@ -58,6 +72,30 @@ export default function StockTakePage() {
   const waiting = data?.can.adjust ? (data.sessions ?? []).filter((s) => s.status === "review") : []
   const inProgress = (data?.sessions ?? []).filter((s) => s.status !== "posted" && !waiting.includes(s))
   const recent = (data?.sessions ?? []).filter((s) => s.status === "posted").slice(0, 8)
+
+  async function countDrug(r: StockTakeSearchResult) {
+    if (!branchId) return
+    if (!r.shelf) {
+      toast.error(`${r.name} isn't on a shelf yet. Give it a category on the Products page, then count it here.`)
+      return
+    }
+    setStarting(r.key)
+    try {
+      const res = await fetch("/api/stock-take", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branch_id: branchId, kind: r.source === "catalog" ? "setup" : mode,
+          category_id: r.shelf.category_id, taxonomy_key: r.shelf.taxonomy_key, hide_expected: mode === "count" ? hideQty : false,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? "Couldn't start")
+      router.push(`/inventory/stock-take/${body.id}?focus=${encodeURIComponent(r.key)}&q=${encodeURIComponent(r.name)}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't start")
+      setStarting(null)
+    }
+  }
 
   async function start(shelf: Shelf) {
     if (!branchId) return
@@ -110,6 +148,33 @@ export default function StockTakePage() {
         </div>
       </div>
       <StockTakeTabs active="stocktake" />
+
+      <div className="relative mb-5">
+        <Search size={16} className="absolute left-3 top-3.5 text-[var(--pt-text-tertiary)]" />
+        <input value={drug} onChange={(e) => setDrug(e.target.value)} placeholder="Search for a drug to count it — name, generic name or barcode"
+          aria-label="Search for a drug to count" className="w-full h-11 pl-9 pr-9 rounded-xl border border-[var(--pt-border)] bg-[var(--pt-surface)] text-sm" />
+        {drug && <button onClick={() => setDrug("")} aria-label="Clear search" className="absolute right-2 top-2 p-1.5 text-[var(--pt-text-tertiary)]"><X size={15} /></button>}
+        {term.length >= 2 && (
+          <div className="mt-2 rounded-xl border border-[var(--pt-border)] bg-[var(--pt-surface)] divide-y divide-[var(--pt-border)]">
+            {found.isLoading ? (
+              <p className="px-4 py-3 text-sm text-[var(--pt-text-secondary)] inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Searching…</p>
+            ) : (found.data?.results ?? []).length === 0 ? (
+              <p className="px-4 py-3 text-sm text-[var(--pt-text-secondary)]">Nothing matches &ldquo;{term}&rdquo;.</p>
+            ) : (found.data?.results ?? []).map((r) => (
+              <button key={r.key} onClick={() => countDrug(r)} disabled={starting !== null}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-[var(--pt-muted)] disabled:opacity-60">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold truncate">{r.name}</span>
+                  <span className="block text-xs text-[var(--pt-text-tertiary)] truncate">
+                    {[r.detail, r.shelf ? `on ${r.shelf.name}` : "not on a shelf yet", r.source === "catalog" ? "new from the catalogue" : null].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+                {starting === r.key ? <Loader2 size={15} className="animate-spin" /> : <span className="text-xs font-semibold text-[var(--pt-green-600)] shrink-0">{r.source === "catalog" ? "Add & count" : "Count"}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {data?.can.setup && (
         <div role="radiogroup" aria-label="What are you doing?" className="grid sm:grid-cols-2 gap-3 mb-5">

@@ -48,7 +48,7 @@ function countedOf(d: Draft, upp: number): number | null {
   return toBaseUnits(Number(d.packs || 0), Number(d.loose || 0), upp)
 }
 
-export function CountSheet({ id }: { id: string }) {
+export function CountSheet({ id, focus = null }: { id: string; focus?: { key: string; q: string } | null }) {
   const router = useRouter()
   const qc = useQueryClient()
   const confirm = useConfirm()
@@ -249,6 +249,23 @@ export function CountSheet({ id }: { id: string }) {
       setSearch({ q, items: [], loading: false })
     }
   }, [id, items])
+  // Arrived from the drug search on the shelves page: open that drug — or, if
+  // it isn't on this shelf's list, find and add it.
+  const [focusDone, setFocusDone] = useState(false)
+  useEffect(() => {
+    if (!focus || focusDone || !loaded || !data) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- once, after the list loads
+    setFocusDone(true)
+    if (itemByKey.has(focus.key)) { focusItem(focus.key); return }
+    fetch(`/api/stock-take/${id}?q=${encodeURIComponent(focus.q)}`).then((r) => r.json()).then((body) => {
+      const hit = ((body.items ?? []) as StockTakeItem[]).find((i) => i.key === focus.key)
+      if (hit) {
+        setExtra((prev) => [{ ...hit, group: "Found on this shelf" }, ...prev])
+        focusItem(hit.key)
+      }
+    }).catch(() => undefined)
+  }, [focus, focusDone, loaded, data, itemByKey, focusItem, id])
+
   function addFound(item: StockTakeItem) {
     setExtra((prev) => [{ ...item, group: "Found on this shelf" }, ...prev])
     setSearch(null)
