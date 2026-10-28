@@ -40,7 +40,9 @@ export default function StockTakePage() {
     },
   })
   const totalProducts = data?.shelves.reduce((n, s) => n + s.products, 0) ?? 0
-  const [chosenMode, setMode] = useState<Mode | null>(null)
+  // ?mode=setup (from the setup guide / welcome dialog) opens setup straight away.
+  const [chosenMode, setMode] = useState<Mode | null>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "setup" ? "setup" : null)
   // New pharmacies start in setup; everyone else counts.
   const mode: Mode = chosenMode ?? (data?.can.setup && totalProducts < 30 ? "setup" : "count")
   const [open, setOpen] = useState<string | null>(null)
@@ -53,7 +55,8 @@ export default function StockTakePage() {
     const useful = (s: Shelf) => (mode === "count" ? s.products > 0 : s.catalog > 0 || s.products > 0)
     return { shown: list.filter(useful), empty: list.filter((s) => !useful(s)) }
   }, [data, mode])
-  const inProgress = (data?.sessions ?? []).filter((s) => s.status !== "posted")
+  const waiting = data?.can.adjust ? (data.sessions ?? []).filter((s) => s.status === "review") : []
+  const inProgress = (data?.sessions ?? []).filter((s) => s.status !== "posted" && !waiting.includes(s))
   const recent = (data?.sessions ?? []).filter((s) => s.status === "posted").slice(0, 8)
 
   async function start(shelf: Shelf) {
@@ -121,6 +124,24 @@ export default function StockTakePage() {
             </button>
           ))}
         </div>
+      )}
+
+      {waiting.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-2">Waiting for your approval</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {waiting.map((s) => (
+              <Link key={s.id} href={`/inventory/stock-take/${s.id}`}
+                className="flex items-center gap-3 rounded-xl border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 p-4 hover:border-blue-400 transition-colors">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm truncate">{s.title}</div>
+                  <div className="text-xs text-[var(--pt-text-secondary)] mt-0.5">{s.lines} counted{s.created_by ? ` by ${s.created_by}` : ""} · tap to review</div>
+                </div>
+                <ChevronRight size={16} className="text-[var(--pt-text-tertiary)]" />
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
 
       {inProgress.length > 0 && (

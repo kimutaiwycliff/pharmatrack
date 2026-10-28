@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
-  ArrowLeft, Check, ChevronDown, CloudOff, Loader2, Plus, ScanLine, Search, ShieldAlert, Trash2, X, XCircle,
+  ArrowLeft, Check, ChevronDown, CloudOff, Loader2, Plus, Printer, ScanLine, Search, ShieldAlert, Trash2, X, XCircle,
 } from "lucide-react"
 import { expiryMonthEnd, splitUnits, toBaseUnits, type BarcodeScanEvent } from "@pharmatrack/core"
 import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
@@ -317,6 +317,35 @@ export function CountSheet({ id }: { id: string }) {
       setPosting(false)
     }
   }
+  const [printing, setPrinting] = useState(false)
+  async function printSheet() {
+    if (!data) return
+    setPrinting(true)
+    try {
+      const [{ pdf }, { CountSheetDocument }] = await Promise.all([import("@react-pdf/renderer"), import("./CountSheetPDF")])
+      const blob = await pdf(
+        <CountSheetDocument title={data.session.title} items={items} setup={data.session.kind === "setup"}
+          showRecorded={!(data.session.hide_expected && data.session.status === "draft")} />,
+      ).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `count-sheet-${data.session.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      toast.error("Couldn't make the count sheet")
+    } finally {
+      setPrinting(false)
+    }
+  }
+  async function sendBack() {
+    const res = await fetch(`/api/stock-take/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reopen" }) })
+    if (!res.ok) { toast.error("Couldn't send it back"); return }
+    toast.success("Sent back for a recount. It shows under In progress.")
+    await qc.invalidateQueries({ queryKey: ["stock-take"] })
+    router.push("/inventory/stock-take")
+  }
   async function cancel() {
     if (!(await confirm("Nothing you counted here will change your stock.", { title: "Cancel this stock take?", confirmLabel: "Cancel it", destructive: true }))) return
     const res = await fetch(`/api/stock-take/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) })
@@ -333,7 +362,7 @@ export function CountSheet({ id }: { id: string }) {
   if (view === "review") {
     return (
       <div className="max-w-4xl mx-auto pb-10">
-        <ReviewPanel id={id} kind={s.kind} status={s.status} canAdjust={data.can.adjust} posting={posting} onBack={() => setView("count")} onPost={post} />
+        <ReviewPanel id={id} kind={s.kind} status={s.status} canAdjust={data.can.adjust} posting={posting} onBack={() => setView("count")} onPost={post} onSendBack={sendBack} />
       </div>
     )
   }
@@ -350,6 +379,9 @@ export function CountSheet({ id }: { id: string }) {
             {setup ? "Enter what's on the shelf and confirm each price. Skip anything you don't stock." : s.hide_expected && s.status === "draft" ? "Count what's on the shelf. Recorded quantities stay hidden until you review." : "Count what's on the shelf."}
           </p>
         </div>
+        <button onClick={printSheet} disabled={printing} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] disabled:opacity-60">
+          {printing ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />} Print sheet
+        </button>
         {!readOnly && (
           <button onClick={cancel} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] hover:text-[var(--pt-red)]">
             <XCircle size={14} /> Cancel

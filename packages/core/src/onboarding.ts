@@ -31,6 +31,8 @@ export interface SetupStep {
   why: string
   minutes: number
   action: { label: string; href: string }
+  /** Another way to do it (e.g. shelf by shelf, ADR-020). */
+  alt?: { label: string; href: string }
   /** The staff guide chapter with screenshots. */
   guide?: string
   done: boolean
@@ -52,6 +54,7 @@ export function setupSteps(f: SetupFacts): SetupStep[] {
       key: "products", core: true, title: "Add your products",
       why: "Pick what you stock from 3,800+ medicines — or import your old system's Excel list.",
       minutes: 4, action: { label: "Add products", href: "/products?quickstart=1" }, guide: "/guide#catalogue",
+      alt: { label: "Or go shelf by shelf", href: "/inventory/stock-take?mode=setup" },
       done: f.products > 0, detail: f.products > 0 ? plural(f.products, "product") : undefined,
     },
     {
@@ -65,6 +68,7 @@ export function setupSteps(f: SetupFacts): SetupStep[] {
       key: "stock", core: true, title: "Add your stock",
       why: "Count what's on the shelf with each batch's expiry date, so the till sells the earliest expiry first.",
       minutes: 5, action: { label: "Add stock", href: "/inventory/receive?tour=1" }, guide: "/guide#receiving",
+      alt: { label: "Or count shelf by shelf", href: "/inventory/stock-take?mode=setup" },
       done: f.stocked > 0, detail: f.stocked > 0 ? plural(f.stocked, "batch", "batches") + " in stock" : undefined,
     },
     {

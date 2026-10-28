@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, ArrowLeft, CheckCircle2, Download, Loader2, ShieldAlert } from "lucide-react"
+import { STOCK_COUNT_SMALL_UNITS, STOCK_COUNT_SMALL_VALUE } from "@pharmatrack/core"
 
 // The review step of a stock take (ADR-020): only what will change — found,
 // missing, new batches, new products — with the reason it needs approval.
@@ -19,12 +20,14 @@ interface Preview {
   pricesSet: number; skipped: number; rows: Row[]; needsApproval: boolean
 }
 
+// Same thresholds as the approval rule (packages/core stockCount): worth a second look.
+const recount = (r: Row) => r.kind === "batch" && (Math.abs(r.delta) > STOCK_COUNT_SMALL_UNITS || (r.value ?? 0) > STOCK_COUNT_SMALL_VALUE || (r.controlled && r.delta !== 0))
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 const month = (d: string | null) => (d ? new Date(`${d}T12:00:00+03:00`).toLocaleDateString("en-KE", { month: "short", year: "numeric" }) : "—")
 
-export function ReviewPanel({ id, kind, status, canAdjust, posting, onBack, onPost }: {
+export function ReviewPanel({ id, kind, status, canAdjust, posting, onBack, onPost, onSendBack }: {
   id: string; kind: "count" | "setup"; status: string; canAdjust: boolean; posting: boolean
-  onBack: () => void; onPost: () => void
+  onBack: () => void; onPost: () => void; onSendBack: () => void
 }) {
   const { data, isLoading, error } = useQuery<Preview>({
     queryKey: ["stock-take-preview", id],
@@ -104,6 +107,7 @@ export function ReviewPanel({ id, kind, status, canAdjust, posting, onBack, onPo
                     <div className="text-xs text-[var(--pt-text-tertiary)]">
                       {r.kind === "new_product" ? "New product" : r.kind === "new_batch" ? "Batch found" : ""}{r.controlled ? " · Controlled" : ""}
                     </div>
+                    {recount(r) && <div className="mt-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">Recount suggested</div>}
                   </td>
                   <td className="px-3 py-2 text-xs">{r.batch_number ?? "—"}<div className="text-[var(--pt-text-tertiary)]">{month(r.expiry)}</div></td>
                   {kind === "count" && <td className="px-3 py-2 text-right tabular-nums">{r.expected ?? "—"}</td>}
@@ -125,6 +129,11 @@ export function ReviewPanel({ id, kind, status, canAdjust, posting, onBack, onPo
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-2 mt-5">
+        {status === "review" && canAdjust && (
+          <button onClick={onSendBack} className="h-10 px-4 rounded-lg border border-[var(--pt-border)] text-sm font-semibold hover:bg-[var(--pt-muted)] mr-auto">
+            Send back to recount
+          </button>
+        )}
         <a href={`/api/stock-take/${id}/report`} className="inline-flex items-center gap-2 h-10 px-4 rounded-lg border border-[var(--pt-border)] text-sm font-semibold hover:bg-[var(--pt-muted)]">
           <Download size={15} /> CSV
         </a>
