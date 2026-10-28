@@ -70,6 +70,11 @@ function StepRow({ step, index, open }: { step: SetupStep; index: number; open: 
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--pt-green)] px-3.5 text-sm font-semibold text-white hover:bg-[var(--pt-green-600)] transition-colors">
                   {step.action.label} <ChevronRight size={15} />
                 </Link>
+                {step.alt && (
+                  <Link href={step.alt.href} className="inline-flex h-9 items-center rounded-lg border border-[var(--pt-border)] px-3 text-sm font-semibold hover:bg-[var(--pt-muted)]">
+                    {step.alt.label}
+                  </Link>
+                )}
                 {step.guide && (
                   <Link href={step.guide} target="_blank" className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]">
                     <PlayCircle size={15} /> See how

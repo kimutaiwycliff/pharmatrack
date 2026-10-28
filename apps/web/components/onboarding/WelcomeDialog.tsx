@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { FileSpreadsheet, Sparkles, Compass } from "lucide-react"
+import { FileSpreadsheet, Sparkles, Compass, Layers } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useSessionStore } from "@/lib/store/sessionStore"
 
@@ -41,6 +41,13 @@ export function WelcomeDialog() {
             <span>
               <span className="block font-semibold">Pick from the catalogue <span className="ml-1 text-[11px] font-bold uppercase tracking-wide text-[var(--pt-green-700)]">Recommended</span></span>
               <span className="block text-sm text-[var(--pt-text-secondary)] mt-0.5">Tick what you stock from 3,800+ medicines, including the PPB register. No typing.</span>
+            </span>
+          </Link>
+          <Link href="/inventory/stock-take?mode=setup" onClick={() => setOpen(false)} className={`${choice} border-[var(--pt-border)] hover:border-[var(--pt-green)]`}>
+            <Layers size={20} className="text-[var(--pt-text-secondary)] shrink-0 mt-0.5" />
+            <span>
+              <span className="block font-semibold">Go shelf by shelf</span>
+              <span className="block text-sm text-[var(--pt-text-secondary)] mt-0.5">Walk past your shelves and add products, prices and stock together. Best if you stock a lot.</span>
             </span>
           </Link>
           <Link href="/products?import=1" onClick={() => setOpen(false)} className={`${choice} border-[var(--pt-border)] hover:border-[var(--pt-green)]`}>
