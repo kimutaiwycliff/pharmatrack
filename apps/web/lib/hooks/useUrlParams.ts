@@ -9,7 +9,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
  * survives refresh and Back. Values equal to their default are left out of
  * the URL. Updates replace the history entry — typing doesn't fill Back.
  */
-export function useUrlParams<T extends Record<string, string>>(defaults: T): [T, (patch: Partial<T>) => void] {
+export function useUrlParams<T extends Record<string, string>>(defaults: T): [T, (patch: Partial<T>, opts?: { push?: boolean }) => void] {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -24,14 +24,17 @@ export function useUrlParams<T extends Record<string, string>>(defaults: T): [T,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- defaults is a literal per page
   }, [searchParams])
 
-  const set = useCallback((patch: Partial<T>) => {
+  // `push` adds a history entry instead (switching tabs: Back goes to the last tab).
+  const set = useCallback((patch: Partial<T>, opts?: { push?: boolean }) => {
     const next = new URLSearchParams(searchParams.toString())
     for (const [key, v] of Object.entries(patch)) {
       if (v === undefined || v === defaults[key]) next.delete(key)
       else next.set(key, v as string)
     }
     const qs = next.toString()
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    const url = qs ? `${pathname}?${qs}` : pathname
+    if (opts?.push) router.push(url, { scroll: false })
+    else router.replace(url, { scroll: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- defaults is a literal per page
   }, [searchParams, pathname, router])
 

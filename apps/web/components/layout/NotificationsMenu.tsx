@@ -107,9 +107,9 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
     <span className="ml-auto flex items-center gap-0.5 shrink-0 pl-2" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
       {openedNew.has(k) && <span aria-label="New" title="New" className="size-2 rounded-full bg-[var(--pt-green)] mr-1" />}
       <button type="button" aria-label="Remind me tomorrow" title="Remind me tomorrow" onClick={(e) => { stop(e); void act("snooze_day", [k]) }}
-        className="p-1 rounded text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)]"><AlarmClock size={13} /></button>
+        className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)]"><AlarmClock size={15} /></button>
       <button type="button" aria-label="Dismiss" title="Dismiss — it comes back if it changes" onClick={(e) => { stop(e); void act("dismiss", [k]) }}
-        className="p-1 rounded text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)]"><X size={13} /></button>
+        className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)]"><X size={15} /></button>
     </span>
   )
 

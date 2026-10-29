@@ -1,6 +1,7 @@
 "use client"
 
 import { Menu } from "lucide-react"
+import { CommandPalette, QuickSearchButton } from "@/components/layout/CommandPalette"
 import { BranchSelector } from "./BranchSelector"
 import { ThemeToggle } from "@/components/theme/ThemeToggle"
 import { ShiftClockWidget } from "@/components/shifts/ShiftClockWidget"
@@ -36,6 +37,9 @@ export function AppTopBar() {
       </div>
 
       <div className="flex-1" />
+
+      <QuickSearchButton />
+      <CommandPalette />
 
       <ShiftClockWidget />
 

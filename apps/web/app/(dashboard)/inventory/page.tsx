@@ -103,6 +103,10 @@ export default function InventoryPage() {
   useEffect(() => {
     if (q !== params.q) setParams({ q, page: "1" })
   }, [q]) // eslint-disable-line react-hooks/exhaustive-deps -- only when the typed search settles
+  // …and follow the URL when it changes from outside (quick search, a link).
+  useEffect(() => {
+    if (params.q !== q) setRawSearch(params.q) // eslint-disable-line react-hooks/set-state-in-effect -- syncing from the URL
+  }, [params.q]) // eslint-disable-line react-hooks/exhaustive-deps -- only on URL changes
 
   const { data, isLoading, isFetching, isError, refetch } = useInventory(branchId, ready, params.q, status, page)
 

@@ -33,7 +33,7 @@ import { useSessionStore } from "@/lib/store/sessionStore"
 import { LogoutButton } from "@/components/LogoutButton"
 import { ProgressRing, useSetupProgress } from "@/components/onboarding/SetupGuide"
 
-interface NavItem {
+export interface NavItem {
   label: string
   href: string
   icon: React.ComponentType<{ size?: number; className?: string }>
@@ -46,7 +46,7 @@ interface NavItem {
 // Grouped so 15 links scan quickly: selling, stock, patients, running the
 // pharmacy. (One flat list put Sales far from the till and mixed stock pages
 // with staff and settings.)
-const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
+export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
   { label: null, items: [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: ["dashboard.view"], feature: "dashboard" },
   ] },
@@ -73,6 +73,12 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     { label: "Settings", href: "/settings", icon: Settings },
   ] },
 ]
+
+/** May this person see this page (role permission AND plan feature)? Shared with the quick search. */
+export function navItemAllowed(item: NavItem, permissions: readonly string[], planCode: string | null | undefined): boolean {
+  return (!item.permission || item.permission.some((c) => permissions.includes(c))) &&
+    (!item.feature || hasFeature(planCode, item.feature))
+}
 
 /** Open sync issues for the branch in view — the link only shows when there are some. */
 function useOpenSyncIssues(enabled: boolean) {
@@ -145,8 +151,7 @@ export function Sidebar() {
   const syncIssues = useOpenSyncIssues(permissions.includes("devices.manage"))
   // Show an item only when a role permission allows it AND the plan includes its feature.
   const allowed = (item: NavItem) =>
-    (!item.permission || item.permission.some((c) => permissions.includes(c))) &&
-    (!item.feature || hasFeature(planCode, item.feature)) &&
+    navItemAllowed(item, permissions, planCode) &&
     // Sync issues: only while there's something to sort out (or you're on it).
     (item.href !== "/sync-issues" || syncIssues > 0 || pathname.startsWith("/sync-issues"))
   const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter((g) => g.items.length > 0)

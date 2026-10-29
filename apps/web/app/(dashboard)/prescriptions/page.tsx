@@ -7,6 +7,7 @@ import { Plus, ClipboardList, User, Pill } from "lucide-react"
 import { NewPrescriptionDialog } from "@/components/prescriptions/NewPrescriptionDialog"
 import type { PrescriptionWithRelations, PrescriptionStatus } from "@pharmatrack/types"
 import { LoadError } from "@/components/LoadError"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 const STATUS_STYLES: Record<PrescriptionStatus, string> = {
   active: "bg-[var(--pt-green-50)] text-[var(--pt-green-600)] border-[var(--pt-green-100)]",
@@ -26,6 +27,7 @@ function fmt(iso: string) {
 
 export default function PrescriptionsPage() {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const [tab, setTab] = useState("active")
   const [open, setOpen] = useState(false)
 
@@ -47,7 +49,7 @@ export default function PrescriptionsPage() {
         body: JSON.stringify({ status }),
       })
       if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? "Failed")
-      toast.success(`Marked ${status}`)
+      toast.success(status === "completed" ? "Prescription completed" : "Prescription cancelled")
       await qc.invalidateQueries({ queryKey: ["prescriptions"] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
@@ -110,9 +112,18 @@ export default function PrescriptionsPage() {
                 </p>
               </div>
               {rx.status === "active" && (
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button onClick={() => setStatus(rx.id, "completed")} className="px-2.5 h-7 rounded-md text-[12px] font-semibold border border-[var(--pt-green-100)] text-[var(--pt-green-600)] hover:bg-[var(--pt-green-50)]">Complete</button>
-                  <button onClick={() => setStatus(rx.id, "cancelled")} className="px-2.5 h-7 rounded-md text-[12px] font-semibold border border-red-200 dark:border-red-500/30 text-[var(--pt-red)] hover:bg-red-50 dark:hover:bg-red-500/15">Cancel</button>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                  <button onClick={() => setStatus(rx.id, "completed")} className="px-3 h-10 rounded-lg text-[13px] font-semibold border border-[var(--pt-green-100)] text-[var(--pt-green-600)] hover:bg-[var(--pt-green-50)]">Complete</button>
+                  {/* "Cancel" alone read like "close this" — and it cancelled the prescription at once. */}
+                  <button
+                    onClick={async () => {
+                      const ok = await confirm(`Cancel ${rx.customer?.full_name ?? "this customer"}'s prescription? It moves out of the active list and can't be dispensed from.`, { title: "Cancel prescription?", confirmLabel: "Cancel prescription", cancelLabel: "Keep it" })
+                      if (ok) void setStatus(rx.id, "cancelled")
+                    }}
+                    className="px-3 h-10 rounded-lg text-[13px] font-semibold border border-red-200 dark:border-red-500/30 text-[var(--pt-red)] hover:bg-red-50 dark:hover:bg-red-500/15"
+                  >
+                    Cancel prescription
+                  </button>
                 </div>
               )}
             </div>
