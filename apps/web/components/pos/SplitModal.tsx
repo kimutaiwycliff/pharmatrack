@@ -15,6 +15,8 @@ interface Props {
   online?: boolean
   /** Whether STK push is available (plan includes it + tenant configured M-Pesa). */
   stkAvailable?: boolean
+  /** The sale is being saved — confirm stays off so it can't be sent twice. */
+  submitting?: boolean
   onClose: () => void
   /** viaPrompt: the M-Pesa part was requested by STK prompt (vs. a code typed by hand). */
   onConfirm: (cashAmt: number, mpesaAmt: number, mpesaRef: string | null, how: { viaPrompt: boolean }) => void
@@ -22,13 +24,16 @@ interface Props {
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
 
-export function SplitModal({ open, total, online = true, stkAvailable = true, onClose, onConfirm }: Props) {
+export function SplitModal({ open, total, online = true, stkAvailable = true, submitting = false, onClose, onConfirm }: Props) {
   const [cash, setCash] = useState(() => Math.round(total * 0.4))
   const [phone, setPhone] = useState("")
   const canPrompt = online && stkAvailable
   const [mpesaModeChoice, setMpesaMode] = useState<MpesaMode>(canPrompt ? "prompt" : "manual")
   const [code, setCode] = useState("")
   const [sending, setSending] = useState(false)
+  // The M-Pesa part: request sent, waiting for the customer's PIN.
+  const [stkSent, setStkSent] = useState(false)
+  const [stkError, setStkError] = useState<string | null>(null)
 
   // Derive the effective mode: STK push needs a connection + an active,
   // plan-enabled config; otherwise fall back to manual confirmation.
@@ -45,23 +50,37 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, on
   const canConfirm =
     cash > 0 && mpesa > 0 && balanced && (mpesaMode === "prompt" ? canPrompt : !codeBlocks)
 
-  const setCashSafe = (v: number) => setCash(Math.min(total, Math.max(0, v)))
+  // Changing the split after a prompt went out means it asked for the wrong amount.
+  const setCashSafe = (v: number) => {
+    setCash(Math.min(total, Math.max(0, v)))
+    setStkSent(false)
+  }
 
   async function handleConfirm() {
+    if (submitting) return
     if (mpesaMode === "manual") {
       onConfirm(cash, mpesa, trimmedCode || null, { viaPrompt: false })
       return
     }
+    // Send the prompt first; the sale is only recorded once the cashier has
+    // seen the customer pay (below) — not the moment the request goes out.
     setSending(true)
+    setStkError(null)
     try {
-      await fetch("/api/mpesa", {
+      const res = await fetch("/api/mpesa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, amount: mpesa, accountReference: "PHARMATRACK" }),
       })
-    } catch {}
-    setSending(false)
-    onConfirm(cash, mpesa, null, { viaPrompt: true })
+      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok || json.error) throw new Error(json.error ?? "M-Pesa didn't accept the request")
+      setStkSent(true)
+    } catch (err) {
+      setStkError(err instanceof TypeError ? "No connection — the prompt wasn't sent." : `The prompt wasn't sent: ${err instanceof Error ? err.message : "unknown error"}.`)
+      setMpesaMode("manual")
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -233,16 +252,48 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, on
             </span>
           </div>
 
-          <Button
-            onClick={handleConfirm}
-            disabled={!canConfirm || sending}
-            className="w-full h-12 gap-2 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white rounded-xl text-base font-semibold"
-          >
-            <Check size={18} />
-            {mpesaMode === "prompt"
-              ? "Take cash & send STK push"
-              : "Take cash & confirm M-Pesa"}
-          </Button>
+          {stkError && (
+            <p role="alert" className="text-sm font-medium text-[var(--pt-red)] bg-[var(--pt-red-50)] rounded-xl px-3 py-2">
+              {stkError} Ask the customer to pay {formatKES(mpesa)} by Pay Bill, then confirm.
+            </p>
+          )}
+
+          {stkSent && mpesaMode === "prompt" ? (
+            <div className="rounded-xl border border-[var(--pt-green-100)] bg-[var(--pt-green-50)] p-4 text-center space-y-3">
+              <p className="font-semibold">Prompt sent to +254{phone.replace(/\D/g, "").replace(/^(?:254|0)/, "")}</p>
+              <p className="text-sm text-[var(--pt-text-secondary)]">
+                Ask the customer to enter their M-Pesa PIN. Confirm once you&apos;ve seen the {formatKES(mpesa)} arrive.
+              </p>
+              <div className="flex gap-2 justify-center flex-wrap">
+                <Button variant="outline" size="sm" onClick={() => { setStkSent(false); void handleConfirm() }} disabled={sending || submitting}>
+                  Resend
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => onConfirm(cash, mpesa, null, { viaPrompt: true })}
+                  disabled={submitting}
+                  className="bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white"
+                >
+                  {submitting ? "Saving…" : "Confirm received"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              onClick={handleConfirm}
+              disabled={!canConfirm || sending || submitting}
+              className="w-full h-12 gap-2 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white rounded-xl text-base font-semibold"
+            >
+              <Check size={18} />
+              {submitting
+                ? "Saving…"
+                : sending
+                  ? "Sending prompt…"
+                  : mpesaMode === "prompt"
+                    ? "Take cash & send STK push"
+                    : "Take cash & confirm M-Pesa"}
+            </Button>
+          )}
           <button
             onClick={onClose}
             className="w-full text-center text-sm text-[var(--pt-text-secondary)] hover:text-[var(--pt-text)]"

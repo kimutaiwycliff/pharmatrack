@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
+import { INPUT_SCAN_MIN_LENGTH, SCANNER_THRESHOLD_MS } from "@pharmatrack/core"
 import { Banknote, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -9,19 +10,47 @@ import { formatKES } from "@/lib/store/cartStore"
 interface Props {
   open: boolean
   total: number
+  /** The sale is being saved — confirm stays off so it can't be sent twice. */
+  submitting?: boolean
   onClose: () => void
   onConfirm: (amountTendered: number, change: number) => void
 }
 
 const QUICK_AMOUNTS = [500, 1000, 2000, 5000]
 
-export function CashModal({ open, total, onClose, onConfirm }: Props) {
+export function CashModal({ open, total, submitting = false, onClose, onConfirm }: Props) {
   const [tendered, setTendered] = useState<number>(Math.ceil(total / 100) * 100)
   const change = Math.max(0, tendered - total)
 
   function handleConfirm() {
-    if (tendered < total) return
+    if (tendered < total || submitting) return
     onConfirm(tendered, change)
+  }
+
+  // A barcode scanned while this box has focus types its digits here and
+  // presses Enter — that must not confirm the sale with a made-up amount.
+  const burst = useRef({ text: "", last: 0, before: tendered })
+  const [scanBlocked, setScanBlocked] = useState(false)
+  function onTenderedKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    const b = burst.current
+    if (e.key === "Enter") {
+      const wasScan = b.text.length >= INPUT_SCAN_MIN_LENGTH
+      b.text = ""
+      if (wasScan) {
+        e.preventDefault()
+        setTendered(b.before)
+        setScanBlocked(true)
+        return
+      }
+      handleConfirm()
+      return
+    }
+    if (e.key.length !== 1) return
+    const now = Date.now()
+    if (now - b.last > SCANNER_THRESHOLD_MS) { b.text = ""; b.before = tendered }
+    b.last = now
+    b.text += e.key
+    setScanBlocked(false)
   }
 
   return (
@@ -67,12 +96,21 @@ export function CashModal({ open, total, onClose, onConfirm }: Props) {
                 type="number"
                 value={tendered}
                 onChange={(e) => setTendered(Number(e.target.value) || 0)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleConfirm() }}
+                onKeyDown={onTenderedKeyDown}
+                // Selected, so typing the note handed over replaces the guess
+                // instead of tacking onto it ("300" + "1000" → "3001000").
+                onFocus={(e) => e.currentTarget.select()}
                 autoFocus
                 className="w-full h-14 pl-14 pr-4 text-2xl font-bold tabular-nums border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
               />
             </div>
           </div>
+
+          {scanBlocked && (
+            <p role="alert" className="text-sm font-medium text-amber-700 dark:text-amber-300">
+              That looked like a barcode scan, so it was ignored. Finish this payment first, then scan the next item.
+            </p>
+          )}
 
           {/* Quick amounts */}
           <div className="grid grid-cols-5 gap-2">
@@ -127,11 +165,11 @@ export function CashModal({ open, total, onClose, onConfirm }: Props) {
 
           <Button
             onClick={handleConfirm}
-            disabled={tendered < total}
+            disabled={tendered < total || submitting}
             className="w-full h-12 text-base font-semibold bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white rounded-xl gap-2"
           >
             <Check size={18} />
-            Confirm sale
+            {submitting ? "Saving…" : tendered < total ? `Short by ${formatKES(total - tendered)}` : "Confirm sale"}
           </Button>
           <button
             onClick={onClose}
