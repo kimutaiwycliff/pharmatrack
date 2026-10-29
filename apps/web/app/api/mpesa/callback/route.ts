@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import { eq } from "drizzle-orm"
+import { dbAdmin, mpesa_stk_request } from "@pharmatrack/db"
+import { parseStkCallback, stkOutcome } from "@/lib/mpesa/stk"
+import { refreshStkRequest } from "@/lib/mpesa/refresh"
 
 // Safaricom posts here after an STK push completes. M-Pesa does NOT sign its
 // callbacks, so authenticity is established by:
 //   (a) an OPTIONAL source-IP allowlist (MPESA_CALLBACK_ALLOWLIST), and
-//   (b) — once sale confirmation is wired — correlating CheckoutRequestID against
-//       a PERSISTED pending request. Never mark a sale paid from this body alone.
+//   (b) correlating CheckoutRequestID with a request we recorded (migration
+//       045) that's still pending, and
+//   (c) for success, confirming with an STK Query before marking it paid —
+//       never from this body alone.
 const callbackSchema = z.object({
-  Body: z.object({
-    stkCallback: z.object({
-      CheckoutRequestID: z.string().optional(),
-      ResultCode: z.number().optional(),
-      ResultDesc: z.string().optional(),
-    }),
-  }),
+  Body: z.object({ stkCallback: z.object({ CheckoutRequestID: z.string().min(1).max(100) }).passthrough() }),
 })
 
 function clientIp(req: NextRequest): string {
@@ -33,16 +33,31 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const parsed = callbackSchema.safeParse(await request.json().catch(() => null))
-  if (!parsed.success) {
+  const body: unknown = await request.json().catch(() => null)
+  const cb = callbackSchema.safeParse(body).success ? parseStkCallback(body) : null
+  if (!cb) {
     return NextResponse.json({ ResultCode: 1, ResultDesc: "Invalid payload" }, { status: 400 })
   }
 
-  const { CheckoutRequestID, ResultCode } = parsed.data.Body.stkCallback
-  // TODO(payments): when STK confirmation is wired, look up the pending sale by
-  // CheckoutRequestID (persisted at initiate time), verify it's ours and still
-  // pending, then mark it paid/failed. Do NOT trust ResultCode from this body alone.
-  console.log("[M-Pesa callback]", { CheckoutRequestID, ResultCode })
+  // Only for a push we sent and are still waiting on.
+  const db = dbAdmin()
+  const [row] = await db.select().from(mpesa_stk_request).where(eq(mpesa_stk_request.checkout_request_id, cb.checkoutRequestId)).limit(1)
+  if (!row || row.status !== "pending") return NextResponse.json({ ResultCode: 0, ResultDesc: "Accepted" })
+
+  const outcome = stkOutcome(cb.resultCode, cb.resultDesc)
+  if (outcome.status === "paid") {
+    // Keep the receipt number (STK Query doesn't return it) — but "paid" is
+    // only set once an STK Query confirms it: this body isn't signed.
+    const [withReceipt] = await db.update(mpesa_stk_request)
+      .set({ mpesa_receipt: cb.receipt, updated_at: new Date() })
+      .where(eq(mpesa_stk_request.id, row.id)).returning()
+    await refreshStkRequest(withReceipt ?? row, { force: true })
+  } else if (outcome.status !== "pending") {
+    // A declined/cancelled result can only make a pending request fail — safe to take as is.
+    await db.update(mpesa_stk_request)
+      .set({ status: outcome.status, result_code: String(cb.resultCode), result_desc: cb.resultDesc, updated_at: new Date() })
+      .where(eq(mpesa_stk_request.id, row.id))
+  }
 
   // Always ACK 0 so Safaricom stops retrying.
   return NextResponse.json({ ResultCode: 0, ResultDesc: "Accepted" })

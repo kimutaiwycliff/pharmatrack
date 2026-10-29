@@ -5,6 +5,7 @@ import { Banknote, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { formatKES } from "@/lib/store/cartStore"
+import { StkWaitPanel } from "./StkWaitPanel"
 
 type MpesaMode = "prompt" | "manual"
 
@@ -18,8 +19,8 @@ interface Props {
   /** The sale is being saved — confirm stays off so it can't be sent twice. */
   submitting?: boolean
   onClose: () => void
-  /** viaPrompt: the M-Pesa part was requested by STK prompt (vs. a code typed by hand). */
-  onConfirm: (cashAmt: number, mpesaAmt: number, mpesaRef: string | null, how: { viaPrompt: boolean }) => void
+  /** viaPrompt + checkoutRequestId: M-Pesa confirmed the STK payment for the M-Pesa part. */
+  onConfirm: (cashAmt: number, mpesaAmt: number, mpesaRef: string | null, how: { viaPrompt: boolean; checkoutRequestId?: string }) => void
 }
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
@@ -32,7 +33,8 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, su
   const [code, setCode] = useState("")
   const [sending, setSending] = useState(false)
   // The M-Pesa part: request sent, waiting for the customer's PIN.
-  const [stkSent, setStkSent] = useState(false)
+  // The push in flight for the M-Pesa part (Daraja's CheckoutRequestID).
+  const [checkoutId, setCheckoutId] = useState<string | null>(null)
   const [stkError, setStkError] = useState<string | null>(null)
 
   // Derive the effective mode: STK push needs a connection + an active,
@@ -53,7 +55,7 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, su
   // Changing the split after a prompt went out means it asked for the wrong amount.
   const setCashSafe = (v: number) => {
     setCash(Math.min(total, Math.max(0, v)))
-    setStkSent(false)
+    setCheckoutId(null)
   }
 
   async function handleConfirm() {
@@ -72,9 +74,9 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, su
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, amount: mpesa, accountReference: "PHARMATRACK" }),
       })
-      const json = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok || json.error) throw new Error(json.error ?? "M-Pesa didn't accept the request")
-      setStkSent(true)
+      const json = (await res.json().catch(() => ({}))) as { error?: string; checkoutRequestId?: string }
+      if (!res.ok || json.error || !json.checkoutRequestId) throw new Error(json.error ?? "M-Pesa didn't accept the request")
+      setCheckoutId(json.checkoutRequestId)
     } catch (err) {
       setStkError(err instanceof TypeError ? "No connection — the prompt wasn't sent." : `The prompt wasn't sent: ${err instanceof Error ? err.message : "unknown error"}.`)
       setMpesaMode("manual")
@@ -258,26 +260,17 @@ export function SplitModal({ open, total, online = true, stkAvailable = true, su
             </p>
           )}
 
-          {stkSent && mpesaMode === "prompt" ? (
-            <div className="rounded-xl border border-[var(--pt-green-100)] bg-[var(--pt-green-50)] p-4 text-center space-y-3">
-              <p className="font-semibold">Prompt sent to +254{phone.replace(/\D/g, "").replace(/^(?:254|0)/, "")}</p>
-              <p className="text-sm text-[var(--pt-text-secondary)]">
-                Ask the customer to enter their M-Pesa PIN. Confirm once you&apos;ve seen the {formatKES(mpesa)} arrive.
-              </p>
-              <div className="flex gap-2 justify-center flex-wrap">
-                <Button variant="outline" size="sm" onClick={() => { setStkSent(false); void handleConfirm() }} disabled={sending || submitting}>
-                  Resend
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => onConfirm(cash, mpesa, null, { viaPrompt: true })}
-                  disabled={submitting}
-                  className="bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white"
-                >
-                  {submitting ? "Saving…" : "Confirm received"}
-                </Button>
-              </div>
-            </div>
+          {checkoutId && mpesaMode === "prompt" ? (
+            <StkWaitPanel
+              key={checkoutId}
+              checkoutRequestId={checkoutId}
+              phone={phone}
+              amount={Math.ceil(mpesa)}
+              submitting={submitting}
+              onPaid={(receipt) => onConfirm(cash, mpesa, receipt, { viaPrompt: true, checkoutRequestId: checkoutId })}
+              onResend={() => { setCheckoutId(null); void handleConfirm() }}
+              onManual={() => { setCheckoutId(null); setMpesaMode("manual") }}
+            />
           ) : (
             <Button
               onClick={handleConfirm}

@@ -60,6 +60,7 @@ async function seed(orgId: string, tag: string) {
   await admin.insert(s.user_activity_day).values({ organization_id: orgId, user_id: `rls-user-${orgId}`, day: "2026-10-23", logins: 1, pings: 3, sources: ["web"] })
   await admin.insert(s.platform_tenant_note).values({ organization_id: orgId, kind: "call", body: `${tag} owner said stock is late` })
   await admin.insert(s.notification_state).values({ organization_id: orgId, user_id: `rls-user-${orgId}`, key: "low:x", seen_fp: "low" })
+  await admin.insert(s.mpesa_stk_request).values({ organization_id: orgId, checkout_request_id: `ws_CO_rls_${orgId}`, phone: "254700000000", amount: "1" })
   // ADR-018 approval requests (needs the user row above).
   await admin.insert(s.device_request).values({
     organization_id: orgId, user_id: `rls-user-${orgId}`, suggested_name: `${tag} counter`, code: "123456",
@@ -84,6 +85,7 @@ async function run() {
     ["device_request", s.device_request],
     ["stock_count", s.stock_count], ["stock_count_line", s.stock_count_line],
     ["notification_state", s.notification_state],
+    ["mpesa_stk_request", s.mpesa_stk_request],
   ]
 
   // Each org sees only its own rows on each table.

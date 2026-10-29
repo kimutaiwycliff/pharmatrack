@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { stkCoversSale } from "@/lib/mpesa/stk"
 import { nairobiYYMMDD } from "@pharmatrack/core/sync"
 import { saleTimestamp } from "@/lib/sales/sold-at"
 import { z } from "zod"
-import { and, eq, gt, gte, lte, asc, desc, ilike, inArray, sql } from "drizzle-orm"
+import { and, eq, gt, gte, lte, asc, desc, ilike, inArray, isNull, sql } from "drizzle-orm"
 import {
-  withTenant, product, product_batch, product_pack_size, sale, sale_item, payment, controlled_substance_log, organization, user, org_settings, type DrizzleDB,
+  withTenant, product, product_batch, product_pack_size, sale, sale_item, payment, mpesa_stk_request, controlled_substance_log, organization, user, org_settings, type DrizzleDB,
 } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { reservedByDevices } from "@/lib/sync/allocation"
@@ -30,6 +31,10 @@ class InvalidProductError extends Error {
 class UnpricedProductError extends Error {
   constructor(public productName: string) { super("Unpriced product") }
 }
+
+// The sale names an M-Pesa STK payment that isn't confirmed, is already on
+// another sale, or doesn't cover the M-Pesa part (migration 045).
+class MpesaNotConfirmedError extends Error {}
 
 const cartItemSchema = z.object({
   product_id: zUuid(),
@@ -59,6 +64,9 @@ const saleSchema = z.object({
   amount_tendered: z.number().nonnegative().nullable(),
   change_given: z.number().nonnegative().nullable(),
   mpesa_reference: z.string().nullable(),
+  // The STK push this sale was paid with: checked server-side (paid, unused,
+  // covers the M-Pesa part) and tied to the sale, so it can't pay twice.
+  mpesa_checkout_request_id: z.string().min(1).max(100).nullable().optional(),
   // Only meaningful when payment_method === "split" - the cash/M-Pesa
   // breakdown, needed to record real per-method payment rows so shift
   // variance (which only counts actual cash) isn't blind to split sales.
@@ -337,6 +345,34 @@ export async function POST(request: NextRequest) {
       }))
     if (csRows.length > 0) await db.insert(controlled_substance_log).values(csRows)
 
+    // A confirmed STK push: claim it for this sale (atomically — a payment
+    // can only back one sale) and take its M-Pesa receipt number.
+    let stk: { checkout_request_id: string; mpesa_receipt: string | null } | null = null
+    if (data.mpesa_checkout_request_id && data.payment_method !== "cash") {
+      const due = data.payment_method === "split"
+        ? (data.mpesa_amount ?? Math.max(0, totalAmount - (data.cash_amount ?? 0)))
+        : totalAmount
+      const [claimed] = await db.update(mpesa_stk_request)
+        .set({ sale_id: saleRow!.id, updated_at: new Date() })
+        .where(and(
+          eq(mpesa_stk_request.checkout_request_id, data.mpesa_checkout_request_id),
+          eq(mpesa_stk_request.organization_id, ctx.organizationId),
+          eq(mpesa_stk_request.status, "paid"),
+          isNull(mpesa_stk_request.sale_id),
+          sql`${mpesa_stk_request.amount} + 0.001 >= ${due}`,
+        ))
+        .returning({ checkout_request_id: mpesa_stk_request.checkout_request_id, mpesa_receipt: mpesa_stk_request.mpesa_receipt })
+      if (!claimed) {
+        const [req] = await db.select().from(mpesa_stk_request)
+          .where(and(eq(mpesa_stk_request.checkout_request_id, data.mpesa_checkout_request_id), eq(mpesa_stk_request.organization_id, ctx.organizationId)))
+          .limit(1)
+        const check = req ? stkCoversSale({ status: req.status, sale_id: req.sale_id, amount: Number(req.amount) }, due) : null
+        throw new MpesaNotConfirmedError(check && !check.ok ? check.reason : "That M-Pesa payment wasn't found.")
+      }
+      stk = claimed
+    }
+    const mpesaRef = stk?.mpesa_receipt ?? data.mpesa_reference
+
     // Payment detail (cash/mpesa/split). A split sale gets one row per
     // method it actually used, so shift variance (which sums payment.amount
     // where method='cash') sees the real cash collected instead of treating
@@ -346,12 +382,13 @@ export async function POST(request: NextRequest) {
       const mpesaAmt = data.mpesa_amount ?? Math.max(0, totalAmount - cashAmt)
       const rows = []
       if (cashAmt > 0) rows.push({ sale_id: saleRow!.id, method: "cash", amount: String(cashAmt) })
-      if (mpesaAmt > 0) rows.push({ sale_id: saleRow!.id, method: "mpesa", amount: String(mpesaAmt), mpesa_receipt: data.mpesa_reference })
+      if (mpesaAmt > 0) rows.push({ sale_id: saleRow!.id, method: "mpesa", amount: String(mpesaAmt), mpesa_receipt: mpesaRef, mpesa_checkout_id: stk?.checkout_request_id ?? null })
       if (rows.length > 0) await db.insert(payment).values(rows)
     } else {
       await db.insert(payment).values({
         sale_id: saleRow!.id, method: data.payment_method, amount: String(totalAmount),
-        mpesa_receipt: data.mpesa_reference,
+        mpesa_receipt: mpesaRef,
+        mpesa_checkout_id: stk?.checkout_request_id ?? null,
       })
     }
 
@@ -372,12 +409,15 @@ export async function POST(request: NextRequest) {
       subtotal: Number(saleRow!.subtotal), discount_amount: Number(saleRow!.discount_amount),
       tax_amount: Number(saleRow!.tax_amount), total_amount: Number(saleRow!.total_amount),
       amount_tendered: data.amount_tendered, change_given: data.change_given,
-      mpesa_reference: data.mpesa_reference, customer_name: data.customer_name, customer_phone: data.customer_phone,
+      mpesa_reference: mpesaRef, customer_name: data.customer_name, customer_phone: data.customer_phone,
       org_name: org?.name ?? null,
     }
     return { sale: saleOut, items, paperWidth }
     })
   } catch (e) {
+    if (e instanceof MpesaNotConfirmedError) {
+      return NextResponse.json({ error: e.message, code: "mpesa_not_confirmed" }, { status: 409 })
+    }
     if (e instanceof UnpricedProductError) {
       return NextResponse.json(
         { error: `${e.productName} has no price yet. Set its selling price in Products, then try again.`, code: "unpriced_product" },

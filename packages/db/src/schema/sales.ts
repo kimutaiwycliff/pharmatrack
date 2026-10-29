@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, numeric, timestamp } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, integer, numeric, timestamp, index } from "drizzle-orm/pg-core"
 import { organization, user } from "./auth"
 import { branch } from "./tenancy"
 import { product } from "./catalogue"
@@ -72,3 +72,23 @@ export const payment = pgTable("payment", {
   mpesa_receipt: text("mpesa_receipt"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
+
+// Every M-Pesa STK push the till sends (migration 045): confirmed by STK
+// Query before it counts as paid, and tied to the one sale that used it.
+export const mpesa_stk_request = pgTable("mpesa_stk_request", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organization_id: text("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  checkout_request_id: text("checkout_request_id").notNull().unique(),
+  merchant_request_id: text("merchant_request_id"),
+  phone: text("phone").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  status: text("status").notNull().default("pending"), // pending | paid | cancelled | failed
+  result_code: text("result_code"),
+  result_desc: text("result_desc"),
+  mpesa_receipt: text("mpesa_receipt"),
+  sale_id: uuid("sale_id").references(() => sale.id, { onDelete: "set null" }),
+  requested_by: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+  last_checked_at: timestamp("last_checked_at", { withTimezone: true }),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("idx_mpesa_stk_request_org_created").on(t.organization_id, t.created_at)])

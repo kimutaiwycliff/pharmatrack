@@ -41,8 +41,10 @@ interface SaleParams {
   cashAmount?: number
   mpesaAmount?: number
   customerPhone?: string | null
-  /** M-Pesa confirmed after an STK prompt (vs. a code typed by hand). */
+  /** M-Pesa confirmed the STK payment (vs. a manual confirmation, which is unverified). */
   mpesaViaPrompt?: boolean
+  /** That STK push — the sale API checks it's paid, unused and covers the amount. */
+  mpesaCheckoutRequestId?: string
 }
 
 interface ReceiptData {
@@ -188,6 +190,7 @@ export default function PosPage() {
         mpesa_reference: params.mpesaReference,
         cash_amount: params.cashAmount ?? null,
         mpesa_amount: params.mpesaAmount ?? null,
+        mpesa_checkout_request_id: params.mpesaCheckoutRequestId ?? null,
         customer_name: null,
         customer_phone: params.customerPhone ?? null,
       })
@@ -474,6 +477,7 @@ export default function PosPage() {
             changeGiven: 0,
             mpesaReference: ref,
             mpesaViaPrompt: how.viaPrompt,
+            mpesaCheckoutRequestId: how.checkoutRequestId,
           })
         }
       />
@@ -494,6 +498,7 @@ export default function PosPage() {
             cashAmount: cashAmt,
             mpesaAmount: mpesaAmt,
             mpesaViaPrompt: how.viaPrompt,
+            mpesaCheckoutRequestId: how.checkoutRequestId,
           })
         }
       />
