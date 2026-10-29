@@ -2,10 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import { ScanLine, Trash2, CheckCircle2, Info, Plus, Search, Tag } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { parseBarcode, type BarcodeScanEvent } from "@pharmatrack/core"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
+import { NewProductDialog } from "@/components/inventory/NewProductDialog"
 import { useProductLookup } from "@/lib/hooks/useProductLookup"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { formatKES } from "@/lib/store/cartStore"
@@ -45,8 +47,19 @@ const MAX_LABEL_COPIES_PER_ITEM = 100
 interface Props {
   branchId: string
   suppliers: Array<{ id: string; name: string }>
-  onPosted: () => void
+  /** "Go to inventory" after a delivery is posted. */
+  onDone: () => void
 }
+
+/** A scan waiting for its lookup; `n` makes a repeat scan of the same code count. */
+interface PendingScan { code: string; n: number; batch: string | null; expiry: string | null }
+
+// Calendar dates in Nairobi time — toISOString() is UTC and turned a scanned
+// 30 Nov expiry into 29 Nov (the parser builds local-midnight dates).
+const nairobiDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi" }).format(d)
+const today = () => nairobiDate(new Date())
+/** Expiry within ~6 months: allowed, but worth a second look before shelving. */
+const SHORT_DATED_DAYS = 182
 
 function ReceiveItemCard({ item, index, onRemove }: { item: ReceiveItem; index: number; onRemove: () => void }) {
   const totalUnits = item.qty * item.unitsPerPack
@@ -80,17 +93,26 @@ function ReceiveItemCard({ item, index, onRemove }: { item: ReceiveItem; index: 
         )}
         <button
           onClick={onRemove}
-          className="mt-1 w-6 h-6 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-red)] hover:bg-[var(--pt-red-50)] transition-colors ml-auto"
+          aria-label={`Remove ${item.productName}`}
+          title="Remove from the list"
+          className="mt-1 w-10 h-10 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-red)] hover:bg-[var(--pt-red-50)] transition-colors ml-auto"
         >
-          <Trash2 size={12} />
+          <Trash2 size={15} />
         </button>
       </div>
     </div>
   )
 }
 
-export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
-  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
+export function StockReceiveForm({ branchId, suppliers, onDone }: Props) {
+  const queryClient = useQueryClient()
+  // What's in the barcode box; a code is only looked up on Enter or a scan,
+  // not on every keystroke (which used to look up every half-typed prefix).
+  const [barcodeText, setBarcodeText] = useState("")
+  const [scan, setScan] = useState<PendingScan | null>(null)
+  const scanSeq = useRef(0)
+  const [unknownCode, setUnknownCode] = useState<PendingScan | null>(null)
+  const [newProductOpen, setNewProductOpen] = useState(false)
   const [receiveList, setReceiveList] = useState<ReceiveItem[]>([])
   const idem = useIdempotencyKey()
   const [lastReceived, setLastReceived] = useState<ReceiveItem[]>([])
@@ -101,10 +123,13 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
   const [pendingProduct, setPendingProduct] = useState<ProductWithStock | null>(null)
   const [pendingBatch, setPendingBatch] = useState("")
   const [pendingExpiry, setPendingExpiry] = useState("")
-  const [pendingQty, setPendingQty] = useState<number>(1)
+  // Text, so the box can be cleared while typing (it used to snap back to 1).
+  const [pendingQtyText, setPendingQtyText] = useState("1")
   const [pendingCost, setPendingCost] = useState<string>("")
+  const [showErrors, setShowErrors] = useState(false)
+  const pendingQty = parseInt(pendingQtyText, 10) || 0
 
-  const { data: lookupData, isFetching } = useProductLookup(scannedBarcode, branchId, "receive")
+  const { data: lookupData, isFetching } = useProductLookup(scan?.code ?? null, branchId, "receive")
 
   const { data: settingsData } = useQuery<{ org: Organization }>({
     queryKey: ["settings"],
@@ -133,48 +158,66 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
     staleTime: 30_000,
   })
 
-  // Select a searched product into the pending-receive card (mirrors a scan).
-  const selectProduct = useCallback((p: ProductWithStock) => {
+  // Put a product in the "receive" card. Batch and expiry come from the
+  // barcode when it carried them (square GS1 codes) — never made up: a fake
+  // batch number breaks recalls and first-expiry-first-out.
+  const selectProduct = useCallback((p: ProductWithStock, from?: { batch: string | null; expiry: string | null }) => {
     setPendingProduct(p)
-    setScannedBarcode(null)
-    setPendingBatch(p.gtin ? `BN-${Date.now().toString().slice(-6)}` : "")
-    setPendingExpiry("")
-    setPendingQty(1)
+    setPendingBatch(from?.batch ?? "")
+    setPendingExpiry(from?.expiry ?? "")
+    setPendingQtyText("1")
     setPendingCost(packCost(p))
+    setShowErrors(false)
     setSearchText("")
+    setUnknownCode(null)
   }, [])
 
-  // When a scanned product resolves, prefill the receive form once per barcode.
-  const prevBarcode = useRef<string | null>(null)
+  // A scan (or Enter in the barcode box): look the code up once.
+  const commitScan = useCallback((event: BarcodeScanEvent) => {
+    // A GTIN when there is one; otherwise the code itself (our "PT…" labels, UPC…).
+    const code = (event.gtin ?? event.raw).trim()
+    if (code.length < 3) return
+    setBarcodeText("")
+    setUnknownCode(null)
+    setScan({
+      code,
+      n: ++scanSeq.current,
+      batch: event.batchNumber ?? null,
+      expiry: event.expiryDate ? nairobiDate(event.expiryDate) : null,
+    })
+  }, [])
+
+  // When a scan's lookup comes back, fill the card — or say we don't know it.
+  const handledScan = useRef(0)
   useEffect(() => {
-    if (lookupData?.found && lookupData.product && scannedBarcode && scannedBarcode !== prevBarcode.current) {
-      prevBarcode.current = scannedBarcode
-      /* eslint-disable react-hooks/set-state-in-effect */
-      setPendingProduct(lookupData.product)
-      setPendingBatch(lookupData.product.gtin ? `BN-${Date.now().toString().slice(-6)}` : "")
-      setPendingExpiry("")
-      setPendingQty(1)
-      setPendingCost("")
-      /* eslint-enable react-hooks/set-state-in-effect */
-    }
-  }, [lookupData, scannedBarcode])
+    if (!scan || !lookupData || handledScan.current === scan.n) return
+    handledScan.current = scan.n
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (lookupData.found && lookupData.product) selectProduct(lookupData.product, scan)
+    else setUnknownCode(scan)
+    setScan(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [lookupData, scan, selectProduct])
 
   useBarcodeScanner({
-    enabled: !posting,
-    onScan: (event) => {
-      if (event.gtin) {
-        setScannedBarcode(event.gtin)
-        if (event.batchNumber) setPendingBatch(event.batchNumber)
-        if (event.expiryDate) {
-          setPendingExpiry(event.expiryDate.toISOString().split("T")[0]!)
-        }
-      }
-    },
+    enabled: !posting && !newProductOpen,
+    onScan: commitScan,
   })
 
+  // What's wrong with the card, field by field (shown after a first try).
+  const expiryPast = !!pendingExpiry && pendingExpiry < today()
+  const fieldErrors = {
+    batch: pendingBatch.trim() ? null : "Enter the batch number from the pack",
+    expiry: !pendingExpiry ? "Enter the expiry date" : expiryPast ? "This batch has already expired — don't receive it" : null,
+    qty: pendingQty >= 1 ? null : "Enter how many were delivered",
+  }
+  const daysToExpiry = pendingExpiry ? Math.round((Date.parse(pendingExpiry) - Date.parse(today())) / 86_400_000) : null
+  const shortDated = daysToExpiry !== null && !expiryPast && daysToExpiry < SHORT_DATED_DAYS
+
   function addToList() {
-    if (!pendingProduct || !pendingBatch || !pendingExpiry || pendingQty < 1) {
-      toast.error("Fill in all fields before adding")
+    if (!pendingProduct) return
+    if (fieldErrors.batch || fieldErrors.expiry || fieldErrors.qty) {
+      setShowErrors(true)
       return
     }
     setLastReceived([])
@@ -196,12 +239,22 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
       },
     ])
     setPendingProduct(null)
-    setScannedBarcode(null)
     setPendingBatch("")
     setPendingExpiry("")
-    setPendingQty(1)
+    setPendingQtyText("1")
     setPendingCost("")
+    setShowErrors(false)
     toast.success(`${pendingProduct.name} added to receive list`)
+  }
+
+  function removeLine(lineId: string) {
+    const index = receiveList.findIndex((i) => i.lineId === lineId)
+    const line = receiveList[index]
+    if (!line) return
+    setReceiveList((prev) => prev.filter((i) => i.lineId !== lineId))
+    toast(`${line.productName} removed`, {
+      action: { label: "Undo", onClick: () => setReceiveList((prev) => [...prev.slice(0, index), line, ...prev.slice(index)]) },
+    })
   }
 
   async function postReceiving() {
@@ -211,6 +264,8 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
     // user posts again, lines that already went through are replayed by the
     // server, never booked twice. Only the failed lines stay in the list.
     const failedLines: ReceiveItem[] = []
+    // A line the server turned down (vs. one that never reached it): say why.
+    const refused: string[] = []
     for (const item of receiveList) {
       try {
         const body = {
@@ -223,7 +278,8 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           // invoice), but batch cost is stored per BASE UNIT — the unit
           // reports multiply by sold quantity. Sending the pack cost as-is
           // used to overstate COGS by units_per_pack.
-          cost_price: item.costPrice == null ? null : Math.round((item.costPrice / Math.max(1, item.unitsPerPack)) * 100) / 100,
+          // Left out when blank — cost is optional.
+          cost_price: item.costPrice == null || Number.isNaN(item.costPrice) ? undefined : Math.round((item.costPrice / Math.max(1, item.unitsPerPack)) * 100) / 100,
           supplier_id: item.supplierId || undefined,
         }
         const res = await fetch("/api/batches", {
@@ -231,30 +287,38 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           headers: { "Content-Type": "application/json", ...idem.headerFor({ line: item.lineId, body }) },
           body: JSON.stringify(body),
         })
-        if (!res.ok) failedLines.push(item)
+        if (!res.ok) {
+          failedLines.push(item)
+          const why = ((await res.json().catch(() => ({}))) as { error?: string }).error
+          refused.push(`${item.productName}: ${why ?? `error ${res.status}`}`)
+        }
       } catch {
         failedLines.push(item)
       }
     }
     setPosting(false)
     const posted = receiveList.filter((i) => !failedLines.includes(i))
+    // Stay on this page either way: failed lines must stay in the list to post
+    // again, and the success panel offers labels for what just arrived.
+    if (posted.length > 0) {
+      setLastReceived(posted)
+      void queryClient.invalidateQueries({
+        predicate: (q) => ["inventory", "productSearch", "receiveSearch", "productLookup"].includes(String(q.queryKey[0])),
+      })
+    }
     if (failedLines.length > 0) {
-      toast.error(
-        posted.length > 0
-          ? `${posted.length} batch(es) saved, ${failedLines.length} failed. Check your connection and post again — saved ones won't be repeated.`
-          : `${failedLines.length} item(s) failed to post. Check your connection and try again.`,
-      )
+      const head = posted.length > 0
+        ? `${posted.length} batch(es) saved, ${failedLines.length} didn't go through — still in the list.`
+        : `${failedLines.length} item(s) didn't go through — still in the list.`
+      const reason = refused.length > 0
+        ? ` ${refused.join("; ")}.`
+        : " Check your connection and post again — saved ones won't be repeated."
+      toast.error(head + reason, { duration: 12_000 })
       setReceiveList(failedLines)
-      if (posted.length > 0) {
-        setLastReceived(posted)
-        onPosted()
-      }
     } else {
-      toast.success(`${receiveList.length} batch(es) posted successfully`)
-      setLastReceived(receiveList)
+      toast.success(`${receiveList.length} batch(es) added to stock`)
       setReceiveList([])
       idem.reset()
-      onPosted()
     }
   }
 
@@ -278,7 +342,6 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
     (s, i) => s + (i.costPrice != null ? i.costPrice * i.qty : 0),
     0,
   )
-  const canAdd = !!pendingProduct && !!pendingBatch && !!pendingExpiry && pendingQty >= 1
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_1fr] gap-5">
@@ -315,9 +378,15 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
               />
               <input
                 type="text"
-                placeholder="Scan or type barcode…" data-tour="receive-find"
-                value={scannedBarcode ?? ""}
-                onChange={(e) => setScannedBarcode(e.target.value || null)}
+                placeholder="Scan, or type a barcode and press Enter" data-tour="receive-find"
+                aria-label="Barcode"
+                value={barcodeText}
+                onChange={(e) => setBarcodeText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return
+                  e.preventDefault()
+                  commitScan(parseBarcode(barcodeText.trim()))
+                }}
                 className="w-full h-14 pl-12 pr-28 text-[15px] border border-[var(--pt-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-2 py-1 bg-[var(--pt-green-50)] rounded-full text-[11px] font-semibold text-[var(--pt-green-600)]">
@@ -373,6 +442,22 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           </div>
         </div>
 
+        {/* A barcode we don't know — new products turn up in most deliveries */}
+        {unknownCode && !pendingProduct && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl p-4">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">This barcode isn&apos;t in your products yet</p>
+              <p className="text-xs font-mono text-[var(--pt-text-secondary)] mt-0.5 break-all">{unknownCode.code}</p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button variant="outline" size="sm" onClick={() => setUnknownCode(null)}>Dismiss</Button>
+              <Button size="sm" onClick={() => setNewProductOpen(true)} className="gap-1.5 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white">
+                <Plus size={14} /> Add it now
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Scanned product card */}
         {pendingProduct && (
           <div className="bg-[var(--pt-surface)] rounded-xl border-2 border-[var(--pt-green)] overflow-hidden">
@@ -395,62 +480,83 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1">
+                  <label htmlFor="receive-batch" className="block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1">
                     Batch number
                   </label>
                   <input
+                    id="receive-batch"
                     type="text"
                     value={pendingBatch}
                     onChange={(e) => setPendingBatch(e.target.value)}
-                    className="w-full h-9 px-3 border border-[var(--pt-border)] rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
-                    placeholder="BN240815" data-tour="receive-batch"
+                    aria-invalid={showErrors && !!fieldErrors.batch}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent ${showErrors && fieldErrors.batch ? "border-[var(--pt-red)]" : "border-[var(--pt-border)]"}`}
+                    placeholder="As printed on the pack" data-tour="receive-batch"
                   />
+                  {showErrors && fieldErrors.batch && <p className="text-[11px] text-[var(--pt-red)] mt-1">{fieldErrors.batch}</p>}
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1">
+                  <label htmlFor="receive-expiry" className="block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1">
                     Expiry date
                   </label>
                   <input
+                    id="receive-expiry"
                     type="date"
+                    min={today()}
                     value={pendingExpiry}
                     onChange={(e) => setPendingExpiry(e.target.value)}
-                    className="w-full h-9 px-3 border border-[var(--pt-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
+                    aria-invalid={(showErrors && !!fieldErrors.expiry) || expiryPast}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent ${(showErrors && fieldErrors.expiry) || expiryPast ? "border-[var(--pt-red)]" : "border-[var(--pt-border)]"}`}
                   />
+                  {((showErrors && fieldErrors.expiry) || expiryPast) && <p className="text-[11px] text-[var(--pt-red)] mt-1">{fieldErrors.expiry}</p>}
+                  {shortDated && (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
+                      Short-dated — expires in {daysToExpiry! < 60 ? `${daysToExpiry} days` : `about ${Math.round(daysToExpiry! / 30)} months`}.
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1">
+                  <label htmlFor="receive-qty" className="block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1">
                     Qty ({pendingProduct.pack_label ?? "packs"})
                   </label>
                   <input
-                    type="number"
-                    min={1}
-                    value={pendingQty}
-                    onChange={(e) => setPendingQty(parseInt(e.target.value) || 1)}
-                    className="w-full h-9 px-3 border border-[var(--pt-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
+                    id="receive-qty"
+                    type="text"
+                    inputMode="numeric"
+                    value={pendingQtyText}
+                    onChange={(e) => setPendingQtyText(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onFocus={(e) => e.currentTarget.select()}
+                    aria-invalid={showErrors && !!fieldErrors.qty}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent ${showErrors && fieldErrors.qty ? "border-[var(--pt-red)]" : "border-[var(--pt-border)]"}`}
                   />
-                  <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-1">
-                    = {(pendingQty * (pendingProduct.units_per_pack ?? 1)).toLocaleString()} {pendingProduct.base_unit}s
-                  </p>
+                  {showErrors && fieldErrors.qty
+                    ? <p className="text-[11px] text-[var(--pt-red)] mt-1">{fieldErrors.qty}</p>
+                    : (
+                      <p className="text-[11px] text-[var(--pt-text-tertiary)] mt-1">
+                        = {(pendingQty * (pendingProduct.units_per_pack ?? 1)).toLocaleString()} {pendingProduct.base_unit}s
+                      </p>
+                    )}
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1">
+                  <label htmlFor="receive-cost" className="block text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide mb-1">
                     Cost per {pendingProduct.pack_label ?? "unit"} (KSh)
                   </label>
                   <input
+                    id="receive-cost"
                     type="number"
                     min={0}
                     step={0.01}
+                    inputMode="decimal"
                     value={pendingCost}
                     onChange={(e) => setPendingCost(e.target.value)}
                     placeholder="0.00"
-                    className="w-full h-9 px-3 border border-[var(--pt-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
+                    className="w-full h-10 px-3 border border-[var(--pt-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)] focus:border-transparent"
                   />
                 </div>
               </div>
 
               <Button data-tour="receive-save"
                 onClick={addToList}
-                disabled={!canAdd}
+                disabled={expiryPast}
                 className="w-full gap-2 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white h-10"
               >
                 <Plus size={16} />
@@ -460,24 +566,32 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           </div>
         )}
 
-        {/* Print labels for the batch just posted */}
-        {lastReceived.length > 0 && receiveList.length === 0 && (
-          <div className="flex items-center justify-between gap-3 bg-[var(--pt-green-50)] border border-[var(--pt-green)] rounded-xl p-4">
-            <p className="text-xs text-[var(--pt-green-600)] font-medium">
-              {lastReceived.length} item{lastReceived.length !== 1 ? "s" : ""} posted — print stickers for this delivery?
+        {/* What just went into stock — next steps */}
+        {lastReceived.length > 0 && !pendingProduct && (
+          <div role="status" className="bg-[var(--pt-green-50)] border border-[var(--pt-green)] rounded-xl p-4 space-y-3">
+            <p className="text-sm font-semibold text-[var(--pt-green-600)] flex items-center gap-2">
+              <CheckCircle2 size={16} />
+              {lastReceived.length} batch{lastReceived.length !== 1 ? "es" : ""} added to stock
+              {receiveList.length > 0 && ` · ${receiveList.length} still to post`}
             </p>
-            <Button size="sm" onClick={printLabelsForBatch} className="gap-1.5 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white shrink-0">
-              <Tag size={13} /> Print labels
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={printLabelsForBatch} className="gap-1.5 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white">
+                <Tag size={13} /> Print labels
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setLastReceived([]); document.querySelector<HTMLInputElement>('[data-tour="receive-find"]')?.focus() }}>
+                Receive another delivery
+              </Button>
+              <Button size="sm" variant="outline" onClick={onDone}>Go to inventory</Button>
+            </div>
           </div>
         )}
 
         {/* Tip */}
-        <div className="flex gap-2.5 bg-blue-50 dark:bg-blue-500/15 border border-blue-100 rounded-xl p-4">
+        <div className="flex gap-2.5 bg-blue-50 dark:bg-blue-500/15 border border-blue-100 dark:border-blue-500/30 rounded-xl p-4">
           <Info size={14} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-          <p className="text-xs text-blue-800 leading-relaxed">
-            <strong>Tip</strong> — Scan GS1-DataMatrix (small square barcode) to auto-fill batch
-            number and expiry date. Linear EAN barcodes only capture the product GTIN.
+          <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
+            <strong>Tip</strong> — a small square barcode fills in the batch number and expiry for
+            you. A striped barcode only finds the product, so type those two from the pack.
           </p>
         </div>
       </div>
@@ -503,10 +617,10 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
           ) : (
             receiveList.map((item, i) => (
               <ReceiveItemCard
-                key={i}
+                key={item.lineId}
                 item={item}
                 index={i}
-                onRemove={() => setReceiveList((prev) => prev.filter((_, idx) => idx !== i))}
+                onRemove={() => removeLine(item.lineId)}
               />
             ))
           )}
@@ -541,6 +655,27 @@ export function StockReceiveForm({ branchId, suppliers, onPosted }: Props) {
         onOpenChange={(v) => !v && setLabelItems(null)}
         items={labelItems ?? []}
         labelSize={labelSize}
+      />
+
+      {/* "Add it now" for an unknown barcode — code, batch and expiry carried over */}
+      <NewProductDialog
+        open={newProductOpen}
+        onOpenChange={setNewProductOpen}
+        prefill={unknownCode ? {
+          gtin: unknownCode.code,
+          batchNumber: unknownCode.batch ?? undefined,
+          expiryDate: unknownCode.expiry ? new Date(`${unknownCode.expiry}T12:00:00+03:00`) : undefined,
+        } : undefined}
+        branchId={branchId}
+        suppliers={suppliers}
+        onCreated={(product) => {
+          setNewProductOpen(false)
+          const from = unknownCode
+          setUnknownCode(null)
+          // Opening stock was received inside the form — don't add it twice.
+          if ((product.stock_on_hand ?? 0) > 0) return
+          selectProduct(product, from ?? undefined)
+        }}
       />
     </div>
   )
