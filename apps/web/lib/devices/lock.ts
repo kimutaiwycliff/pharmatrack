@@ -3,7 +3,8 @@ import { APIError } from "better-auth/api"
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm"
 import { dbAdmin, device, device_request, org_settings, session, staff_profile } from "@pharmatrack/db"
 import {
-  DEVICE_REQUEST_TTL_MIN, deviceLockApplies, deviceLockFrom, deviceNameFromUserAgent, type DeviceLockSettings,
+  ANDROID_DEVICE_CHECK_MIN_VERSION, DEVICE_REQUEST_TTL_MIN, compareVersions, deviceLockApplies, deviceLockFrom, deviceNameFromUserAgent,
+  type DeviceLockSettings,
 } from "@pharmatrack/core"
 import { hashDeviceToken, newDeviceToken } from "@/lib/sync/device-token"
 
@@ -53,13 +54,81 @@ export function deviceCookie(token: string): string {
   return `${DEVICE_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; SameSite=Lax${secure}`
 }
 
+/** An approval that hasn't ended ("just today" / "7 days" run out). */
+const stillApproved = () => or(isNull(device.approved_until), gt(device.approved_until, new Date()))
+
 /** An approved, active device of this pharmacy for the key — or null. */
 export async function activeDeviceFor(token: string | null, organizationId: string) {
   if (!token) return null
   const [row] = await dbAdmin().select().from(device)
-    .where(and(eq(device.token_hash, hashDeviceToken(token)), eq(device.organization_id, organizationId), isNull(device.revoked_at)))
+    .where(and(eq(device.token_hash, hashDeviceToken(token)), eq(device.organization_id, organizationId), isNull(device.revoked_at), stillApproved()))
     .limit(1)
   return row ?? null
+}
+
+// ── The every-request check ──────────────────────────────────────────────────
+// Signing in on an approved device isn't enough on its own: a session carried
+// to another machine would keep working. So every tenant request (pages and
+// API, via getTenantContext) must come from the approved device its session
+// started on. Lock settings and device rows are cached for 30 s per server —
+// revoking a device deletes its sessions at once anyway, and an approval's end
+// time is compared fresh on every request.
+
+const CACHE_MS = 30_000
+type DeviceBrief = { id: string; organization_id: string; platform: string | null; app_version: string | null; approved_until: Date | null; revoked_at: Date | null }
+const lockCache = new Map<string, { at: number; lock: DeviceLockSettings }>()
+const deviceCache = new Map<string, { at: number; row: DeviceBrief | null }>()
+
+async function cachedLock(organizationId: string): Promise<DeviceLockSettings> {
+  const hit = lockCache.get(organizationId)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.lock
+  const lock = await loadDeviceLock(organizationId)
+  lockCache.set(organizationId, { at: Date.now(), lock })
+  return lock
+}
+
+/** Forget a pharmacy's cached lock (its settings just changed). */
+export function forgetDeviceLock(organizationId: string): void {
+  lockCache.delete(organizationId)
+}
+
+async function cachedDevice(key: string, where: ReturnType<typeof eq>): Promise<DeviceBrief | null> {
+  const hit = deviceCache.get(key)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.row
+  const [row] = await dbAdmin().select({
+    id: device.id, organization_id: device.organization_id, platform: device.platform, app_version: device.app_version,
+    approved_until: device.approved_until, revoked_at: device.revoked_at,
+  }).from(device).where(where).limit(1)
+  if (deviceCache.size > 5000) deviceCache.clear()
+  deviceCache.set(key, { at: Date.now(), row: row ?? null })
+  return row ?? null
+}
+
+const usable = (d: DeviceBrief | null, organizationId: string, now = Date.now()) =>
+  !!d && d.organization_id === organizationId && !d.revoked_at && (!d.approved_until || d.approved_until.getTime() > now)
+
+/**
+ * May this signed-in request act for the pharmacy? Always yes when the lock
+ * is off or doesn't apply to the role (owners). Otherwise the request must
+ * carry the key of a usable approved device — the one its session started on.
+ * Android bundles older than ANDROID_DEVICE_CHECK_MIN_VERSION only send the
+ * key at sign-in, so they're trusted on their session's own device.
+ */
+export async function requestDeviceAllowed(args: {
+  organizationId: string; role: string; sessionDeviceId: string | null; headers: Headers | null | undefined
+}): Promise<boolean> {
+  const lock = await cachedLock(args.organizationId)
+  if (!deviceLockApplies(lock, args.role)) return true
+  const token = deviceTokenFrom(args.headers)
+  if (token) {
+    const hash = hashDeviceToken(token)
+    const dev = await cachedDevice(`t:${hash}`, eq(device.token_hash, hash))
+    return usable(dev, args.organizationId) && (!args.sessionDeviceId || dev!.id === args.sessionDeviceId)
+  }
+  if (!args.sessionDeviceId) return false
+  const dev = await cachedDevice(`i:${args.sessionDeviceId}`, eq(device.id, args.sessionDeviceId))
+  return usable(dev, args.organizationId) && dev!.platform === "android"
+    && compareVersions(dev!.app_version ?? "0", ANDROID_DEVICE_CHECK_MIN_VERSION) < 0
 }
 
 function platformFrom(headers: Headers | null | undefined): string {
@@ -97,6 +166,10 @@ export async function createDeviceRequest(args: {
     suggested_name: deviceNameFromUserAgent(ua, platform), platform, user_agent: ua?.slice(0, 300) ?? null, ip_address: ip,
     code, secret_hash: hashDeviceToken(secret), expires_at: expires,
   }).returning({ id: device_request.id })
+  // Tell the owner now, so nobody is left waiting at the till (best effort).
+  void import("@/lib/notifications/deviceRequest").then((m) => m.emailOwnerAboutDeviceRequest({
+    organizationId: args.organizationId, userId: args.userId, deviceName: deviceNameFromUserAgent(ua, platform), code,
+  })).catch(() => undefined)
   return { id: row!.id, code, secret, expires_at: expires.toISOString() }
 }
 
@@ -130,8 +203,10 @@ export async function endSessionsForDevice(deviceId: string): Promise<number> {
   return gone.length
 }
 
+type LockScope = Pick<DeviceLockSettings, "enabled" | "managers_exempt">
+
 /** Staff the lock applies to, for this pharmacy. */
-async function lockedStaffIds(organizationId: string, lock: DeviceLockSettings): Promise<string[]> {
+async function lockedStaffIds(organizationId: string, lock: LockScope): Promise<string[]> {
   const roles = ["manager", "pharmacist", "cashier"].filter((r) => deviceLockApplies({ ...lock, enabled: true }, r))
   if (roles.length === 0) return []
   const rows = await dbAdmin().select({ id: staff_profile.user_id }).from(staff_profile)
@@ -150,7 +225,7 @@ function unapprovedSessionFilter(organizationId: string, userIds: string[]) {
   )
 }
 
-export async function countUnapprovedSessions(organizationId: string, lock: DeviceLockSettings): Promise<{ sessions: number; staff: number }> {
+export async function countUnapprovedSessions(organizationId: string, lock: LockScope): Promise<{ sessions: number; staff: number }> {
   const ids = await lockedStaffIds(organizationId, lock)
   if (ids.length === 0) return { sessions: 0, staff: 0 }
   const rows = await dbAdmin().select({ userId: session.userId }).from(session).where(unapprovedSessionFilter(organizationId, ids))
@@ -158,7 +233,7 @@ export async function countUnapprovedSessions(organizationId: string, lock: Devi
 }
 
 /** Turning the lock on: sign out locked staff who are on unapproved devices. */
-export async function endUnapprovedSessions(organizationId: string, lock: DeviceLockSettings): Promise<number> {
+export async function endUnapprovedSessions(organizationId: string, lock: LockScope): Promise<number> {
   const ids = await lockedStaffIds(organizationId, lock)
   if (ids.length === 0) return 0
   const gone = await dbAdmin().delete(session).where(unapprovedSessionFilter(organizationId, ids)).returning({ id: session.id })

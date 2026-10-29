@@ -26,7 +26,12 @@ function fail(status: number, code: string, error: string) {
   return { error: NextResponse.json({ error, code }, { status }) }
 }
 
-export async function getDeviceContext(request: NextRequest): Promise<DeviceContext | { error: NextResponse }> {
+/**
+ * `allowExpired`: a device whose temporary approval ("just today" / "7 days")
+ * has ended may still upload the sales it already made — nothing sold is lost
+ * — but can't pull stock or take a new stock share.
+ */
+export async function getDeviceContext(request: NextRequest, opts: { allowExpired?: boolean } = {}): Promise<DeviceContext | { error: NextResponse }> {
   const header = request.headers.get("authorization") ?? ""
   const token = header.startsWith("Device ") ? header.slice(7).trim() : null
   if (!token) return fail(401, "device_token_missing", "Device token required")
@@ -36,6 +41,9 @@ export async function getDeviceContext(request: NextRequest): Promise<DeviceCont
   if (!row) return fail(401, "device_revoked", "This device is not registered (or was removed). Ask a manager to register it again.")
   // Back-office devices (ADR-018) are approved for sign-in only — they don't sell offline.
   if (row.purpose === "office") return fail(403, "device_not_till", "This device is approved for back-office use only, not as a selling till.")
+  if (!opts.allowExpired && row.approved_until && row.approved_until.getTime() <= Date.now()) {
+    return fail(403, "device_approval_ended", "This device's approval has ended. Ask the owner to approve it again.")
+  }
 
   const subErr = await requireActiveSubscription(row.organization_id)
   if (subErr) return fail(402, "subscription_inactive", "Subscription inactive — renew to keep syncing.")

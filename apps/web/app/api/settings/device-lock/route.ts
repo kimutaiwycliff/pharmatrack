@@ -4,14 +4,15 @@ import { and, eq, isNull, sql } from "drizzle-orm"
 import { audit_log, dbAdmin, device, org_settings } from "@pharmatrack/db"
 import { ANDROID_DEVICE_LOCK_MIN_VERSION, compareVersions, type DeviceLockSettings } from "@pharmatrack/core"
 import { getApiContext } from "@/lib/api-auth"
-import { countUnapprovedSessions, endUnapprovedSessions, loadDeviceLock } from "@/lib/devices/lock"
+import { countUnapprovedSessions, endUnapprovedSessions, forgetDeviceLock, loadDeviceLock } from "@/lib/devices/lock"
 import { pendingRequests } from "@/lib/devices/pairing"
 
 // Settings → Devices → "Only approved devices" (ADR-018). Owner only: the
 // owner is the one person the lock never applies to, so only they can be
 // trusted to switch it.
 
-const schema = z.object({ enabled: z.boolean(), managers_exempt: z.boolean() }).strict()
+// approvers: who may approve a new device — the owner only (default), or managers too.
+const schema = z.object({ enabled: z.boolean(), managers_exempt: z.boolean(), approvers: z.enum(["owner", "owner_managers"]).default("owner") }).strict()
 
 function ownerOnly(role: string) {
   return role === "owner" ? null : NextResponse.json({ error: "Only the pharmacy owner can change this.", code: "owner_only" }, { status: 403 })
@@ -60,6 +61,8 @@ export async function PUT(request: NextRequest) {
       target: org_settings.organization_id,
       set: { settings: sql`${org_settings.settings} || ${JSON.stringify({ device_lock: next })}::jsonb`, updated_at: new Date() },
     })
+
+  forgetDeviceLock(ctx.organizationId)
 
   // Switching on (or widening it to managers) signs out the people it now
   // covers who are on devices nobody approved; they get the approval screen.

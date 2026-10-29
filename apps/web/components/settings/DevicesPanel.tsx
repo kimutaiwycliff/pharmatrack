@@ -16,6 +16,8 @@ interface DeviceRow {
   id: string; name: string; code: string; branch_name: string | null; platform: string | null; app_version: string | null
   allocation_percent: number | null; last_seen_at: string | null; last_sync_at: string | null; revoked_at: string | null
   purpose: "till" | "office"
+  /** End of a temporary approval (null = until removed). */
+  approved_until?: string | null
   created_at: string; units_held: number; open_issues: number
 }
 
@@ -35,6 +37,7 @@ const syncedToday = (iso: string | null) =>
 
 /** Settings → Devices: phones/tablets registered for offline selling. */
 export function DevicesPanel() {
+  const [now] = useState(() => Date.now())
   const qc = useQueryClient()
   const confirm = useConfirm()
   const [editing, setEditing] = useState<string | null>(null)
@@ -115,6 +118,13 @@ export function DevicesPanel() {
                       <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-[var(--pt-muted)] text-[var(--pt-text-secondary)]">{d.code}</span>
                       {d.purpose === "office" && (
                         <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--pt-muted)] text-[var(--pt-text-secondary)]">Back office</span>
+                      )}
+                      {d.approved_until && (
+                        new Date(d.approved_until).getTime() > now
+                          ? <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                              Until {new Date(d.approved_until).toLocaleString("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                            </span>
+                          : <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--pt-red-50)] text-[var(--pt-red)]">Approval ended</span>
                       )}
                       {d.id === thisDeviceId && (
                         <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--pt-green-50)] text-[var(--pt-green-600)]">This computer</span>

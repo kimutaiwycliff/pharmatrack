@@ -16,6 +16,8 @@ export interface NewDevice {
   platform?: string | null
   appVersion?: string | null
   actorId: string
+  /** End of a temporary approval (null/undefined = until removed). */
+  approvedUntil?: Date | null
   /** audit_log.action, e.g. device.register / device.approve */
   action: string
   auditExtra?: Record<string, unknown>
@@ -41,7 +43,7 @@ export async function createDevice(db: DrizzleDB, d: NewDevice): Promise<Created
         const [row] = await tx.insert(device).values({
           organization_id: d.organizationId, branch_id: b.id, name: d.name, device_code: code,
           token_hash: d.tokenHash, platform: d.platform ?? null, app_version: d.appVersion ?? null,
-          registered_by: d.actorId, last_seen_at: new Date(), purpose: d.purpose,
+          registered_by: d.actorId, last_seen_at: new Date(), purpose: d.purpose, approved_until: d.approvedUntil ?? null,
         }).returning()
         await tx.insert(audit_log).values({
           organization_id: d.organizationId, actor_id: d.actorId, action: d.action,

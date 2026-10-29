@@ -16,11 +16,12 @@ export interface SetupFacts {
   mpesa: boolean         // M-Pesa set up and tested
   receiptLogo: boolean   // a logo on receipts
   devices: number        // registered tills/computers/phones
+  deviceLock?: boolean   // "Only approved devices" is on (ADR-018)
 }
 
 export type SetupStepKey =
   | "pharmacy" | "products" | "prices" | "stock" | "first_sale"
-  | "staff" | "mpesa" | "receipt" | "devices"
+  | "staff" | "mpesa" | "receipt" | "devices" | "device_lock"
 
 export interface SetupStep {
   key: SetupStepKey
@@ -100,6 +101,12 @@ export function setupSteps(f: SetupFacts): SetupStep[] {
       why: "Install the Android or Windows app and keep selling when the internet drops.",
       minutes: 3, action: { label: "Set up a till", href: "/settings?tab=devices" },
       done: f.devices > 0, detail: f.devices > 0 ? plural(f.devices, "device") : undefined,
+    },
+    {
+      key: "device_lock", core: false, title: "Lock PharmaTrack to your shop's devices",
+      why: "Staff can only use the tills and computers you approve with your PIN — not personal phones or home laptops.",
+      minutes: 2, action: { label: "Turn it on", href: "/settings?tab=devices" },
+      done: f.deviceLock === true, detail: f.deviceLock ? "On" : undefined,
     },
   ]
 }

@@ -33,7 +33,7 @@ export interface DeviceInfo {
 // (app.config.ts) only moves with a new APK — so the server can tell which
 // phones already have a JS-only feature, e.g. 1.3.1 sends its device key at
 // sign-in (ADR-018). Bump it whenever a server feature depends on new JS.
-export const APP_BUNDLE_VERSION = "1.3.1"
+export const APP_BUNDLE_VERSION = "1.3.2"
 export const appVersion = (): string => APP_BUNDLE_VERSION || (Constants.expoConfig?.version ?? "0.0.0")
 
 export async function getDeviceToken(): Promise<string | null> {

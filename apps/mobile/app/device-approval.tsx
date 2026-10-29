@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { formatPairingCode } from "@pharmatrack/core"
+import { APPROVAL_DURATIONS, formatPairingCode, type ApprovalDuration } from "@pharmatrack/core"
 import { env } from "../src/lib/env"
 import { adoptDeviceKey } from "../src/lib/sync/device"
 import { refreshSyncState } from "../src/lib/sync/engine"
@@ -147,9 +147,10 @@ export default function DeviceApproval() {
           ? <ApproveHere ctx={ctx} secret={request.secret} onApproved={(d) => void finish(d)} />
           : (
             <View style={styles.steps}>
-              {noApprovers && <Text tone="secondary">No owner or manager has a till PIN set yet, so approve from their phone or computer:</Text>}
-              <Text>1. The owner or a manager opens Settings → Devices.</Text>
-              <Text>2. Under “Waiting for approval”, they check the code matches and tap Approve.</Text>
+              {noApprovers && <Text tone="secondary">Nobody who can approve devices has a till PIN set yet, so approve from their phone or computer:</Text>}
+              <Text tone="secondary">{"We've emailed the owner about this phone."}</Text>
+              <Text>1. The owner opens Settings → Devices.</Text>
+              <Text>2. Under “Waiting for approval”, they check the code matches, enter their PIN and tap Approve.</Text>
               <Text tone="success">Waiting — this screen continues by itself.</Text>
             </View>
           )}
@@ -163,6 +164,7 @@ function ApproveHere({ ctx, secret, onApproved }: { ctx: Context; secret: string
   const [name, setName] = useState(ctx.suggested_name === "Android phone" ? "" : ctx.suggested_name)
   const [branch, setBranch] = useState(ctx.default_branch_id ?? ctx.branches[0]?.id ?? "")
   const [pin, setPin] = useState("")
+  const [duration, setDuration] = useState<ApprovalDuration>("always")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const approverName = ctx.approvers.find((a) => a.id === approver)?.name ?? "Approver"
@@ -174,7 +176,7 @@ function ApproveHere({ ctx, secret, onApproved }: { ctx: Context; secret: string
     setError(null)
     try {
       const r = await post<{ error?: string; device?: ApprovedDevice }>("/api/device-pairing/approve-pin", {
-        secret, approver_id: approver, pin, name: name.trim(), branch_id: branch, purpose: "till", platform: "android",
+        secret, approver_id: approver, pin, name: name.trim(), branch_id: branch, purpose: "till", duration, platform: "android",
       })
       if (!r.ok || !r.body.device) {
         setError(r.body.error ?? "Couldn't approve this phone.")
@@ -206,6 +208,13 @@ function ApproveHere({ ctx, secret, onApproved }: { ctx: Context; secret: string
           </View>
         </>
       )}
+      <Text variant="label">Approved for</Text>
+      <View style={styles.row}>
+        {(["always", "week", "today"] as ApprovalDuration[]).map((d) => (
+          <Chip key={d} label={APPROVAL_DURATIONS[d].label} selected={duration === d} onPress={() => setDuration(d)} />
+        ))}
+      </View>
+      <Text variant="caption" tone="tertiary">{APPROVAL_DURATIONS[duration].hint}</Text>
       <TextField
         label={`${approverName}'s till PIN`}
         value={pin}

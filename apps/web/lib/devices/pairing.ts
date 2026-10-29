@@ -1,10 +1,14 @@
 import { and, asc, eq, inArray } from "drizzle-orm"
-import { branch, dbAdmin, device_request, organization, staff_profile, user } from "@pharmatrack/db"
-import type { DevicePurpose } from "@pharmatrack/core"
+import { audit_log, branch, dbAdmin, device_request, organization, staff_profile, user } from "@pharmatrack/db"
+import { approvedUntil, canApproveDevices, type ApprovalDuration, type DevicePurpose } from "@pharmatrack/core"
 import { loadPermissions } from "@/lib/auth/helpers"
 import { hashDeviceToken } from "@/lib/sync/device-token"
+import { verifyPin } from "@/lib/auth/pin"
+import { normalizeKePhone } from "@/lib/auth/phone"
+import { failedAttempt, lockedMessage, succeeded } from "@/lib/auth/lockout"
+import { lockRemaining, retryText } from "@/lib/rate-limit"
 import { createDevice, type CreatedDevice } from "@/lib/devices/create"
-import { expireStaleRequests } from "@/lib/devices/lock"
+import { expireStaleRequests, loadDeviceLock } from "@/lib/devices/lock"
 
 // Approving a device (ADR-018). The blocked device holds the request secret;
 // approval creates the device with token_hash = sha256(secret), so the secret
@@ -29,7 +33,8 @@ export async function requestById(id: string, organizationId: string): Promise<R
 
 export interface Approver { id: string; name: string; role: string; has_pin: boolean; all_branches: boolean; branch_id: string | null }
 
-/** Staff of the pharmacy who may approve devices ("Manage selling devices"). */
+/** Staff who may approve devices: the owner, plus managers with "Manage
+ *  selling devices" when the pharmacy allows it (device_lock.approvers). */
 export async function approversFor(organizationId: string): Promise<Approver[]> {
   const staff = await dbAdmin().select({
     id: staff_profile.user_id, role: staff_profile.role, pin: staff_profile.pin_hash, branch_id: staff_profile.branch_id, name: user.name,
@@ -37,12 +42,13 @@ export async function approversFor(organizationId: string): Promise<Approver[]> 
     .where(and(eq(staff_profile.organization_id, organizationId), eq(staff_profile.is_active, true),
       inArray(staff_profile.role, ["owner", "manager", "pharmacist", "cashier"])))
     .orderBy(asc(user.name))
+  const lock = await loadDeviceLock(organizationId)
   const perms = new Map<string, string[]>()
   const out: Approver[] = []
   for (const s of staff) {
     if (!perms.has(s.role)) perms.set(s.role, await loadPermissions(organizationId, s.role))
     const p = perms.get(s.role)!
-    if (!p.includes("devices.manage")) continue
+    if (!canApproveDevices(lock, s.role, p)) continue
     out.push({ id: s.id, name: s.name || "Staff member", role: s.role, has_pin: !!s.pin, all_branches: p.includes("branches.all"), branch_id: s.branch_id })
   }
   // Owner first, then everyone else alphabetically.
@@ -76,6 +82,8 @@ export interface ApproveInput {
   purpose: DevicePurpose
   approverId: string
   via: "pin" | "remote"
+  /** How long the approval lasts (default: until removed). */
+  duration?: ApprovalDuration
 }
 
 class BranchMissing extends Error {}
@@ -95,7 +103,8 @@ export async function approveRequest(row: RequestRow, input: ApproveInput): Prom
       const created = await createDevice(tx, {
         organizationId: row.organization_id, branchId: input.branchId, name: input.name, tokenHash: row.secret_hash,
         purpose: input.purpose, platform: row.platform, actorId: input.approverId, action: "device.approve",
-        auditExtra: { via: input.via, requested_by: row.user_id, request_id: row.id },
+        approvedUntil: approvedUntil(input.duration ?? "always"),
+        auditExtra: { via: input.via, requested_by: row.user_id, request_id: row.id, duration: input.duration ?? "always" },
       })
       if (!created) throw new BranchMissing()
       await tx.update(device_request).set({ device_id: created.id }).where(eq(device_request.id, row.id))
@@ -119,4 +128,33 @@ export async function pendingRequests(organizationId: string) {
     .leftJoin(staff_profile, eq(staff_profile.user_id, device_request.user_id))
     .where(and(eq(device_request.organization_id, organizationId), eq(device_request.status, "pending")))
     .orderBy(asc(device_request.created_at))
+}
+
+/**
+ * Check an approver's own till PIN (both ways of approving need it). Wrong
+ * PINs count toward the same 5-try lockout as PIN sign-in for that person.
+ * Returns null when the PIN is right, else the response to send.
+ */
+export async function checkApproverPin(organizationId: string, approver: { id: string; name: string }, pin: string):
+  Promise<null | { status: number; body: { error: string; code: string }; retryAfter?: number }> {
+  const [sp] = await dbAdmin().select({ pin_hash: staff_profile.pin_hash, phone: staff_profile.phone })
+    .from(staff_profile).where(and(eq(staff_profile.user_id, approver.id), eq(staff_profile.organization_id, organizationId))).limit(1)
+  if (!sp?.pin_hash) return { status: 400, body: { error: `${approver.name} hasn't set a till PIN yet. Set one in My profile first.`, code: "no_pin" } }
+  // Same lockout key as PIN sign-in (lib/auth/pin-plugin.ts).
+  const lockKey = sp.phone ? normalizeKePhone(sp.phone) : `user:${approver.id}`
+  const left = await lockRemaining("pin", lockKey)
+  if (left > 0) return { status: 429, body: { error: lockedMessage("pin", left), code: "locked" }, retryAfter: Math.ceil(left) }
+  if (!(await verifyPin(pin, sp.pin_hash))) {
+    const lockedFor = await failedAttempt("pin", lockKey)
+    if (lockedFor > 0) {
+      await dbAdmin().insert(audit_log).values({
+        organization_id: organizationId, actor_id: approver.id, action: "auth.pin_locked", entity: "user", entity_id: approver.id,
+        diff: { minutes: lockedFor / 60, during: "device approval" },
+      }).catch(() => undefined)
+      return { status: 429, body: { error: `Too many wrong PINs. Try again in ${retryText(lockedFor)}.`, code: "locked" } }
+    }
+    return { status: 401, body: { error: "Wrong PIN. Try again.", code: "wrong_pin" } }
+  }
+  await succeeded("pin", lockKey)
+  return null
 }

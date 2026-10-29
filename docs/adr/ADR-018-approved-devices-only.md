@@ -59,3 +59,24 @@ revocable token that is stored only as a sha256 hash, and the
   The bundle reports `app_version` 1.3.1, and until a device reports that,
   the setting warns that its staff will be blocked while the lock is on.
 - The platform console can switch the lock off for a pharmacy (recovery).
+
+## Amendment — part 2 (2026-10-29)
+- **Every request, not just sign-in.** `getTenantContext` (all tenant pages
+  and API routes) checks that a locked person's request carries the key of
+  the approved device their session started on (`requestDeviceAllowed`,
+  30 s cache). A session caught on another machine is deleted and the person
+  goes to `/login?expired=1`; signing in there shows the approval screen.
+  Android sends `x-pt-device` on every call from bundle 1.3.2 (OTA); older
+  bundles are trusted on their session's own device until they update.
+- **Who approves.** `device_lock.approvers`: `owner` (default) or
+  `owner_managers`. It applies to approving on the spot, approving remotely,
+  and registering a device while the lock is on. Remote approval now needs
+  the approver's own PIN too, so a tap alone can't let a device in.
+- **How long.** An approval is "Always", "7 days" or "Just today" (until
+  midnight in Nairobi): `device.approved_until`, migration 043. When it
+  passes, sign-in and every request are refused; an expired till may still
+  upload sales it already made (`/api/sync/push`), but can't pull or take
+  stock.
+- **Telling the owner.** A blocked sign-in emails the owner (at most once per
+  person every 10 minutes); the desktop app raises an OS notification when a
+  new request arrives; the setup guide suggests turning the lock on.

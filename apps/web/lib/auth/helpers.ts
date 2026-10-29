@@ -2,7 +2,8 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
 import { and, eq } from "drizzle-orm"
-import { dbAdmin, staff_profile, platform_admin, subscription, role_permission } from "@pharmatrack/db"
+import { dbAdmin, staff_profile, platform_admin, subscription, role_permission, session as session_table } from "@pharmatrack/db"
+import { requestDeviceAllowed } from "@/lib/devices/lock"
 import { resolvePermissions, type Capability } from "@pharmatrack/core"
 import { auth } from "./server"
 import { effectiveSubscriptionStatus, ACTIVE_STATUSES } from "@/lib/billing/subscription-status"
@@ -53,6 +54,15 @@ export async function getTenantContext(): Promise<TenantContext | null> {
     .where(eq(staff_profile.user_id, session.user.id))
     .limit(1)
   if (!sp) return null
+  // Approved devices only (ADR-018): with the lock on, every request must come
+  // from the approved device this session started on — not just the sign-in.
+  // A session caught elsewhere is ended, so the person signs in again and the
+  // device gets the approval screen.
+  const sessionDeviceId = (session.session as { deviceId?: string | null }).deviceId ?? null
+  if (!(await requestDeviceAllowed({ organizationId: sp.organization_id, role: sp.role, sessionDeviceId, headers: await headers() }))) {
+    await dbAdmin().delete(session_table).where(eq(session_table.id, session.session.id)).catch(() => undefined)
+    return null
+  }
   const permissions = await loadPermissions(sp.organization_id, sp.role)
   return {
     userId: session.user.id,
@@ -67,7 +77,7 @@ export async function getTenantContext(): Promise<TenantContext | null> {
 /** Require a signed-in tenant member; redirect to /login otherwise. */
 export async function requireTenant(): Promise<TenantContext> {
   const ctx = await getTenantContext()
-  if (!ctx) redirect("/login")
+  if (!ctx) redirect("/login?expired=1")
   return ctx
 }
 

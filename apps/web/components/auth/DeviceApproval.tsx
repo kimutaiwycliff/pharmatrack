@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ShieldCheck, Loader2, CheckCircle2, XCircle, KeyRound, Smartphone, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { DEVICE_PURPOSES, formatPairingCode, type DevicePurpose } from "@pharmatrack/core"
+import { APPROVAL_DURATIONS, DEVICE_PURPOSES, formatPairingCode, type ApprovalDuration, type DevicePurpose } from "@pharmatrack/core"
 import { isDesktopApp, saveTillRegistration } from "@/lib/till/device"
 
 // Shown instead of the sign-in form when the pharmacy only allows approved
-// devices and this one isn't (ADR-018). An owner or manager approves it here
-// with their PIN, or from Settings → Devices after checking the code. The
+// devices and this one isn't (ADR-018). The owner (or a manager, if the
+// pharmacy allows it) approves it here with their PIN, or from Settings → Devices after checking the code. The
 // screen polls and continues by itself.
 
 export interface DeviceRequestInfo { id: string; code: string; secret: string; expires_at: string }
@@ -116,7 +116,7 @@ export function DeviceApproval({ request, onApproved, onCancel }: {
           <XCircle size={44} className="mx-auto text-[var(--pt-text-tertiary)]" />
           <h1 className="text-xl font-bold mt-3">{phaseShown === "declined" ? "Approval was declined" : "The approval request expired"}</h1>
           <p className="text-sm text-[var(--pt-text-secondary)] mt-1">
-            {phaseShown === "declined" ? "Ask the owner or a manager if you think this device should be allowed." : "Sign in again to get a new code."}
+            {phaseShown === "declined" ? "Ask the owner if you think this device should be allowed." : "Sign in again to get a new code."}
           </p>
           <Button className="mt-5 bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white" onClick={onCancel}>Back to sign in</Button>
         </div>
@@ -132,7 +132,7 @@ export function DeviceApproval({ request, onApproved, onCancel }: {
           <h1 className="text-xl font-bold tracking-tight">This device needs approval</h1>
           <p className="text-sm text-[var(--pt-text-secondary)] mt-1">
             {ctx ? <><span className="font-semibold text-[var(--pt-text)]">{ctx.pharmacy}</span> only lets staff use approved devices.</> : "Your pharmacy only lets staff use approved devices."}
-            {" "}Ask the owner or a manager to approve it.
+            {" "}{ctx && ctx.approvers.some((a) => a.role !== "owner") ? "Ask the owner or a manager to approve it." : "Ask the owner to approve it."}
           </p>
         </div>
       </div>
@@ -156,10 +156,11 @@ export function DeviceApproval({ request, onApproved, onCancel }: {
         ? <ApproveHere request={request} ctx={ctx} onApproved={(d) => void finish(d)} />
         : (
           <div className="mt-4 text-sm text-[var(--pt-text-secondary)] space-y-3">
-            {noApprovers && <p>No owner or manager has a till PIN set yet, so approve this device from their phone or computer:</p>}
+            {noApprovers && <p>Nobody who can approve devices has a till PIN set yet, so approve this device from their phone or computer:</p>}
+            <p>We&apos;ve emailed the owner about this device.</p>
             <ol className="list-decimal ml-5 space-y-1.5">
-              <li>The owner or a manager opens <span className="font-semibold text-[var(--pt-text)]">Settings → Devices</span> on their phone or computer.</li>
-              <li>Under <span className="font-semibold text-[var(--pt-text)]">Waiting for approval</span>, they check the code matches and tap <span className="font-semibold text-[var(--pt-text)]">Approve</span>.</li>
+              <li>The owner opens <span className="font-semibold text-[var(--pt-text)]">Settings → Devices</span> on their phone or computer.</li>
+              <li>Under <span className="font-semibold text-[var(--pt-text)]">Waiting for approval</span>, they check the code matches, enter their PIN and tap <span className="font-semibold text-[var(--pt-text)]">Approve</span>.</li>
             </ol>
             <p className="flex items-center gap-2 text-[var(--pt-text)]"><Loader2 size={14} className="animate-spin text-[var(--pt-green)]" /> Waiting — this screen continues by itself.</p>
           </div>
@@ -181,6 +182,7 @@ function ApproveHere({ request, ctx, onApproved }: { request: DeviceRequestInfo;
   const [purpose, setPurpose] = useState<DevicePurpose>("till")
   const [branchId, setBranchId] = useState<string | null>(null)
   const [pin, setPin] = useState("")
+  const [duration, setDuration] = useState<ApprovalDuration>("always")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -197,7 +199,7 @@ function ApproveHere({ request, ctx, onApproved }: { request: DeviceRequestInfo;
     setBusy(true)
     const res = await fetch("/api/device-pairing/approve-pin", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret: request.secret, approver_id: approver, pin, name: deviceName.trim(), branch_id: branch, purpose, platform: platform() }),
+      body: JSON.stringify({ secret: request.secret, approver_id: approver, pin, name: deviceName.trim(), branch_id: branch, purpose, duration, platform: platform() }),
     }).catch(() => null)
     const body = (await res?.json().catch(() => ({})) ?? {}) as { error?: string; device?: ApprovedDevice }
     if (!res || !res.ok || !body.device) {
@@ -234,6 +236,18 @@ function ApproveHere({ request, ctx, onApproved }: { request: DeviceRequestInfo;
               className={`text-left rounded-lg border p-2.5 transition-colors ${purpose === p ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]" : "border-[var(--pt-border)] hover:bg-[var(--pt-muted)]"}`}>
               <span className="block text-sm font-semibold">{DEVICE_PURPOSES[p].label}</span>
               <span className="block text-[11px] leading-snug text-[var(--pt-text-secondary)] mt-0.5">{DEVICE_PURPOSES[p].description}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="text-sm font-medium">Approved for</legend>
+        <div className="mt-1.5 grid grid-cols-3 gap-2">
+          {(["always", "week", "today"] as ApprovalDuration[]).map((d) => (
+            <button key={d} type="button" onClick={() => setDuration(d)} aria-pressed={duration === d}
+              className={`text-left rounded-lg border p-2.5 transition-colors ${duration === d ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]" : "border-[var(--pt-border)] hover:bg-[var(--pt-muted)]"}`}>
+              <span className="block text-sm font-semibold">{APPROVAL_DURATIONS[d].label}</span>
+              <span className="block text-[11px] leading-snug text-[var(--pt-text-secondary)] mt-0.5">{APPROVAL_DURATIONS[d].hint}</span>
             </button>
           ))}
         </div>

@@ -10,7 +10,7 @@ import { hasBackOfficeAccess } from "@pharmatrack/core"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const shell = await loadAppShell()
-  if (!shell) redirect("/login")
+  if (!shell) redirect("/login?expired=1")
   const { profile, branches, subStatus, trialExpired, planCode, permissions } = shell
 
   // Staff with no back-office permissions (cashiers, by default) belong in POS.
