@@ -1,7 +1,9 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import { ArrowLeft, Clock, Loader2, LogOut, Users } from "lucide-react"
+import { ArrowLeft, Clock, Loader2, LogOut, Moon, MoreHorizontal, Sun, Users } from "lucide-react"
+import { useTheme } from "next-themes"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ClockInDialog } from "./ClockInDialog"
@@ -57,6 +59,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
   // The server shift is only used by an unregistered browser.
   const { data: shift, refetch } = useActiveShift(till.ready && !tillActive ? userId : null)
   const profile = useSessionStore((s) => s.profile)
+  const { resolvedTheme, setTheme } = useTheme()
   const permissions = useSessionStore((s) => s.permissions)
   const branches = useSessionStore((s) => s.branches)
   const activeBranchId = useUIStore((s) => s.activeBranchId)
@@ -158,7 +161,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
 
         {/* Back to dashboard (non-cashier only) */}
         {hasBackOfficeAccess(permissions) && !sellingAsOther && (
-          <Link href="/dashboard">
+          <Link href="/dashboard" className="hidden sm:inline-flex">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8">
               <ArrowLeft size={13} />
               <span className="hidden sm:inline">Dashboard</span>
@@ -183,7 +186,7 @@ export function PosShell({ userId, children }: { userId: string; children: React
               onClick={() => setSwitchOpen(true)}
               title="Switch cashier (works offline)"
               aria-label="Switch cashier"
-              className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
             >
               <Users size={15} />
             </button>
@@ -196,20 +199,46 @@ export function PosShell({ userId, children }: { userId: string; children: React
             variant="outline"
             size="sm"
             onClick={() => setClockOutOpen(true)}
-            className="gap-1.5 text-xs h-8 text-[var(--pt-red)] border-[var(--pt-red)] hover:bg-[var(--pt-red-50)]"
+            className="hidden sm:inline-flex gap-1.5 text-xs h-8 text-[var(--pt-red)] border-[var(--pt-red)] hover:bg-[var(--pt-red-50)]"
           >
             <Clock size={13} />
-            <span className="hidden sm:inline">End Shift</span>
+            End Shift
           </Button>
         )}
 
         {/* Theme */}
-        <ThemeToggle className="!w-8 !h-8" />
+        <span className="hidden sm:contents"><ThemeToggle className="!w-8 !h-8" /></span>
+
+        {/* Phones: the rest in one menu — a lone red clock used to sit right
+            next to Sign out, all at 32px. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger aria-label="More" className="sm:hidden w-10 h-10 inline-flex items-center justify-center rounded-lg text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)]">
+            <MoreHorizontal size={18} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-52">
+            {shiftStart && <div className="px-2 py-1.5 text-xs text-[var(--pt-text-secondary)]">Shift · {formatDuration(shiftStart)}</div>}
+            {tillActive && (
+              <DropdownMenuItem onClick={() => setSwitchOpen(true)} className="h-10"><Users size={15} /> Switch cashier</DropdownMenuItem>
+            )}
+            {hasBackOfficeAccess(permissions) && !sellingAsOther && (
+              <DropdownMenuItem render={<Link href="/dashboard" />} className="h-10"><ArrowLeft size={15} /> Dashboard</DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} className="h-10">
+              {resolvedTheme === "dark" ? <Sun size={15} /> : <Moon size={15} />} {resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+            </DropdownMenuItem>
+            {shiftStart && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setClockOutOpen(true)} className="h-10 text-[var(--pt-red)]"><Clock size={15} /> End shift</DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Sign out */}
         <LogoutButton
           title="Sign out"
-          className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+          className="h-10 w-10 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-md text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
         >
           <LogOut size={15} />
         </LogoutButton>

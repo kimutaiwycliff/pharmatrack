@@ -129,7 +129,14 @@ export default function ProductsPage() {
     try {
       await toggleActive(p.id, !p.is_active)
       await qc.invalidateQueries({ queryKey: ["products"] })
-      toast.success(`${p.name} ${!p.is_active ? "activated" : "deactivated"}`)
+      // Deactivating takes it off the till at once — make that one tap undoable.
+      if (p.is_active) {
+        toast.success(`${p.name} deactivated — it won't show at the till`, {
+          action: { label: "Undo", onClick: () => void toggleActive(p.id, true).then(() => qc.invalidateQueries({ queryKey: ["products"] })) },
+        })
+      } else {
+        toast.success(`${p.name} activated`)
+      }
     } catch {
       toast.error("Failed to update product")
     }
@@ -303,7 +310,53 @@ export default function ProductsPage() {
             )}
           </div>
         ) : (
-          <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
+          <>
+          {/* Phones: a card per product (the table hid the price below 640px
+              and squeezed four 28px buttons into each row). */}
+          <ul className="sm:hidden space-y-2.5">
+            {products.map((p) => (
+              <li key={p.id} className={`bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-4 ${!p.is_active ? "opacity-60" : ""}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[14px] leading-tight">{p.name}</p>
+                    <p className="text-xs text-[var(--pt-text-tertiary)] mt-0.5">
+                      {[p.brand_name && p.brand_name !== p.name ? p.brand_name : null, p.strength, p.dosage_form].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {p.selling_price != null && Number(p.selling_price) > 0
+                      ? <p className="font-bold tabular-nums">{formatKES(p.selling_price)}</p>
+                      : <p className="text-xs font-semibold text-amber-600">Needs a price</p>}
+                    <span className={`inline-flex mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${p.is_active ? "bg-[var(--pt-green-50)] text-[var(--pt-green-600)] border-[var(--pt-green-100)]" : "bg-[var(--pt-muted)] text-[var(--pt-text-secondary)] border-[var(--pt-border)]"}`}>
+                      {p.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => setEditId(p.id)} className="flex-1 h-10 rounded-lg text-sm font-semibold border border-[var(--pt-border)] hover:bg-[var(--pt-muted)]">Edit</button>
+                  {(p.gtin || p.barcode_raw) && (
+                    <button onClick={() => setLabelItems([{ code: (p.gtin ?? p.barcode_raw)!, productName: p.name, price: p.selling_price ?? null, copies: 1 }])}
+                      aria-label={`Print a barcode label for ${p.name}`} className="w-10 h-10 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)]">
+                      <Tag size={16} />
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button onClick={() => handleToggle(p)} aria-label={`${p.is_active ? "Deactivate" : "Activate"} ${p.name}`}
+                      className="w-10 h-10 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-text-secondary)]">
+                      {p.is_active ? <ToggleRight size={18} className="text-[var(--pt-green)]" /> : <ToggleLeft size={18} />}
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button onClick={() => handleDelete(p)} aria-label={`Delete ${p.name}`}
+                      className="w-10 h-10 rounded-lg border border-[var(--pt-border)] flex items-center justify-center text-[var(--pt-red)]">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden sm:block bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--pt-border)] bg-[var(--pt-muted)]">
@@ -313,8 +366,8 @@ export default function ProductsPage() {
                   {canSeeCost && (
                     <th className="px-4 py-3 text-right text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden lg:table-cell">Cost</th>
                   )}
-                  <th className="px-4 py-3 text-center text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden lg:table-cell">Max Disc.</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden xl:table-cell">GTIN</th>
+                  <th className="px-4 py-3 text-center text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden lg:table-cell">Max discount</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider hidden xl:table-cell">Barcode</th>
                   <th className="px-4 py-3 text-center text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 w-24 text-right text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider">Actions</th>
                 </tr>
@@ -389,24 +442,27 @@ export default function ProductsPage() {
                               price: p.selling_price ?? null,
                               copies: 1,
                             }])}
-                            className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+                            className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
                             title="Print barcode label"
+                            aria-label={`Print a barcode label for ${p.name}`}
                           >
                             <Tag size={14} />
                           </button>
                         )}
                         {canEdit && <button
                           onClick={() => handleToggle(p)}
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+                          className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors"
                           title={p.is_active ? "Deactivate" : "Activate"}
+                          aria-label={`${p.is_active ? "Deactivate" : "Activate"} ${p.name}`}
                         >
                           {p.is_active ? <ToggleRight size={16} className="text-[var(--pt-green)]" /> : <ToggleLeft size={16} />}
                         </button>}
                         {canDelete && (
                           <button
                             onClick={() => handleDelete(p)}
-                            className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-[var(--pt-red)] transition-colors"
+                            className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-[var(--pt-red)] transition-colors"
                             title="Delete"
+                            aria-label={`Delete ${p.name}`}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -418,6 +474,7 @@ export default function ProductsPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {/* Pagination */}

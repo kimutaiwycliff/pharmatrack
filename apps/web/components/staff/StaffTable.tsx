@@ -87,6 +87,30 @@ function ActionMenu({
   const resendInvite = () =>
     call(() => fetch(`/api/staff/${member.id}/resend`, { method: "POST" }), "Invite re-sent to")
 
+  // Role and access changes take effect at once — confirm, and say what changes.
+  const ROLE_NOTES: Record<string, string> = {
+    manager: "Managers usually run the back office: stock, reports, staff.",
+    pharmacist: "Pharmacists sell and handle prescriptions.",
+    cashier: "Cashiers sell at the till only.",
+  }
+  const changeRole = async (r: string) => {
+    const label = r.charAt(0).toUpperCase() + r.slice(1)
+    const ok = await confirm(
+      `${member.full_name} gets a ${r}'s permissions straight away. ${ROLE_NOTES[r] ?? ""} You can adjust what each role can do in Settings → Roles & permissions.`,
+      { title: `Make ${member.full_name} a ${label}?`, confirmLabel: `Change to ${label}`, destructive: false },
+    )
+    if (ok) patch({ role: r }, `${member.full_name} is now a ${r}`)
+  }
+  const block = async (reason: "suspended" | "banned") => {
+    const ok = await confirm(
+      reason === "suspended"
+        ? `${member.full_name} is signed out and can't sign in until you reactivate them — for leave, or while you look into something.`
+        : `${member.full_name} is signed out and can't sign in, recorded as banned — for someone who has left or was dismissed. You can still reactivate them later.`,
+      { title: `${reason === "suspended" ? "Suspend" : "Ban"} ${member.full_name}?`, confirmLabel: reason === "suspended" ? "Suspend" : "Ban" },
+    )
+    if (ok) patch({ blocked: true, block_reason: reason }, reason === "suspended" ? "Suspended" : "Banned")
+  }
+
   const remove = async () => {
     const ok = await confirm(`Delete ${member.full_name}? They lose all access immediately. This can't be undone.`, { title: "Delete staff member?", confirmLabel: "Delete" })
     if (!ok) return
@@ -98,7 +122,8 @@ function ActionMenu({
       <DropdownMenu>
         <DropdownMenuTrigger
           disabled={loading}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors disabled:opacity-50"
+          aria-label={`Actions for ${member.full_name}`}
+          className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:bg-[var(--pt-muted-strong)] transition-colors disabled:opacity-50"
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={15} />}
         </DropdownMenuTrigger>
@@ -106,7 +131,7 @@ function ActionMenu({
           {(["manager", "pharmacist", "cashier"] as const)
             .filter((r) => r !== member.role)
             .map((r) => (
-              <DropdownMenuItem key={r} onClick={() => patch({ role: r })}>
+              <DropdownMenuItem key={r} onClick={() => void changeRole(r)}>
                 <Pencil size={13} className="text-[var(--pt-text-tertiary)]" />
                 Change to {r.charAt(0).toUpperCase() + r.slice(1)}
               </DropdownMenuItem>
@@ -155,11 +180,11 @@ function ActionMenu({
             </DropdownMenuItem>
           ) : (
             <>
-              <DropdownMenuItem onClick={() => patch({ blocked: true, block_reason: "suspended" }, "Suspended")}>
+              <DropdownMenuItem onClick={() => void block("suspended")}>
                 <PauseCircle size={13} className="text-amber-600" />
                 <span className="text-amber-600">Suspend</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => patch({ blocked: true, block_reason: "banned" }, "Banned")}>
+              <DropdownMenuItem onClick={() => void block("banned")}>
                 <Ban size={13} className="text-[var(--pt-red)]" />
                 <span className="text-[var(--pt-red)]">Ban</span>
               </DropdownMenuItem>
