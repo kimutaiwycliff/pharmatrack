@@ -17,6 +17,13 @@ PROJECT=pharmatrack
 COMPOSE=(docker compose -p "$PROJECT" --env-file .env -f infra/compose.core.yml -f infra/compose.prod.yml)
 DBMATE_URL="postgres://app_owner:${APP_OWNER_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
 
+# Each release re-tags :latest and leaves the previous image untagged
+# ("dangling"); left alone they filled the 28 GB disk (2026-10-29) and a pull
+# failed mid-extract. Prune only dangling images — never -a, never volumes:
+# this box also runs another project, and its tagged images stay put.
+echo "==> Removing old untagged images"
+docker image prune -f >/dev/null || true
+
 echo "==> Pulling app image (kimutaiwycliff/pharmatrack-web:latest)"
 "${COMPOSE[@]}" --profile app pull web worker
 
@@ -49,13 +56,21 @@ echo "==> Starting web + worker + Caddy"
 "${COMPOSE[@]}" --profile app --profile edge up -d
 
 echo "==> Waiting for the app to report healthy"
+healthy=0
 for i in $(seq 1 30); do
   if docker exec "${PROJECT}-web-1" wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
     echo "    healthy."
+    healthy=1
     break
   fi
   sleep 3
 done
+
+# The image just replaced is now untagged — clear it once the new one is up.
+if [ "$healthy" = 1 ]; then
+  docker image prune -f >/dev/null || true
+  echo "==> Disk: $(df -h / | awk 'NR==2 {print $4 " free (" $5 " used)"}')"
+fi
 
 echo "==> Done. App: https://${APP_DOMAIN:-<APP_DOMAIN not set>}"
 echo "    Logs: ${COMPOSE[*]} logs -f web worker caddy"
