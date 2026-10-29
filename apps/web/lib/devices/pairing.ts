@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm"
 import { audit_log, branch, dbAdmin, device_request, organization, staff_profile, user } from "@pharmatrack/db"
-import { approvedUntil, canApproveDevices, type ApprovalDuration, type DevicePurpose } from "@pharmatrack/core"
+import { DEVICE_USES, approvedUntil, canApproveDevices, type ApprovalDuration, type DeviceAccess, type DevicePurpose, type DeviceUse } from "@pharmatrack/core"
 import { loadPermissions } from "@/lib/auth/helpers"
 import { hashDeviceToken } from "@/lib/sync/device-token"
 import { verifyPin } from "@/lib/auth/pin"
@@ -84,6 +84,8 @@ export interface ApproveInput {
   via: "pin" | "remote"
   /** How long the approval lasts (default: until removed). */
   duration?: ApprovalDuration
+  /** What the device may be used for (default: everything). */
+  access?: DeviceAccess
 }
 
 class BranchMissing extends Error {}
@@ -103,7 +105,7 @@ export async function approveRequest(row: RequestRow, input: ApproveInput): Prom
       const created = await createDevice(tx, {
         organizationId: row.organization_id, branchId: input.branchId, name: input.name, tokenHash: row.secret_hash,
         purpose: input.purpose, platform: row.platform, actorId: input.approverId, action: "device.approve",
-        approvedUntil: approvedUntil(input.duration ?? "always"),
+        approvedUntil: approvedUntil(input.duration ?? "always"), access: input.access ?? "all",
         auditExtra: { via: input.via, requested_by: row.user_id, request_id: row.id, duration: input.duration ?? "always" },
       })
       if (!created) throw new BranchMissing()
@@ -157,4 +159,15 @@ export async function checkApproverPin(organizationId: string, approver: { id: s
   }
   await succeeded("pin", lockKey)
   return null
+}
+
+/**
+ * The "Used as" choice → the device's purpose and access. Phones always sell
+ * (they can't be back office). Without a choice (older screens) the device can
+ * do everything, as before.
+ */
+export function deviceUseFields(use: DeviceUse | undefined, purpose: DevicePurpose, platform?: string | null): { purpose: DevicePurpose; access: DeviceAccess } {
+  if (!use) return { purpose, access: "all" }
+  const u = platform === "android" && use === "office" ? "all" : use
+  return { purpose: DEVICE_USES[u].purpose, access: DEVICE_USES[u].access }
 }

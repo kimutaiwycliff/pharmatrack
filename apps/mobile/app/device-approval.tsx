@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { router } from "expo-router"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { APPROVAL_DURATIONS, formatPairingCode, type ApprovalDuration } from "@pharmatrack/core"
+import { APPROVAL_DURATIONS, DEVICE_USES, formatPairingCode, type ApprovalDuration, type DeviceUse } from "@pharmatrack/core"
 import { env } from "../src/lib/env"
 import { adoptDeviceKey } from "../src/lib/sync/device"
 import { refreshSyncState } from "../src/lib/sync/engine"
@@ -22,6 +22,7 @@ interface Context {
   default_branch_id: string | null
   branches: { id: string; name: string }[]
   approvers: { id: string; name: string; role: string }[]
+  requester?: { name: string; role: string | null }
 }
 interface ApprovedDevice { id: string; name: string; code: string; branch_id: string; branch_name: string | null }
 
@@ -165,6 +166,8 @@ function ApproveHere({ ctx, secret, onApproved }: { ctx: Context; secret: string
   const [branch, setBranch] = useState(ctx.default_branch_id ?? ctx.branches[0]?.id ?? "")
   const [pin, setPin] = useState("")
   const [duration, setDuration] = useState<ApprovalDuration>("always")
+  // Phones sell; "Till only" also keeps the back office off this phone.
+  const [use, setUse] = useState<DeviceUse>(ctx.requester?.role === "cashier" ? "till" : "all")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const approverName = ctx.approvers.find((a) => a.id === approver)?.name ?? "Approver"
@@ -176,7 +179,7 @@ function ApproveHere({ ctx, secret, onApproved }: { ctx: Context; secret: string
     setError(null)
     try {
       const r = await post<{ error?: string; device?: ApprovedDevice }>("/api/device-pairing/approve-pin", {
-        secret, approver_id: approver, pin, name: name.trim(), branch_id: branch, purpose: "till", duration, platform: "android",
+        secret, approver_id: approver, pin, name: name.trim(), branch_id: branch, purpose: "till", use, duration, platform: "android",
       })
       if (!r.ok || !r.body.device) {
         setError(r.body.error ?? "Couldn't approve this phone.")
@@ -208,6 +211,13 @@ function ApproveHere({ ctx, secret, onApproved }: { ctx: Context; secret: string
           </View>
         </>
       )}
+      <Text variant="label">Used as</Text>
+      <View style={styles.row}>
+        {(["till", "all"] as DeviceUse[]).map((u) => (
+          <Chip key={u} label={DEVICE_USES[u].label} selected={use === u} onPress={() => setUse(u)} />
+        ))}
+      </View>
+      <Text variant="caption" tone="tertiary">{DEVICE_USES[use].description}</Text>
       <Text variant="label">Approved for</Text>
       <View style={styles.row}>
         {(["always", "week", "today"] as ApprovalDuration[]).map((d) => (

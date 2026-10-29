@@ -11,11 +11,14 @@ import { useConfirm } from "@/components/ui/confirm-dialog"
 import { ThisComputerCard } from "@/components/till/ThisComputerCard"
 import { DeviceLockCard } from "@/components/settings/DeviceLockCard"
 import { useTillStore } from "@/lib/till/store"
+import { DEVICE_USES, deviceUseOf, type DeviceUse } from "@pharmatrack/core"
 
 interface DeviceRow {
   id: string; name: string; code: string; branch_name: string | null; platform: string | null; app_version: string | null
   allocation_percent: number | null; last_seen_at: string | null; last_sync_at: string | null; revoked_at: string | null
   purpose: "till" | "office"
+  /** all | selling | back_office (ADR-018 part 2) */
+  access?: string
   /** End of a temporary approval (null = until removed). */
   approved_until?: string | null
   created_at: string; units_held: number; open_issues: number
@@ -116,9 +119,7 @@ export function DevicesPanel() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm">{d.name}</span>
                       <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-[var(--pt-muted)] text-[var(--pt-text-secondary)]">{d.code}</span>
-                      {d.purpose === "office" && (
-                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--pt-muted)] text-[var(--pt-text-secondary)]">Back office</span>
-                      )}
+
                       {d.approved_until && (
                         new Date(d.approved_until).getTime() > now
                           ? <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300">
@@ -154,6 +155,14 @@ export function DevicesPanel() {
                     </p>
                     </>)}
                   </div>
+                  <label className="sr-only" htmlFor={`use-${d.id}`}>What {d.name} is used for</label>
+                  <select id={`use-${d.id}`} value={deviceUseOf(d)} title="What this device can be used for"
+                    onChange={(e) => void patch(d.id, { use: e.target.value }, `${d.name}: ${DEVICE_USES[e.target.value as DeviceUse].label} — applies on its next action`)}
+                    className="h-8 rounded-md border border-[var(--pt-border)] bg-[var(--pt-surface)] px-2 text-xs font-medium">
+                    {(d.platform === "android" ? ["till", "all"] as DeviceUse[] : ["till", "office", "all"] as DeviceUse[]).map((u) => (
+                      <option key={u} value={u}>{DEVICE_USES[u].label}</option>
+                    ))}
+                  </select>
                   <Button variant="ghost" size="sm" className="gap-1.5 text-[var(--pt-red)]" onClick={() => revoke(d)}><ShieldOff size={14} /> Remove</Button>
                 </div>
                 {d.purpose !== "office" && <div className="mt-3 ml-12 flex flex-wrap items-center gap-2 text-xs">

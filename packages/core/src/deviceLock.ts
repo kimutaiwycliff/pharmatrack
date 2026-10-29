@@ -84,6 +84,43 @@ export const DEVICE_PURPOSES: Record<DevicePurpose, { label: string; description
   office: { label: "Back office", description: "For signing in to manage stock, reports and settings — doesn't sell offline or hold stock." },
 }
 
+// ── What a device may be used for (ADR-018 part 2) ─────────────────────────
+// With the lock on, a person can do on a device only what both their role
+// AND the device allow. "all" keeps a device as it always was.
+
+export type DeviceAccess = "all" | "selling" | "back_office"
+
+/** The till screen and what happens at the counter — no back office. */
+const SELLING_CAPS = new Set([
+  "pos.sell", "pos.discount", "sales.view_all", "shifts.view_all", "shifts.close_others", "sync.override",
+  "customers.manage", "prescriptions.manage", "appointments.manage",
+])
+/** Back office: everything except selling. */
+const SELLING_ONLY = new Set(["pos.sell", "pos.discount"])
+
+/** A person's permissions limited to what this device is for. */
+export function permissionsOnDevice<T extends string>(permissions: readonly T[], access: DeviceAccess): T[] {
+  if (access === "selling") return permissions.filter((p) => SELLING_CAPS.has(p))
+  if (access === "back_office") return permissions.filter((p) => !SELLING_ONLY.has(p))
+  return [...permissions]
+}
+
+/** The single "Used as" choice owners make; it sets both purpose and access. */
+export type DeviceUse = "till" | "office" | "all"
+
+export const DEVICE_USES: Record<DeviceUse, { label: string; description: string; purpose: DevicePurpose; access: DeviceAccess }> = {
+  till: { label: "Till only", description: "Selling, shifts and customers. No products, stock or reports screens.", purpose: "till", access: "selling" },
+  office: { label: "Back office", description: "Products, stock, purchasing and reports. No selling.", purpose: "office", access: "back_office" },
+  all: { label: "Everything", description: "Sells (offline too) and anything else the person's role allows.", purpose: "till", access: "all" },
+}
+
+/** Which "Used as" option a device is on now. */
+export function deviceUseOf(d: { purpose: string; access?: string | null }): DeviceUse {
+  if (d.access === "selling") return "till"
+  if (d.access === "back_office" || d.purpose === "office") return "office"
+  return "all"
+}
+
 /** How long a device has to be approved after a blocked sign-in. */
 export const DEVICE_REQUEST_TTL_MIN = 15
 

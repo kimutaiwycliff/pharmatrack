@@ -3,8 +3,8 @@ import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
 import { and, eq } from "drizzle-orm"
 import { dbAdmin, staff_profile, platform_admin, subscription, role_permission, session as session_table } from "@pharmatrack/db"
-import { requestDeviceAllowed } from "@/lib/devices/lock"
-import { resolvePermissions, type Capability } from "@pharmatrack/core"
+import { requestDevice } from "@/lib/devices/lock"
+import { permissionsOnDevice, resolvePermissions, type Capability } from "@pharmatrack/core"
 import { auth } from "./server"
 import { effectiveSubscriptionStatus, ACTIVE_STATUSES } from "@/lib/billing/subscription-status"
 import { OFFLINE_MODE } from "@/lib/offline-mode"
@@ -59,11 +59,13 @@ export async function getTenantContext(): Promise<TenantContext | null> {
   // A session caught elsewhere is ended, so the person signs in again and the
   // device gets the approval screen.
   const sessionDeviceId = (session.session as { deviceId?: string | null }).deviceId ?? null
-  if (!(await requestDeviceAllowed({ organizationId: sp.organization_id, role: sp.role, sessionDeviceId, headers: await headers() }))) {
+  const dev = await requestDevice({ organizationId: sp.organization_id, role: sp.role, sessionDeviceId, headers: await headers() })
+  if (!dev.allowed) {
     await dbAdmin().delete(session_table).where(eq(session_table.id, session.session.id)).catch(() => undefined)
     return null
   }
-  const permissions = await loadPermissions(sp.organization_id, sp.role)
+  // …and only what both their role and this device allow (till only / back office).
+  const permissions = permissionsOnDevice(await loadPermissions(sp.organization_id, sp.role), dev.access)
   return {
     userId: session.user.id,
     organizationId: sp.organization_id,

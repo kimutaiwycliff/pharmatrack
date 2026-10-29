@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  approvedUntil, canApproveDevices, compareVersions, deviceLockApplies, deviceLockFrom, deviceNameFromUserAgent, formatPairingCode, lockedRoles,
+  approvedUntil, canApproveDevices, compareVersions, deviceUseOf, permissionsOnDevice, deviceLockApplies, deviceLockFrom, deviceNameFromUserAgent, formatPairingCode, lockedRoles,
 } from "@pharmatrack/core"
 import { deviceCookie, deviceTokenFrom, DEVICE_COOKIE, DEVICE_HEADER } from "@/lib/devices/lock"
 
@@ -98,5 +98,26 @@ describe("approvedUntil", () => {
     expect(approvedUntil("today", new Date("2026-10-29T20:30:00Z"))!.toISOString()).toBe("2026-10-29T21:00:00.000Z")
     // 00:30 Nairobi on the 30th (21:30 UTC on the 29th) → the next midnight
     expect(approvedUntil("today", new Date("2026-10-29T21:30:00Z"))!.toISOString()).toBe("2026-10-30T21:00:00.000Z")
+  })
+})
+
+describe("what a device may be used for", () => {
+  const pharmacist = ["products.view", "products.create", "stock.receive", "pos.sell", "pos.discount", "customers.manage", "reports.view", "shifts.view_all"]
+  it("till only keeps selling, shifts and customers — no back office", () => {
+    expect(permissionsOnDevice(pharmacist, "selling")).toEqual(["pos.sell", "pos.discount", "customers.manage", "shifts.view_all"])
+  })
+  it("back office keeps everything except selling", () => {
+    expect(permissionsOnDevice(pharmacist, "back_office")).not.toContain("pos.sell")
+    expect(permissionsOnDevice(pharmacist, "back_office")).toContain("reports.view")
+  })
+  it("everything changes nothing, and never adds what the role lacks", () => {
+    expect(permissionsOnDevice(pharmacist, "all")).toEqual(pharmacist)
+    expect(permissionsOnDevice(["pos.sell"], "back_office")).toEqual([])
+  })
+  it("reads a device's use from its purpose and access", () => {
+    expect(deviceUseOf({ purpose: "till", access: "selling" })).toBe("till")
+    expect(deviceUseOf({ purpose: "office", access: "all" })).toBe("office")
+    expect(deviceUseOf({ purpose: "till", access: "all" })).toBe("all")
+    expect(deviceUseOf({ purpose: "till" })).toBe("all")
   })
 })

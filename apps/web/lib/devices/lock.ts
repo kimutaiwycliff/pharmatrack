@@ -4,7 +4,7 @@ import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm"
 import { dbAdmin, device, device_request, org_settings, session, staff_profile } from "@pharmatrack/db"
 import {
   ANDROID_DEVICE_CHECK_MIN_VERSION, DEVICE_REQUEST_TTL_MIN, compareVersions, deviceLockApplies, deviceLockFrom, deviceNameFromUserAgent,
-  type DeviceLockSettings,
+  type DeviceAccess, type DeviceLockSettings,
 } from "@pharmatrack/core"
 import { hashDeviceToken, newDeviceToken } from "@/lib/sync/device-token"
 
@@ -75,7 +75,7 @@ export async function activeDeviceFor(token: string | null, organizationId: stri
 // time is compared fresh on every request.
 
 const CACHE_MS = 30_000
-type DeviceBrief = { id: string; organization_id: string; platform: string | null; app_version: string | null; approved_until: Date | null; revoked_at: Date | null }
+type DeviceBrief = { id: string; organization_id: string; platform: string | null; app_version: string | null; approved_until: Date | null; revoked_at: Date | null; access: string }
 const lockCache = new Map<string, { at: number; lock: DeviceLockSettings }>()
 const deviceCache = new Map<string, { at: number; row: DeviceBrief | null }>()
 
@@ -97,7 +97,7 @@ async function cachedDevice(key: string, where: ReturnType<typeof eq>): Promise<
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.row
   const [row] = await dbAdmin().select({
     id: device.id, organization_id: device.organization_id, platform: device.platform, app_version: device.app_version,
-    approved_until: device.approved_until, revoked_at: device.revoked_at,
+    approved_until: device.approved_until, revoked_at: device.revoked_at, access: device.access,
   }).from(device).where(where).limit(1)
   if (deviceCache.size > 5000) deviceCache.clear()
   deviceCache.set(key, { at: Date.now(), row: row ?? null })
@@ -107,28 +107,41 @@ async function cachedDevice(key: string, where: ReturnType<typeof eq>): Promise<
 const usable = (d: DeviceBrief | null, organizationId: string, now = Date.now()) =>
   !!d && d.organization_id === organizationId && !d.revoked_at && (!d.approved_until || d.approved_until.getTime() > now)
 
+const accessOf = (d: DeviceBrief): DeviceAccess => (d.access === "selling" || d.access === "back_office" ? d.access : "all")
+
 /**
- * May this signed-in request act for the pharmacy? Always yes when the lock
- * is off or doesn't apply to the role (owners). Otherwise the request must
- * carry the key of a usable approved device — the one its session started on.
- * Android bundles older than ANDROID_DEVICE_CHECK_MIN_VERSION only send the
- * key at sign-in, so they're trusted on their session's own device.
+ * May this signed-in request act for the pharmacy, and what is the device
+ * for? Always allowed (access "all") when the lock is off or doesn't apply to
+ * the role (owners). Otherwise the request must carry the key of a usable
+ * approved device — the one its session started on — and the person may do
+ * only what that device's access allows. Android bundles older than
+ * ANDROID_DEVICE_CHECK_MIN_VERSION only send the key at sign-in, so they're
+ * trusted on their session's own device.
  */
-export async function requestDeviceAllowed(args: {
+export async function requestDevice(args: {
   organizationId: string; role: string; sessionDeviceId: string | null; headers: Headers | null | undefined
-}): Promise<boolean> {
+}): Promise<{ allowed: boolean; access: DeviceAccess }> {
+  const no = { allowed: false, access: "all" as const }
   const lock = await cachedLock(args.organizationId)
-  if (!deviceLockApplies(lock, args.role)) return true
+  if (!deviceLockApplies(lock, args.role)) return { allowed: true, access: "all" }
   const token = deviceTokenFrom(args.headers)
   if (token) {
     const hash = hashDeviceToken(token)
     const dev = await cachedDevice(`t:${hash}`, eq(device.token_hash, hash))
-    return usable(dev, args.organizationId) && (!args.sessionDeviceId || dev!.id === args.sessionDeviceId)
+    if (!usable(dev, args.organizationId) || (args.sessionDeviceId && dev!.id !== args.sessionDeviceId)) return no
+    return { allowed: true, access: accessOf(dev!) }
   }
-  if (!args.sessionDeviceId) return false
+  if (!args.sessionDeviceId) return no
   const dev = await cachedDevice(`i:${args.sessionDeviceId}`, eq(device.id, args.sessionDeviceId))
-  return usable(dev, args.organizationId) && dev!.platform === "android"
+  const legacyAndroid = usable(dev, args.organizationId) && dev!.platform === "android"
     && compareVersions(dev!.app_version ?? "0", ANDROID_DEVICE_CHECK_MIN_VERSION) < 0
+  return legacyAndroid ? { allowed: true, access: accessOf(dev!) } : no
+}
+
+/** Forget a device's cached row (its access or approval just changed). */
+export function forgetDevice(deviceId: string): void {
+  deviceCache.delete(`i:${deviceId}`)
+  for (const [k, v] of deviceCache) if (v.row?.id === deviceId) deviceCache.delete(k)
 }
 
 function platformFrom(headers: Headers | null | undefined): string {

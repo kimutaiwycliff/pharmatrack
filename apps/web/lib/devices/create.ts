@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm"
 import { audit_log, branch, device, type DrizzleDB } from "@pharmatrack/db"
-import type { DevicePurpose } from "@pharmatrack/core"
+import type { DeviceAccess, DevicePurpose } from "@pharmatrack/core"
 
 // One way to create a device row (offline-till registration and both
 // approval paths of ADR-018). The short code (D01, D02…) prints in receipt
@@ -18,6 +18,8 @@ export interface NewDevice {
   actorId: string
   /** End of a temporary approval (null/undefined = until removed). */
   approvedUntil?: Date | null
+  /** What the device may be used for (default: everything). */
+  access?: DeviceAccess
   /** audit_log.action, e.g. device.register / device.approve */
   action: string
   auditExtra?: Record<string, unknown>
@@ -43,11 +45,11 @@ export async function createDevice(db: DrizzleDB, d: NewDevice): Promise<Created
         const [row] = await tx.insert(device).values({
           organization_id: d.organizationId, branch_id: b.id, name: d.name, device_code: code,
           token_hash: d.tokenHash, platform: d.platform ?? null, app_version: d.appVersion ?? null,
-          registered_by: d.actorId, last_seen_at: new Date(), purpose: d.purpose, approved_until: d.approvedUntil ?? null,
+          registered_by: d.actorId, last_seen_at: new Date(), purpose: d.purpose, approved_until: d.approvedUntil ?? null, access: d.access ?? "all",
         }).returning()
         await tx.insert(audit_log).values({
           organization_id: d.organizationId, actor_id: d.actorId, action: d.action,
-          entity: "device", entity_id: row!.id, diff: { name: d.name, code, branch: b.name, purpose: d.purpose, ...d.auditExtra },
+          entity: "device", entity_id: row!.id, diff: { name: d.name, code, branch: b.name, purpose: d.purpose, access: d.access ?? "all", ...d.auditExtra },
         })
         return { id: row!.id, name: row!.name, code, branch_id: b.id, branch_name: b.name, purpose: d.purpose }
       })

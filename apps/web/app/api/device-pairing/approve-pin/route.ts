@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { approveRequest, approversFor, checkApproverPin, requestBySecret } from "@/lib/devices/pairing"
+import { approveRequest, approversFor, checkApproverPin, requestBySecret, deviceUseFields } from "@/lib/devices/pairing"
 import { deviceCookie } from "@/lib/devices/lock"
 import { zUuid } from "@/lib/api/validation"
 
@@ -16,6 +16,8 @@ const schema = z.object({
   branch_id: zUuid(),
   purpose: z.enum(["till", "office"]),
   duration: z.enum(["today", "week", "always"]).default("always"),
+  /** Till only / Back office / Everything — sets purpose and access together. */
+  use: z.enum(["till", "office", "all"]).optional(),
   platform: z.enum(["web", "desktop", "android"]).optional(),
 })
 
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   // A manager tied to one branch can only approve devices for that branch.
   const branchId = approver.all_branches || !approver.branch_id ? d.branch_id : approver.branch_id
-  const created = await approveRequest(row, { name: d.name, branchId, purpose: d.purpose, approverId: approver.id, via: "pin", duration: d.duration })
+  const created = await approveRequest(row, { name: d.name, branchId, ...deviceUseFields(d.use, d.purpose, d.platform), approverId: approver.id, via: "pin", duration: d.duration })
   if (created === "gone") return NextResponse.json({ error: "This request was already decided.", code: "request_gone" }, { status: 410 })
   if (created === "branch") return NextResponse.json({ error: "Pick a branch of this pharmacy." }, { status: 400 })
 

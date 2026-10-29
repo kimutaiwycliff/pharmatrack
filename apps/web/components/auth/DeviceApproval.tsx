@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ShieldCheck, Loader2, CheckCircle2, XCircle, KeyRound, Smartphone, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { APPROVAL_DURATIONS, DEVICE_PURPOSES, formatPairingCode, type ApprovalDuration, type DevicePurpose } from "@pharmatrack/core"
+import { APPROVAL_DURATIONS, DEVICE_USES, formatPairingCode, type ApprovalDuration, type DevicePurpose, type DeviceUse } from "@pharmatrack/core"
 import { isDesktopApp, saveTillRegistration } from "@/lib/till/device"
 
 // Shown instead of the sign-in form when the pharmacy only allows approved
@@ -179,7 +179,8 @@ export function DeviceApproval({ request, onApproved, onCancel }: {
 function ApproveHere({ request, ctx, onApproved }: { request: DeviceRequestInfo; ctx: Context | null; onApproved: (d: ApprovedDevice) => void }) {
   const [approverId, setApproverId] = useState<string | null>(null)
   const [name, setName] = useState<string | null>(null)
-  const [purpose, setPurpose] = useState<DevicePurpose>("till")
+  // A cashier's device usually only needs the till; anyone else gets everything.
+  const [use, setUse] = useState<DeviceUse>(ctx?.requester.role === "cashier" ? "till" : "all")
   const [branchId, setBranchId] = useState<string | null>(null)
   const [pin, setPin] = useState("")
   const [duration, setDuration] = useState<ApprovalDuration>("always")
@@ -199,7 +200,7 @@ function ApproveHere({ request, ctx, onApproved }: { request: DeviceRequestInfo;
     setBusy(true)
     const res = await fetch("/api/device-pairing/approve-pin", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret: request.secret, approver_id: approver, pin, name: deviceName.trim(), branch_id: branch, purpose, duration, platform: platform() }),
+      body: JSON.stringify({ secret: request.secret, approver_id: approver, pin, name: deviceName.trim(), branch_id: branch, purpose: DEVICE_USES[use].purpose, use, duration, platform: platform() }),
     }).catch(() => null)
     const body = (await res?.json().catch(() => ({})) ?? {}) as { error?: string; device?: ApprovedDevice }
     if (!res || !res.ok || !body.device) {
@@ -230,12 +231,12 @@ function ApproveHere({ request, ctx, onApproved }: { request: DeviceRequestInfo;
       </div>
       <fieldset>
         <legend className="text-sm font-medium">Used as</legend>
-        <div className="mt-1.5 grid grid-cols-2 gap-2">
-          {(Object.keys(DEVICE_PURPOSES) as DevicePurpose[]).map((p) => (
-            <button key={p} type="button" onClick={() => setPurpose(p)} aria-pressed={purpose === p}
-              className={`text-left rounded-lg border p-2.5 transition-colors ${purpose === p ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]" : "border-[var(--pt-border)] hover:bg-[var(--pt-muted)]"}`}>
-              <span className="block text-sm font-semibold">{DEVICE_PURPOSES[p].label}</span>
-              <span className="block text-[11px] leading-snug text-[var(--pt-text-secondary)] mt-0.5">{DEVICE_PURPOSES[p].description}</span>
+        <div className="mt-1.5 grid grid-cols-3 gap-2">
+          {(["till", "office", "all"] as DeviceUse[]).map((p) => (
+            <button key={p} type="button" onClick={() => setUse(p)} aria-pressed={use === p}
+              className={`text-left rounded-lg border p-2.5 transition-colors ${use === p ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]" : "border-[var(--pt-border)] hover:bg-[var(--pt-muted)]"}`}>
+              <span className="block text-sm font-semibold">{DEVICE_USES[p].label}</span>
+              <span className="block text-[11px] leading-snug text-[var(--pt-text-secondary)] mt-0.5">{DEVICE_USES[p].description}</span>
             </button>
           ))}
         </div>

@@ -80,3 +80,14 @@ revocable token that is stored only as a sha256 hash, and the
 - **Telling the owner.** A blocked sign-in emails the owner (at most once per
   person every 10 minutes); the desktop app raises an OS notification when a
   new request arrives; the setup guide suggests turning the lock on.
+- **What a device is for** (`device.access`, migration 043): `all`
+  (default — every existing device keeps working as before), `selling` or
+  `back_office`. Owners pick one "Used as" option, which sets purpose and
+  access together: **Till only** (selling, shifts, customers — no products,
+  stock or reports screens), **Back office** (everything but selling; no
+  offline selling) or **Everything**. With the lock on, a person's
+  permissions on a device are their role's permissions limited by its access
+  (`permissionsOnDevice`, in `getTenantContext`), so navigation, pages and
+  permission-checked API routes all follow it. Phones are never back office.
+  Changing a device's use is an approval decision (owner, or managers if
+  allowed). Owners are never limited.
