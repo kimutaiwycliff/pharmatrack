@@ -83,6 +83,11 @@ export async function GET(request: NextRequest) {
     const stock = batches.reduce((s, b) => s + b.quantity_remaining, 0)
     return {
       ...p,
+      // Drizzle returns numerics as strings; the till does sums with these and
+      // the sale API rejects a string price (same as products/search).
+      selling_price: Number(p.selling_price),
+      cost_price: p.cost_price == null ? null : Number(p.cost_price),
+      max_discount_percent: p.max_discount_percent == null ? null : Number(p.max_discount_percent),
       product_id: p.id, // cart/sale schema keys on product_id
       stock_on_hand: stock,
       earliest_expiry: batches[0]?.expiry_date ?? null,

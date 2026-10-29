@@ -65,7 +65,9 @@ export const useCartStore = create<CartStore>()(
             toast.error(`${name} is out of stock`)
             return state
           }
-          const price = product.selling_price ?? 0
+          // Number(): some sources (a cached barcode lookup) send Postgres
+          // numerics as strings, and the sale API rejects a string price.
+          const price = Number(product.selling_price ?? 0)
           // Never sell for free: a product without a price (e.g. added by Quick
           // Start from an unpriced catalogue item) must be priced first.
           if (!(Number(price) > 0)) {
@@ -83,7 +85,7 @@ export const useCartStore = create<CartStore>()(
             line_total: price,
             base_unit: product.base_unit ?? "unit",
             is_controlled: product.is_controlled ?? false,
-            max_discount_percent: product.max_discount_percent ?? null,
+            max_discount_percent: product.max_discount_percent == null ? null : Number(product.max_discount_percent),
             stock_on_hand: stock,
           }
           return { items: [...state.items, item] }
