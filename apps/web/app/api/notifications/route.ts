@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm"
-import { withTenant, appointment, customer, device_request, product, product_stock, stock_count, subscription } from "@pharmatrack/db"
+import { and, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm"
+import { withTenant, appointment, customer, device_request, notification_state, product, product_stock, stock_count, subscription } from "@pharmatrack/db"
+import { alertStatus, type BellAlert } from "@/lib/notifications/bell"
 import { listShelves } from "@/lib/stockTake/server"
 import { callWindow } from "@/lib/appointments/call-list"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
@@ -44,7 +45,6 @@ export async function GET(request: NextRequest) {
     const lowStock = stockRows
       .filter((p) => (p.stock_on_hand ?? 0) <= (p.reorder_level ?? 10))
       .sort((a, b) => (a.stock_on_hand ?? 0) - (b.stock_on_hand ?? 0))
-      .slice(0, MAX_ITEMS)
       .map((p) => ({
         product_id: p.product_id,
         name: p.name,
@@ -55,7 +55,6 @@ export async function GET(request: NextRequest) {
     const expiring = stockRows
       .filter((p) => p.earliest_expiry && new Date(p.earliest_expiry).getTime() - now <= warnMs)
       .sort((a, b) => new Date(a.earliest_expiry!).getTime() - new Date(b.earliest_expiry!).getTime())
-      .slice(0, MAX_ITEMS)
       .map((p) => ({
         product_id: p.product_id,
         name: p.name,
@@ -136,6 +135,47 @@ export async function GET(request: NextRequest) {
       stockTake = { waiting, dueShelf }
     }
 
-    return NextResponse.json({ lowStock, expiring, trialEndingSoon, needsPrice, toCall, devicesWaiting, stockTake })
+    // Each alert has a key and a version (fingerprint); this person's seen /
+    // dismissed / snoozed state decides what shows and what counts as new.
+    const nairobiDay = new Date(now + 3 * 3_600_000).toISOString().slice(0, 10)
+    const week = Math.floor((now + 3 * 3_600_000) / (7 * 86_400_000))
+    const lowKey = (p: { product_id: string | null; stock_on_hand: number }) => ({ key: `low:${p.product_id}`, fp: p.stock_on_hand <= 0 ? "out" : "low" })
+    const expKey = (p: { product_id: string | null; earliest_expiry: string | null; daysUntil: number }) => ({ key: `exp:${p.product_id}`, fp: `${p.earliest_expiry}|${p.daysUntil <= 30 ? 30 : 90}` })
+    const singles: BellAlert[] = [
+      ...(trialEndingSoon ? [{ key: "trial", fp: String(trialEndingSoon.daysLeft <= 1 ? 1 : trialEndingSoon.daysLeft <= 3 ? 3 : 7) }] : []),
+      ...(needsPrice > 0 ? [{ key: "price", fp: String(needsPrice) }] : []),
+      ...(toCall > 0 ? [{ key: "call", fp: `${nairobiDay}|${toCall}` }] : []),
+      ...(devicesWaiting ? [{ key: "devices", fp: String(devicesWaiting) }] : []),
+      ...(stockTake?.waiting ? [{ key: "st-wait", fp: String(stockTake.waiting) }] : []),
+      ...(stockTake?.dueShelf ? [{ key: "st-due", fp: `${stockTake.dueShelf.name}|${week}` }] : []),
+    ]
+    const all = [...lowStock.map(lowKey), ...expiring.map(expKey), ...singles]
+    const rows = all.length
+      ? await db.select().from(notification_state).where(and(eq(notification_state.user_id, ctx.userId), inArray(notification_state.key, all.map((x) => x.key))))
+      : []
+    const stateOf = new Map(rows.map((r) => [r.key, r]))
+    const status: Record<string, "new" | "seen"> = {}
+    const fps: Record<string, string> = {}
+    for (const x of all) {
+      const st = alertStatus(x, stateOf.get(x.key), now)
+      if (st !== "hidden") { status[x.key] = st; fps[x.key] = x.fp }
+    }
+    const shown = (k: string) => k in status
+    const lowShown = lowStock.filter((p) => shown(lowKey(p).key))
+    const expShown = expiring.filter((p) => shown(expKey(p).key))
+
+    return NextResponse.json({
+      lowStock: lowShown.slice(0, MAX_ITEMS).map((p) => ({ ...p, key: lowKey(p).key })),
+      expiring: expShown.slice(0, MAX_ITEMS).map((p) => ({ ...p, key: expKey(p).key })),
+      totals: { lowStock: lowShown.length, expiring: expShown.length },
+      trialEndingSoon: shown("trial") ? trialEndingSoon : null,
+      needsPrice: shown("price") ? needsPrice : 0,
+      toCall: shown("call") ? toCall : 0,
+      devicesWaiting: devicesWaiting === undefined ? undefined : shown("devices") ? devicesWaiting : 0,
+      stockTake: stockTake && { waiting: shown("st-wait") ? stockTake.waiting : 0, dueShelf: shown("st-due") ? stockTake.dueShelf : null },
+      // key → "new" | "seen" for everything shown, and each one's version, so
+      // the bell can mark them seen or dismiss exactly this version.
+      status, fps,
+    })
   })
 }

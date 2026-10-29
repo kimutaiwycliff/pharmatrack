@@ -26,3 +26,15 @@ export const platform_tenant_note = pgTable("platform_tenant_note", {
   follow_up_on: date("follow_up_on"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
+
+// Mirrors infra/migrations/044_notification_state.sql — which version of each
+// bell alert a person has seen or dismissed (the alerts themselves are live).
+export const notification_state = pgTable("notification_state", {
+  organization_id: text("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  user_id: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  seen_fp: text("seen_fp"),
+  dismissed_fp: text("dismissed_fp"),
+  dismissed_until: timestamp("dismissed_until", { withTimezone: true }),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.key] })])
