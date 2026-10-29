@@ -62,7 +62,7 @@ export default function ReceiveStockPage() {
       <StockReceiveForm
         branchId={branchId}
         suppliers={suppliers}
-        onPosted={() => router.push("/inventory")}
+        onDone={() => router.push("/inventory")}
       />
     </div>
   )

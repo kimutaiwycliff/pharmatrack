@@ -50,6 +50,9 @@ interface NewProductDialogProps {
   allowAddNext?: boolean
 }
 
+// Calendar dates in Nairobi time (toISOString() is UTC: a scanned 30 Nov expiry became 29 Nov).
+const nairobiDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi" }).format(d)
+
 const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Suspension", "Cream", "Gel", "Ointment", "Lotion", "Injection", "Drops", "Inhaler", "Sachet"]
 const BASE_UNITS = ["tablet", "capsule", "ml", "g", "unit", "bottle", "tube", "sachet", "pack", "vial", "inhaler", "piece"]
 
@@ -294,8 +297,11 @@ function ProductEntry({
   // Opening stock (optional)
   const [addStock, setAddStock] = useState(initialAddStock || !!prefill?.batchNumber)
   const [batchNumber, setBatchNumber] = useState(prefill?.batchNumber ?? "")
-  const [expiryDate, setExpiryDate] = useState(prefill?.expiryDate ? prefill.expiryDate.toISOString().slice(0, 10) : "")
-  const [quantityReceived, setQuantityReceived] = useState(1)
+  const [expiryDate, setExpiryDate] = useState(prefill?.expiryDate ? nairobiDate(prefill.expiryDate) : "")
+  // Counted the way it arrives: in packs when the product comes in packs (as
+  // Receive Stock does) — "10" meaning boxes used to become 10 tablets.
+  const [openingPacks, setOpeningPacks] = useState(1)
+  const quantityReceived = openingPacks * Math.max(1, unitsPerPack)
   const [supplierId, setSupplierId] = useState(initialSupplierId)
 
   // Custom base units / dosage forms this org has already used, merged with
@@ -851,8 +857,8 @@ function ProductEntry({
               <div className="space-y-4 border-l-2 border-[var(--pt-green-100)] pl-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <Label htmlFor="quantity_received" className="text-sm font-medium">Quantity ({baseUnit}s) *</Label>
-                    <Input id="quantity_received" type="number" min={1} value={quantityReceived} onChange={(e) => setQuantityReceived(parseInt(e.target.value) || 1)} className="mt-1.5 h-10" />
+                    <Label htmlFor="quantity_received" className="text-sm font-medium">Quantity ({unitsPerPack > 1 ? (packLabel || "pack") + "s" : `${baseUnit}s`}) *</Label>
+                    <Input id="quantity_received" type="number" min={1} value={openingPacks} onChange={(e) => setOpeningPacks(parseInt(e.target.value) || 1)} className="mt-1.5 h-10" />
                     <FieldError msg={errors["quantity_received"]} />
                   </div>
                   <div>
@@ -862,12 +868,12 @@ function ProductEntry({
                   </div>
                   <div>
                     <Label htmlFor="expiry_date" className="text-sm font-medium">Expiry *</Label>
-                    <Input id="expiry_date" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} min={new Date().toISOString().slice(0, 10)} className="mt-1.5 h-10" />
+                    <Input id="expiry_date" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} min={nairobiDate(new Date())} className="mt-1.5 h-10" />
                     <FieldError msg={errors["expiry_date"]} />
                   </div>
                 </div>
-                {unitsPerPack > 1 && quantityReceived > 0 && (
-                  <p className="text-xs text-[var(--pt-text-secondary)] -mt-2">= {Math.floor(quantityReceived / unitsPerPack)} × {packLabel || "pack"} of {unitsPerPack}{quantityReceived % unitsPerPack ? ` + ${quantityReceived % unitsPerPack} ${baseUnit}s` : ""}</p>
+                {unitsPerPack > 1 && openingPacks > 0 && (
+                  <p className="text-xs text-[var(--pt-text-secondary)] -mt-2">= {quantityReceived.toLocaleString()} {baseUnit}s ({openingPacks} × {packLabel || "pack"} of {unitsPerPack})</p>
                 )}
               </div>
             )}

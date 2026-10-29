@@ -18,7 +18,9 @@ const createBatchSchema = z.object({
   expiry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
   manufactured_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   quantity_received: z.number().int().positive(),
-  cost_price: z.number().nonnegative().optional(),
+  // null = "no cost entered" (cost is optional on Receive Stock); rejecting it
+  // used to fail the whole line with a misleading "check your connection".
+  cost_price: z.number().nonnegative().nullish(),
   supplier_id: zUuid().optional(),
   notes: z.string().optional(),
 })

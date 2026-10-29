@@ -294,7 +294,7 @@ export function HardwarePanel({ orgName, orgPaper }: { orgName: string | null; o
               markScan(code)
               const ev = parseBarcode(code)
               setScanResult(ev.gtin
-                ? `Read ${ev.type} — GTIN ${ev.gtin}${ev.batchNumber ? `, batch ${ev.batchNumber}` : ""}${ev.expiryDate ? `, expiry ${ev.expiryDate.toISOString().slice(0, 10)}` : ""}`
+                ? `Read ${ev.type} — GTIN ${ev.gtin}${ev.batchNumber ? `, batch ${ev.batchNumber}` : ""}${ev.expiryDate ? `, expiry ${new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi" }).format(ev.expiryDate)}` : ""}`
                 : `Read “${code}”`)
               setScanTest("")
             }} />
