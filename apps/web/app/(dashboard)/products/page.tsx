@@ -19,6 +19,7 @@ import type { Product, Organization } from "@pharmatrack/types"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
 import { DeleteProductDialog } from "@/components/inventory/DeleteProductDialog"
 import { useSuppliers } from "@/lib/hooks/useSuppliers"
+import { LoadError } from "@/components/LoadError"
 
 type ProductRow = Product & { category_name?: string }
 
@@ -112,7 +113,7 @@ export default function ProductsPage() {
     staleTime: 60_000,
   })
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError, refetch } = useQuery({
     queryKey: ["products", search, categoryId, page, needsPrice],
     queryFn: () => fetchProducts(search, categoryId, page, needsPrice),
     staleTime: 60_000,
@@ -243,7 +244,9 @@ export default function ProductsPage() {
           </div>
         ) : null}
 
-        {isLoading ? (
+        {isLoadingError ? (
+          <LoadError what="products" onRetry={refetch} />
+        ) : isLoading ? (
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
             {Array.from({ length: 10 }).map((_, i) => (
               <div key={i} className="flex gap-4 px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">

@@ -6,6 +6,7 @@ import { CalendarClock, Plus, CalendarX2 } from "lucide-react"
 import { AppointmentCard } from "@/components/appointments/AppointmentCard"
 import { BookAppointmentDialog, type BookPrefill } from "@/components/appointments/BookAppointmentDialog"
 import type { AppointmentWithRelations } from "@pharmatrack/types"
+import { LoadError } from "@/components/LoadError"
 
 type Tab = "today" | "upcoming" | "past"
 
@@ -34,7 +35,7 @@ export default function AppointmentsPage() {
   const [prefill, setPrefill] = useState<BookPrefill | undefined>(undefined)
 
   const bounds = dayBounds(tab)
-  const { data: appointments = [], isLoading } = useQuery<AppointmentWithRelations[]>({
+  const { data: appointments = [], isLoading, isLoadingError, refetch } = useQuery<AppointmentWithRelations[]>({
     queryKey: ["appointments", tab],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -111,7 +112,9 @@ export default function AppointmentsPage() {
         ))}
       </div>
 
-      {isLoading ? (
+      {isLoadingError ? (
+        <LoadError what="appointments" onRetry={refetch} />
+      ) : isLoading ? (
         <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">

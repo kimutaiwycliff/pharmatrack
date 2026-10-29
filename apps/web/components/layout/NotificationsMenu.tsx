@@ -168,7 +168,7 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
                 <DropdownMenuItem
                   key={p.product_id}
                   className="gap-2 items-start py-2"
-                  onClick={() => router.push("/inventory")}
+                  onClick={() => router.push(p.stock_on_hand <= 0 ? "/inventory?status=out_of_stock" : "/inventory?status=low_stock")}
                 >
                   <AlertTriangle size={15} className="mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
                   <div className="min-w-0">
@@ -180,7 +180,7 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
                 {tools(p.key)}</DropdownMenuItem>
               ))}
               {(data?.totals?.lowStock ?? 0) > lowStock.length && (
-                <DropdownMenuItem className="justify-center text-xs font-semibold text-[var(--pt-green-600)]" onClick={() => router.push("/inventory")}>
+                <DropdownMenuItem className="justify-center text-xs font-semibold text-[var(--pt-green-600)]" onClick={() => router.push("/inventory?status=low_stock")}>
                   Show all {data?.totals?.lowStock} in Inventory
                 </DropdownMenuItem>
               )}
@@ -271,7 +271,7 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
               <DropdownMenuItem
                 key={p.product_id}
                 className="gap-2 items-start py-2"
-                onClick={() => router.push("/inventory")}
+                onClick={() => router.push("/inventory?status=expiring")}
               >
                 <Clock size={15} className="mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
                 <div className="min-w-0">
@@ -283,7 +283,7 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
               {tools(p.key)}</DropdownMenuItem>
             ))}
               {(data?.totals?.expiring ?? 0) > expiring.length && (
-                <DropdownMenuItem className="justify-center text-xs font-semibold text-[var(--pt-green-600)]" onClick={() => router.push("/inventory")}>
+                <DropdownMenuItem className="justify-center text-xs font-semibold text-[var(--pt-green-600)]" onClick={() => router.push("/inventory?status=expiring")}>
                   Show all {data?.totals?.expiring} in Inventory
                 </DropdownMenuItem>
               )}

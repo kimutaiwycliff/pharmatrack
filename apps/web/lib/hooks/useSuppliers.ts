@@ -16,7 +16,8 @@ export const SUPPLIERS_QUERY_KEY = ["suppliers"] as const
 
 async function fetchSuppliers(): Promise<SupplierOption[]> {
   const res = await fetch("/api/suppliers")
-  if (!res.ok) return []
+  // Throw, so a failed load shows "Couldn't load" — not "no suppliers yet".
+  if (!res.ok) throw new Error("Failed to load suppliers")
   const json = (await res.json()) as { suppliers?: SupplierOption[] }
   return json.suppliers ?? []
 }

@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Plus, ClipboardList, User, Pill } from "lucide-react"
 import { NewPrescriptionDialog } from "@/components/prescriptions/NewPrescriptionDialog"
 import type { PrescriptionWithRelations, PrescriptionStatus } from "@pharmatrack/types"
+import { LoadError } from "@/components/LoadError"
 
 const STATUS_STYLES: Record<PrescriptionStatus, string> = {
   active: "bg-[var(--pt-green-50)] text-[var(--pt-green-600)] border-[var(--pt-green-100)]",
@@ -28,7 +29,7 @@ export default function PrescriptionsPage() {
   const [tab, setTab] = useState("active")
   const [open, setOpen] = useState(false)
 
-  const { data: prescriptions = [], isLoading } = useQuery<PrescriptionWithRelations[]>({
+  const { data: prescriptions = [], isLoading, isLoadingError, refetch } = useQuery<PrescriptionWithRelations[]>({
     queryKey: ["prescriptions", tab],
     queryFn: async () => {
       const res = await fetch(`/api/prescriptions?status=${tab}`)
@@ -74,7 +75,9 @@ export default function PrescriptionsPage() {
         ))}
       </div>
 
-      {isLoading ? (
+      {isLoadingError ? (
+        <LoadError what="prescriptions" onRetry={refetch} />
+      ) : isLoading ? (
         <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">

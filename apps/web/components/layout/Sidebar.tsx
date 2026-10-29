@@ -22,7 +22,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Rocket,
+  X,
 } from "lucide-react"
+import { useEffect } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
 import { hasFeature, type Feature, type Capability } from "@pharmatrack/core"
 import { useUIStore } from "@/lib/store/uiStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
@@ -39,23 +43,53 @@ interface NavItem {
   feature?: Feature
 }
 
-const NAV: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: ["dashboard.view"], feature: "dashboard" },
-  { label: "POS Terminal", href: "/pos", icon: ShoppingCart, permission: ["pos.sell"], feature: "pos" },
-  { label: "Inventory", href: "/inventory", icon: Package, permission: ["products.view"], feature: "inventory" },
-  { label: "Products", href: "/products", icon: Pill, permission: ["products.view"], feature: "inventory" },
-  { label: "Stock Receive", href: "/inventory/receive", icon: PackagePlus, permission: ["stock.receive"], feature: "inventory" },
-  { label: "Purchase Orders", href: "/purchase-orders", icon: ClipboardCheck, permission: ["purchasing.manage", "purchasing.receive"], feature: "inventory" },
-  { label: "Suppliers", href: "/suppliers", icon: Truck, permission: ["products.view", "suppliers.manage"], feature: "inventory" },
-  { label: "Appointments", href: "/appointments", icon: CalendarClock, permission: ["appointments.manage"], feature: "appointments" },
-  { label: "Prescriptions", href: "/prescriptions", icon: ClipboardList, permission: ["prescriptions.manage"], feature: "prescriptions" },
-  { label: "Staff", href: "/staff", icon: Users, permission: ["staff.manage"] },
-  { label: "Shifts", href: "/shifts", icon: Clock, permission: ["shifts.view_all"] },
-  { label: "Sales", href: "/sales", icon: Receipt },
-  { label: "Sync issues", href: "/sync-issues", icon: RefreshCwOff, permission: ["devices.manage"] },
-  { label: "Reports", href: "/reports", icon: BarChart3, permission: ["reports.view"], feature: "reports" },
-  { label: "Settings", href: "/settings", icon: Settings },
+// Grouped so 15 links scan quickly: selling, stock, patients, running the
+// pharmacy. (One flat list put Sales far from the till and mixed stock pages
+// with staff and settings.)
+const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
+  { label: null, items: [
+    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: ["dashboard.view"], feature: "dashboard" },
+  ] },
+  { label: "Sell", items: [
+    { label: "POS Terminal", href: "/pos", icon: ShoppingCart, permission: ["pos.sell"], feature: "pos" },
+    { label: "Sales", href: "/sales", icon: Receipt },
+    { label: "Shifts", href: "/shifts", icon: Clock, permission: ["shifts.view_all"] },
+  ] },
+  { label: "Stock", items: [
+    { label: "Inventory", href: "/inventory", icon: Package, permission: ["products.view"], feature: "inventory" },
+    { label: "Products", href: "/products", icon: Pill, permission: ["products.view"], feature: "inventory" },
+    { label: "Receive stock", href: "/inventory/receive", icon: PackagePlus, permission: ["stock.receive"], feature: "inventory" },
+    { label: "Purchase orders", href: "/purchase-orders", icon: ClipboardCheck, permission: ["purchasing.manage", "purchasing.receive"], feature: "inventory" },
+    { label: "Suppliers", href: "/suppliers", icon: Truck, permission: ["products.view", "suppliers.manage"], feature: "inventory" },
+  ] },
+  { label: "Patients", items: [
+    { label: "Appointments", href: "/appointments", icon: CalendarClock, permission: ["appointments.manage"], feature: "appointments" },
+    { label: "Prescriptions", href: "/prescriptions", icon: ClipboardList, permission: ["prescriptions.manage"], feature: "prescriptions" },
+  ] },
+  { label: "Manage", items: [
+    { label: "Reports", href: "/reports", icon: BarChart3, permission: ["reports.view"], feature: "reports" },
+    { label: "Staff", href: "/staff", icon: Users, permission: ["staff.manage"] },
+    { label: "Sync issues", href: "/sync-issues", icon: RefreshCwOff, permission: ["devices.manage"] },
+    { label: "Settings", href: "/settings", icon: Settings },
+  ] },
 ]
+
+/** Open sync issues for the branch in view — the link only shows when there are some. */
+function useOpenSyncIssues(enabled: boolean) {
+  const { branchId, ready } = useBranchScope()
+  const { data } = useQuery<number>({
+    queryKey: ["sync-issues-count", branchId],
+    enabled: enabled && ready,
+    queryFn: async () => {
+      const qs = new URLSearchParams({ status: "open", ...(branchId ? { branch_id: branchId } : {}) })
+      const res = await fetch(`/api/sync-issues?${qs}`)
+      if (!res.ok) return 0
+      return ((await res.json()) as { issues?: unknown[] }).issues?.length ?? 0
+    },
+    staleTime: 5 * 60_000,
+  })
+  return data ?? 0
+}
 
 function initials(name: string) {
   return name
@@ -94,6 +128,10 @@ function GettingStartedLink({ collapsed, active, onNavigate, placement }: {
   )
 }
 
+function GroupLabel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <p className={`px-3 mb-1 text-[10.5px] font-bold uppercase tracking-wider text-[var(--pt-text-tertiary)] ${className}`}>{children}</p>
+}
+
 export function Sidebar() {
   const pathname = usePathname()
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
@@ -104,12 +142,22 @@ export function Sidebar() {
   const planCode = useSessionStore((s) => s.planCode)
   const permissions = useSessionStore((s) => s.permissions)
 
+  const syncIssues = useOpenSyncIssues(permissions.includes("devices.manage"))
   // Show an item only when a role permission allows it AND the plan includes its feature.
-  const visibleNav = NAV.filter(
-    (item) =>
-      (!item.permission || item.permission.some((c) => permissions.includes(c))) &&
-      (!item.feature || hasFeature(planCode, item.feature)),
-  )
+  const allowed = (item: NavItem) =>
+    (!item.permission || item.permission.some((c) => permissions.includes(c))) &&
+    (!item.feature || hasFeature(planCode, item.feature)) &&
+    // Sync issues: only while there's something to sort out (or you're on it).
+    (item.href !== "/sync-issues" || syncIssues > 0 || pathname.startsWith("/sync-issues"))
+  const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter((g) => g.items.length > 0)
+
+  // Escape closes the phone drawer.
+  useEffect(() => {
+    if (!mobileNavOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileNavOpen(false) }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [mobileNavOpen, setMobileNavOpen])
 
   return (
     <>
@@ -123,8 +171,9 @@ export function Sidebar() {
       )}
 
       <aside
+        aria-label="Main menu"
         className={[
-          "flex flex-col shrink-0 border-r border-[var(--pt-border)] bg-[var(--pt-surface)] transition-all duration-200",
+          "relative flex flex-col shrink-0 border-r border-[var(--pt-border)] bg-[var(--pt-surface)] transition-all duration-200",
           // Mobile: fixed off-canvas drawer (always full width when shown)
           "fixed inset-y-0 left-0 z-50 w-60 lg:static lg:z-auto lg:translate-x-0",
           // Off-screen only below lg; desktop sidebar never gets a transform
@@ -144,37 +193,66 @@ export function Sidebar() {
             Pharma<span className="text-[var(--pt-green)]">Track</span>
           </span>
         </Link>
+        {/* Close (phone drawer) */}
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen(false)}
+          aria-label="Close menu"
+          className="lg:hidden absolute top-2 right-2 w-10 h-10 rounded-lg flex items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)]"
+        >
+          <X size={18} />
+        </button>
 
         {/* Nav */}
         <nav className="flex flex-col gap-0.5 px-2 flex-1 py-2 overflow-y-auto">
           <GettingStartedLink placement="top" collapsed={collapsed} active={pathname === "/getting-started"} onNavigate={() => setMobileNavOpen(false)} />
-          {visibleNav.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + "/")
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileNavOpen(false)}
-                title={collapsed ? item.label : undefined}
-                className={[
-                  "flex items-center gap-3 rounded-lg px-3 h-9 text-[13.5px] font-medium transition-colors",
-                  active
-                    ? "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
-                    : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] hover:text-[var(--pt-text)]",
-                  collapsed ? "lg:justify-center lg:px-0" : "",
-                ].join(" ")}
-              >
-                <item.icon size={18} className="shrink-0" />
-                <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
-              </Link>
-            )
-          })}
+          {groups.map((group, gi) => (
+            <div key={group.label ?? "top"} className={gi > 0 ? "mt-3" : ""}>
+              {group.label && (
+                collapsed
+                  ? <><div className="hidden lg:block mx-3 mb-1.5 border-t border-[var(--pt-border)]" /><GroupLabel className="lg:hidden">{group.label}</GroupLabel></>
+                  : <GroupLabel>{group.label}</GroupLabel>
+              )}
+              <div className="flex flex-col gap-0.5">
+                {group.items.map((item) => {
+                  // "Receive stock" lives under /inventory — don't light Inventory up too.
+                  const active = pathname === item.href || (pathname.startsWith(item.href + "/") && !(item.href === "/inventory" && pathname.startsWith("/inventory/receive")))
+                  const badge = item.href === "/sync-issues" && syncIssues > 0 ? syncIssues : null
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileNavOpen(false)}
+                      title={collapsed ? item.label : undefined}
+                      aria-current={active ? "page" : undefined}
+                      className={[
+                        "relative flex items-center gap-3 rounded-lg px-3 h-10 lg:h-9 text-[13.5px] font-medium transition-colors",
+                        active
+                          ? "bg-[var(--pt-green-50)] text-[var(--pt-green-600)]"
+                          : "text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] hover:text-[var(--pt-text)]",
+                        collapsed ? "lg:justify-center lg:px-0" : "",
+                      ].join(" ")}
+                    >
+                      <item.icon size={18} className="shrink-0" />
+                      <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
+                      {badge !== null && (
+                        <span className={`ml-auto min-w-5 h-5 px-1.5 rounded-full bg-[var(--pt-red)] text-white text-[11px] font-bold flex items-center justify-center tabular-nums ${collapsed ? "lg:absolute lg:top-0.5 lg:right-1 lg:min-w-4 lg:h-4 lg:text-[10px]" : ""}`}>
+                          {badge > 99 ? "99+" : badge}
+                        </span>
+                      )}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
           <GettingStartedLink placement="bottom" collapsed={collapsed} active={pathname === "/getting-started"} onNavigate={() => setMobileNavOpen(false)} />
         </nav>
 
         {/* Collapse toggle (desktop only) */}
         <button
           onClick={toggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="hidden lg:flex mx-auto mb-2 w-7 h-7 rounded-full border border-[var(--pt-border)] bg-[var(--pt-surface)] items-center justify-center text-[var(--pt-text-secondary)] hover:bg-[var(--pt-muted)] transition-colors"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -196,7 +274,8 @@ export function Sidebar() {
             </div>
             <LogoutButton
               title="Sign out"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)] transition-colors"
+              aria-label="Sign out"
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] hover:bg-[var(--pt-muted-strong)] transition-colors"
             >
               <LogOut size={15} />
             </LogoutButton>

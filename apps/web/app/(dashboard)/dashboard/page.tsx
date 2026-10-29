@@ -1,5 +1,7 @@
 "use client"
 
+import Link from "next/link"
+import { LoadError } from "@/components/LoadError"
 import { useQuery } from "@tanstack/react-query"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -130,7 +132,7 @@ export default function DashboardPage() {
   const { branchId, ready } = useBranchScope()
   const canManageAppointments = useCan("appointments.manage")
   const canCount = useCan("stock.count")
-  const { data, isLoading } = useDashboard(branchId, ready)
+  const { data, isLoading, isError, refetch } = useDashboard(branchId, ready)
 
   const todayLabel = new Date().toLocaleDateString("en-KE", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
@@ -150,6 +152,9 @@ export default function DashboardPage() {
       {/* New pharmacies: the setup guide until the first sale (ADR-019) */}
       <SetupGuideCard />
       <WelcomeDialog />
+
+      {/* A failed load must not read as "KES 0 today" */}
+      {isError && !data ? <LoadError what="today's figures" onRetry={refetch} /> : (<>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -193,22 +198,22 @@ export default function DashboardPage() {
       {data && (data.alerts.outOfStock > 0 || data.alerts.lowStock > 0 || data.alerts.expiring > 0) && (
         <div className="flex flex-wrap gap-3 mb-5">
           {data.alerts.outOfStock > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-500/15 border border-red-100 rounded-lg text-sm text-red-700 dark:text-red-300 font-medium">
+            <Link href="/inventory?status=out_of_stock" className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-500/15 border border-red-100 rounded-lg text-sm text-red-700 dark:text-red-300 font-medium hover:underline">
               <PackageX size={14} />
               {data.alerts.outOfStock} out of stock
-            </div>
+            </Link>
           )}
           {data.alerts.lowStock > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-500/15 border border-amber-100 rounded-lg text-sm text-amber-700 dark:text-amber-300 font-medium">
+            <Link href="/inventory?status=low_stock" className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-500/15 border border-amber-100 rounded-lg text-sm text-amber-700 dark:text-amber-300 font-medium hover:underline">
               <AlertTriangle size={14} />
               {data.alerts.lowStock} low stock
-            </div>
+            </Link>
           )}
           {data.alerts.expiring > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-500/15 border border-yellow-100 rounded-lg text-sm text-yellow-700 dark:text-yellow-300 font-medium">
+            <Link href="/inventory?status=expiring" className="flex items-center gap-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-500/15 border border-yellow-100 rounded-lg text-sm text-yellow-700 dark:text-yellow-300 font-medium hover:underline">
               <Clock size={14} />
               {data.alerts.expiring} expiring within 90 days
-            </div>
+            </Link>
           )}
         </div>
       )}
@@ -330,6 +335,7 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      </>)}
     </div>
   )
 }

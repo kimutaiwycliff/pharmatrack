@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { Search, PackagePlus, ChevronLeft, ChevronRight, Tag, Loader2, ClipboardCheck, ClipboardList } from "lucide-react"
@@ -15,6 +15,8 @@ import { useDebounce } from "@/lib/hooks/useDebounce"
 import type { LabelItem, LabelSize } from "@/components/labels/LabelPDF"
 import type { Organization } from "@pharmatrack/types"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
+import { useUrlParams } from "@/lib/hooks/useUrlParams"
+import { LoadError } from "@/components/LoadError"
 
 type StatusFilter = "all" | "out_of_stock" | "low_stock" | "expiring" | "controlled"
 
@@ -87,15 +89,22 @@ export default function InventoryPage() {
   const canReceive = useCan("stock.receive")
   const canCount = useCan("stock.count")
 
-  const [rawSearch, setRawSearch] = useState("")
-  const [status, setStatus] = useState<StatusFilter>("all")
-  const [page, setPage] = useState(1)
+  // Filters live in the URL (?status=low_stock&q=…&page=2): linkable from the
+  // bell and dashboard, kept on refresh and Back.
+  const [params, setParams] = useUrlParams({ q: "", status: "all", page: "1" })
+  const status: StatusFilter = STATUS_FILTERS.some((f) => f.key === params.status) ? (params.status as StatusFilter) : "all"
+  const page = Math.max(1, parseInt(params.page, 10) || 1)
+  const setPage = (fn: (p: number) => number) => setParams({ page: String(fn(page)) })
+  const [rawSearch, setRawSearch] = useState(params.q)
   const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null)
   const [backfilling, setBackfilling] = useState(false)
 
   const q = useDebounce(rawSearch, 300)
+  useEffect(() => {
+    if (q !== params.q) setParams({ q, page: "1" })
+  }, [q]) // eslint-disable-line react-hooks/exhaustive-deps -- only when the typed search settles
 
-  const { data, isLoading, isFetching } = useInventory(branchId, ready, q, status, page)
+  const { data, isLoading, isFetching, isError, refetch } = useInventory(branchId, ready, params.q, status, page)
 
   const { data: settingsData } = useQuery<{ org: Organization }>({
     queryKey: ["settings"],
@@ -127,13 +136,11 @@ export default function InventoryPage() {
   }
 
   const handleStatusChange = useCallback((s: StatusFilter) => {
-    setStatus(s)
-    setPage(1)
-  }, [])
+    setParams({ status: s, page: "1" })
+  }, [setParams])
 
   const handleSearch = useCallback((v: string) => {
     setRawSearch(v)
-    setPage(1)
   }, [])
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1
@@ -186,21 +193,25 @@ export default function InventoryPage() {
       {/* Summary chips */}
       {summary && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-          {[
-            { label: "Out of stock", value: summary.outOfStock, color: "text-[var(--pt-red)]" },
-            { label: "Low stock",    value: summary.lowStock,    color: "text-[var(--pt-amber)]" },
-            { label: "Expiring",     value: summary.expiring,    color: "text-yellow-600 dark:text-yellow-400" },
-            { label: "Controlled",   value: summary.controlled,  color: "text-blue-600 dark:text-blue-400" },
-          ].map(({ label, value, color }) => (
-            <div
+          {([
+            { key: "out_of_stock", label: "Out of stock", value: summary.outOfStock, color: "text-[var(--pt-red)]" },
+            { key: "low_stock",    label: "Low stock",    value: summary.lowStock,    color: "text-[var(--pt-amber)]" },
+            { key: "expiring",     label: "Expiring",     value: summary.expiring,    color: "text-yellow-600 dark:text-yellow-400" },
+            { key: "controlled",   label: "Controlled",   value: summary.controlled,  color: "text-blue-600 dark:text-blue-400" },
+          ] as const).map(({ key, label, value, color }) => (
+            // Tapping a card shows just those products (tap again for all).
+            <button
+              type="button"
               key={label}
-              className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] px-4 py-3"
+              onClick={() => handleStatusChange(status === key ? "all" : key)}
+              aria-pressed={status === key}
+              className={`text-left bg-[var(--pt-surface)] rounded-xl border px-4 py-3 transition-colors hover:bg-[var(--pt-muted)] ${status === key ? "border-[var(--pt-green)] ring-1 ring-[var(--pt-green)]" : "border-[var(--pt-border)]"}`}
             >
               <p className="text-[11px] font-semibold text-[var(--pt-text-secondary)] uppercase tracking-wide">
                 {label}
               </p>
               <p className={`text-xl font-bold tabular-nums mt-0.5 ${color}`}>{value}</p>
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -241,13 +252,17 @@ export default function InventoryPage() {
       <CatalogSeedControls canManage={canManageCatalog} branchId={branchId} />
 
       {/* Table */}
-      <div className={isFetching && !isLoading ? "opacity-70 transition-opacity" : ""}>
-        <InventoryTable
-          products={(data?.products ?? []) as Parameters<typeof InventoryTable>[0]["products"]}
-          branchId={branchId ?? ""}
-          isLoading={isLoading}
-        />
-      </div>
+      {isError && !data ? (
+        <LoadError what="your stock" onRetry={refetch} />
+      ) : (
+        <div className={isFetching && !isLoading ? "opacity-70 transition-opacity" : ""}>
+          <InventoryTable
+            products={(data?.products ?? []) as Parameters<typeof InventoryTable>[0]["products"]}
+            branchId={branchId ?? ""}
+            isLoading={isLoading}
+          />
+        </div>
+      )}
 
       {/* Pagination */}
       {data && data.total > PAGE_SIZE && (
