@@ -1,6 +1,6 @@
 "use client"
 
-import { Menu, ChevronRight } from "lucide-react"
+import { Menu } from "lucide-react"
 import { BranchSelector } from "./BranchSelector"
 import { ThemeToggle } from "@/components/theme/ThemeToggle"
 import { ShiftClockWidget } from "@/components/shifts/ShiftClockWidget"
@@ -24,6 +24,7 @@ export function AppTopBar() {
         variant="ghost"
         size="icon"
         className="lg:hidden"
+        aria-label="Open menu"
         onClick={() => setMobileNavOpen(true)}
       >
         <Menu size={18} />
@@ -31,15 +32,7 @@ export function AppTopBar() {
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-sm text-[var(--pt-text-secondary)] min-w-0">
-        <span className="truncate hidden sm:block">
-          {branches[0] ? branches.find(b => b.id === branches[0]?.id)?.name?.split(" ")[0] ?? "Nairobi Pharmacy" : "PharmaTrack"}
-        </span>
-        {branches.length > 0 && (
-          <>
-            <ChevronRight size={12} />
-            <BranchSelector />
-          </>
-        )}
+        {branches.length > 0 ? <BranchSelector /> : <span className="truncate">PharmaTrack</span>}
       </div>
 
       <div className="flex-1" />

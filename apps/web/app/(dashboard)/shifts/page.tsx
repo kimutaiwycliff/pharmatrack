@@ -7,6 +7,7 @@ import { ShiftSummarySheet } from "@/components/shifts/ShiftSummarySheet"
 import { formatKES } from "@/lib/store/cartStore"
 import { varianceSeverity } from "@/lib/shifts/variance"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
+import { LoadError } from "@/components/LoadError"
 
 interface ShiftRow {
   id: string
@@ -85,7 +86,7 @@ export default function ShiftsPage() {
   const [page, setPage] = useState(1)
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null)
 
-  const { data, isLoading, isFetching } = useShifts(branchId, ready, from, to, page)
+  const { data, isLoading, isFetching, isLoadingError, refetch } = useShifts(branchId, ready, from, to, page)
 
   const handleDateChange = useCallback(() => setPage(1), [])
 
@@ -118,7 +119,9 @@ export default function ShiftsPage() {
       </div>
 
       <div className={`${isFetching && !isLoading ? "opacity-70 transition-opacity" : ""}`}>
-        {isLoading ? (
+        {isLoadingError ? (
+          <LoadError what="shifts" onRetry={refetch} />
+        ) : isLoading ? (
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex gap-4 px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">

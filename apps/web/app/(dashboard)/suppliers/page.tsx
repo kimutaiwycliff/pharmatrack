@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query"
 import { SupplierList, SUPPLIERS_KEY } from "@/components/suppliers/SupplierList"
 import { useCan } from "@/lib/store/sessionStore"
 import type { Supplier } from "@pharmatrack/types"
+import { LoadError } from "@/components/LoadError"
 
 function useSuppliers() {
   return useQuery<Supplier[]>({
@@ -24,7 +25,7 @@ export default function SuppliersPage() {
   const canAddProducts = useCan("products.create")
   const canCreate = canManage || canReceive || canAddProducts
 
-  const { data: suppliers = [], isLoading } = useSuppliers()
+  const { data: suppliers = [], isLoading, isLoadingError, refetch } = useSuppliers()
 
   return (
     <div>
@@ -35,7 +36,9 @@ export default function SuppliersPage() {
         </p>
       </div>
 
-      {isLoading ? (
+      {isLoadingError ? (
+        <LoadError what="suppliers" onRetry={refetch} />
+      ) : isLoading ? (
         <div className="max-w-2xl bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">

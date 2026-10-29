@@ -17,6 +17,7 @@ import { ReceiptSettingsPanel } from "@/components/settings/ReceiptSettingsPanel
 import { ThemeSegmented } from "@/components/theme/ThemeToggle"
 import { useSessionStore } from "@/lib/store/sessionStore"
 import type { Organization, Branch, Profile, AppointmentService } from "@pharmatrack/types"
+import { LoadError } from "@/components/LoadError"
 
 interface SettingsData {
   org: Organization
@@ -76,7 +77,7 @@ export default function SettingsPage() {
     return () => clearTimeout(id)
   }, [])
   const tab: Tab = chosenTab && visibleTabs.some((t) => t.key === chosenTab) ? chosenTab : (visibleTabs[0]?.key ?? "profile")
-  const { data, isLoading } = useSettings()
+  const { data, isLoading, isLoadingError, refetch } = useSettings()
 
   const canEditOrg = permissions.includes("settings.organization")
   const canManageServices = permissions.includes("appointment_services.manage")
@@ -152,6 +153,8 @@ export default function SettingsPage() {
         <HardwarePanel orgName={data?.org.name ?? null} orgPaper={data?.org.receipt_paper_width ?? null} />
       ) : tab === "permissions" ? (
         <RolePermissionsPanel />
+      ) : isLoadingError ? (
+        <LoadError what="your settings" onRetry={refetch} className="max-w-xl" />
       ) : isLoading ? (
         <div className="max-w-xl space-y-4">
           {Array.from({ length: 4 }).map((_, i) => (

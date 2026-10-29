@@ -1,12 +1,16 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Receipt, ChevronLeft, ChevronRight, Search } from "lucide-react"
 import { SaleDetailSheet } from "@/components/sales/SaleDetailSheet"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { formatKES } from "@/lib/store/cartStore"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
+import { useUrlParams } from "@/lib/hooks/useUrlParams"
+import { LoadError } from "@/components/LoadError"
+import { DateRangePresets } from "@/components/DateRangePresets"
+import { rangeFor } from "@/lib/sales/ranges"
 
 interface SaleRow {
   id: string
@@ -57,28 +61,23 @@ function fmt(dateStr: string) {
   })
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function weekStart() {
-  const d = new Date()
-  d.setDate(d.getDate() - d.getDay())
-  return d.toISOString().slice(0, 10)
-}
-
 export default function SalesPage() {
   const { branchId, ready } = useBranchScope()
-  const [from, setFrom] = useState(weekStart())
-  const [to, setTo] = useState(today())
-  const [rawSearch, setRawSearch] = useState("")
+  // Filters live in the URL so a range can be bookmarked/shared and survives
+  // refresh and Back. Default: this week (Mon–today, Nairobi days).
+  const week = rangeFor("this_week")
+  const [params, setParams] = useUrlParams({ from: week.from, to: week.to, q: "", page: "1" })
+  const { from, to } = params
+  const page = Math.max(1, parseInt(params.page, 10) || 1)
+  const setPage = (fn: (p: number) => number) => setParams({ page: String(fn(page)) })
+  const [rawSearch, setRawSearch] = useState(params.q)
   const q = useDebounce(rawSearch, 300)
-  const [page, setPage] = useState(1)
+  useEffect(() => {
+    if (q !== params.q) setParams({ q, page: "1" })
+  }, [q]) // eslint-disable-line react-hooks/exhaustive-deps -- only when the typed search settles
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
 
-  const { data, isLoading, isFetching } = useSales(branchId, ready, from, to, q, page)
-
-  const handleFilterChange = useCallback(() => setPage(1), [])
+  const { data, isLoading, isFetching, isError, refetch } = useSales(branchId, ready, from, to, params.q, page)
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1
 
@@ -98,28 +97,35 @@ export default function SalesPage() {
               type="text"
               placeholder="Receipt #"
               value={rawSearch}
-              onChange={(e) => { setRawSearch(e.target.value); handleFilterChange() }}
+              aria-label="Search by receipt number"
+              onChange={(e) => setRawSearch(e.target.value)}
               className="h-9 w-32 rounded-lg border border-[var(--pt-border)] pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
             />
           </div>
           <input
             type="date"
             value={from}
-            onChange={(e) => { setFrom(e.target.value); handleFilterChange() }}
+            aria-label="From date"
+            onChange={(e) => setParams({ from: e.target.value, page: "1" })}
             className="h-9 rounded-lg border border-[var(--pt-border)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
           />
           <span className="text-[var(--pt-text-tertiary)] text-sm">to</span>
           <input
             type="date"
             value={to}
-            onChange={(e) => { setTo(e.target.value); handleFilterChange() }}
+            aria-label="To date"
+            onChange={(e) => setParams({ to: e.target.value, page: "1" })}
             className="h-9 rounded-lg border border-[var(--pt-border)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
           />
         </div>
       </div>
 
+      <DateRangePresets value={{ from, to }} onChange={(r) => setParams({ ...r, page: "1" })} className="mb-4" />
+
       <div className={`${isFetching && !isLoading ? "opacity-70 transition-opacity" : ""}`}>
-        {isLoading ? (
+        {isError && !data ? (
+          <LoadError what="sales" onRetry={refetch} />
+        ) : isLoading ? (
           <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] overflow-hidden">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex gap-4 px-5 py-4 border-b border-[var(--pt-border)] last:border-b-0 animate-pulse">

@@ -11,6 +11,7 @@ import { useBranchScope } from "@/lib/hooks/useBranchScope"
 import { useCan } from "@/lib/store/sessionStore"
 import { formatKES } from "@/lib/store/cartStore"
 import type { PurchaseOrderDTO } from "@/lib/purchasing/serialize"
+import { LoadError } from "@/components/LoadError"
 
 const FILTERS = [
   { key: "open", label: "Open" },
@@ -31,7 +32,7 @@ export default function PurchaseOrdersPage() {
   const canManage = useCan("purchasing.manage")
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["key"]>("open")
 
-  const { data, isLoading } = useQuery<{ orders: PurchaseOrderDTO[] }>({
+  const { data, isLoading, isLoadingError, refetch } = useQuery<{ orders: PurchaseOrderDTO[] }>({
     queryKey: ["purchase-orders", branchId, filter],
     enabled: ready,
     queryFn: async () => {
@@ -75,7 +76,9 @@ export default function PurchaseOrdersPage() {
         ))}
       </div>
 
-      {isLoading || !ready ? (
+      {isLoadingError ? (
+        <LoadError what="purchase orders" onRetry={refetch} />
+      ) : isLoading || !ready ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-xl bg-[var(--pt-muted-strong)] animate-pulse" />)}
         </div>

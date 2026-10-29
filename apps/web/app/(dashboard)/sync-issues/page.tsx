@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useBranchScope } from "@/lib/hooks/useBranchScope"
 import { formatKES } from "@/lib/store/cartStore"
+import { LoadError } from "@/components/LoadError"
 
 interface Issue {
   id: string; kind: string; status: string; details: Record<string, unknown>; created_at: string
@@ -64,7 +65,7 @@ export default function SyncIssuesPage() {
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState<string | null>(null)
-  const { data, isLoading } = useQuery<{ issues: Issue[] }>({
+  const { data, isLoading, isLoadingError, refetch } = useQuery<{ issues: Issue[] }>({
     queryKey: ["sync-issues", branchId, status],
     enabled: ready,
     queryFn: async () => {
@@ -101,7 +102,9 @@ export default function SyncIssuesPage() {
         </div>
       </div>
 
-      {isLoading || !ready ? (
+      {isLoadingError ? (
+        <LoadError what="sync issues" onRetry={refetch} />
+      ) : isLoading || !ready ? (
         <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 rounded-xl bg-[var(--pt-muted-strong)] animate-pulse" />)}</div>
       ) : issues.length === 0 ? (
         <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] py-14 text-center">

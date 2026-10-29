@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { StaffTable } from "@/components/staff/StaffTable"
 import { InviteStaffDialog } from "@/components/staff/InviteStaffDialog"
 import { useSessionStore, useCan } from "@/lib/store/sessionStore"
+import { LoadError } from "@/components/LoadError"
 
 interface StaffMember {
   id: string
@@ -38,7 +39,7 @@ export default function StaffPage() {
   const branches = useSessionStore((s) => s.branches)
   const [showInvite, setShowInvite] = useState(false)
 
-  const { data: staff = [], isLoading } = useStaff()
+  const { data: staff = [], isLoading, isLoadingError, refetch } = useStaff()
 
   const activeCount = staff.filter((s) => s.is_active).length
 
@@ -59,12 +60,16 @@ export default function StaffPage() {
         )}
       </div>
 
-      <StaffTable
-        staff={staff}
-        branches={branches}
-        isLoading={isLoading}
-        currentUserId={profile?.id ?? ""}
-      />
+      {isLoadingError ? (
+        <LoadError what="your staff" onRetry={refetch} />
+      ) : (
+        <StaffTable
+          staff={staff}
+          branches={branches}
+          isLoading={isLoading}
+          currentUserId={profile?.id ?? ""}
+        />
+      )}
 
       {showInvite && (
         <InviteStaffDialog

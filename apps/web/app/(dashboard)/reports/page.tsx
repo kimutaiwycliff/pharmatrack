@@ -12,6 +12,14 @@ import {
 } from "lucide-react"
 import { formatKES } from "@/lib/store/cartStore"
 import { useSessionStore } from "@/lib/store/sessionStore"
+import { useBranchScope } from "@/lib/hooks/useBranchScope"
+import { useUrlParams } from "@/lib/hooks/useUrlParams"
+import { LoadError } from "@/components/LoadError"
+import { DateRangePresets } from "@/components/DateRangePresets"
+import { rangeFor } from "@/lib/sales/ranges"
+
+/** Y-axis money: "500", "1.2k", "45k" — "(v/1000).toFixed(0)k" showed 0k 0k 0k for small takings. */
+const axisKES = (v: number) => (v < 1000 ? String(v) : v < 10_000 ? `${(v / 1000).toFixed(1).replace(/\.0$/, "")}k` : `${Math.round(v / 1000)}k`)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -125,7 +133,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
   })
 
   if (isLoading) return <ReportSkeleton />
-  if (!data) return null
+  if (!data) return <LoadError what="the sales report" onRetry={refetch} />
 
   const { summary, dailyChart, byCashier, topProducts, transactions } = data
   const maxRevenue = Math.max(...(topProducts.map(p => p.revenue)), 1)
@@ -151,15 +159,15 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
         <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[14px] font-bold">Daily Revenue</h3>
-            <button onClick={() => refetch()} className="text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] transition-colors">
+            <button onClick={() => refetch()} aria-label="Refresh" title="Refresh" className="p-2 -m-2 text-[var(--pt-text-tertiary)] hover:text-[var(--pt-text)] transition-colors">
               <RefreshCw size={14} />
             </button>
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={dailyChart} barGap={2}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--pt-border)" />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={d => d.slice(5)} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={axisKES} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="cash" name="Cash" fill="#60a5fa" radius={[3, 3, 0, 0]} stackId="a" />
               <Bar dataKey="mpesa" name="M-Pesa" fill="#22c55e" radius={[3, 3, 0, 0]} stackId="a" />
@@ -334,7 +342,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
   const params = new URLSearchParams({ report: "inventory" })
   if (branchId) params.set("branch_id", branchId)
 
-  const { data, isLoading } = useQuery<InventoryReport>({
+  const { data, isLoading, refetch } = useQuery<InventoryReport>({
     queryKey: ["reports-inventory", branchId],
     queryFn: async () => {
       const res = await fetch(`/api/reports?${params}`)
@@ -345,7 +353,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
   })
 
   if (isLoading) return <ReportSkeleton />
-  if (!data) return null
+  if (!data) return <LoadError what="the inventory report" onRetry={refetch} />
 
   const { summary, items } = data
   const filtered = filter === "all" ? items : items.filter(i => {
@@ -365,7 +373,7 @@ function InventoryTab({ branchId }: { branchId: string }) {
     <div className="space-y-6">
       <StockValueCards branchId={branchId} />
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <KpiCard icon={Package} label="Total SKUs" value={String(summary.totalSKUs)} />
+        <KpiCard icon={Package} label="Products" value={String(summary.totalSKUs)} />
         <KpiCard icon={AlertTriangle} label="Out of Stock" value={String(summary.outOfStock)} color="red" />
         <KpiCard icon={TrendingUp} label="Low Stock" value={String(summary.lowStock)} color="amber" />
         <KpiCard icon={Clock} label="Expiring ≤90d" value={String(summary.expiring)} color="amber" />
@@ -475,7 +483,7 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
   const params = new URLSearchParams({ report: "financial", from, to })
   if (branchId) params.set("branch_id", branchId)
 
-  const { data, isLoading } = useQuery<FinancialReport>({
+  const { data, isLoading, refetch } = useQuery<FinancialReport>({
     queryKey: ["reports-financial", from, to, branchId],
     queryFn: async () => {
       const res = await fetch(`/api/reports?${params}`)
@@ -486,7 +494,7 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
   })
 
   if (isLoading) return <ReportSkeleton />
-  if (!data) return null
+  if (!data) return <LoadError what="the financial report" onRetry={refetch} />
 
   const { summary, monthlyChart } = data
 
@@ -510,9 +518,9 @@ function FinancialTab({ from, to, branchId }: { from: string; to: string; branch
           <h3 className="text-[14px] font-bold mb-4">Monthly Revenue Trend</h3>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={monthlyChart}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--pt-border)" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={axisKES} />
               <Tooltip content={<CustomTooltip />} />
               <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#22c55e" strokeWidth={2.5} dot={{ r: 4 }} />
               <Line type="monotone" dataKey="profit" name="Gross Profit" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
@@ -593,57 +601,48 @@ const TABS: Array<{ id: Tab; label: string; icon: React.ComponentType<{ size?: n
   { id: "financial", label: "Financial", icon: DollarSign },
 ]
 
-function defaultDateRange() {
-  const to = new Date()
-  const from = new Date()
-  from.setDate(from.getDate() - 29)
-  return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
-  }
-}
-
 export default function ReportsPage() {
-  const [tab, setTab] = useState<Tab>("sales")
-  const { from: defaultFrom, to: defaultTo } = defaultDateRange()
-  const [from, setFrom] = useState(defaultFrom)
-  const [to, setTo] = useState(defaultTo)
-  const [branchId, setBranchId] = useState("")
-  const branches = useSessionStore(s => s.branches)
+  // Tab and dates live in the URL (bookmark "this month's sales", survives
+  // refresh/Back). Default: the last 30 days, as Nairobi calendar days.
+  const last30 = rangeFor("last_30")
+  const [params, setParams] = useUrlParams({ tab: "sales", from: last30.from, to: last30.to })
+  const tab: Tab = TABS.some((t) => t.id === params.tab) ? (params.tab as Tab) : "sales"
+  const { from, to } = params
+  const setTab = (t: Tab) => setParams({ tab: t })
+  // The branch picked in the top bar (like Dashboard and Sales) — this page
+  // used to have its own picker that defaulted to all branches.
+  const scope = useBranchScope()
+  const branchId = scope.branchId ?? ""
 
   return (
     <div className="flex flex-col h-full bg-[var(--pt-bg)]">
       {/* Header */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-4 bg-[var(--pt-surface)] border-b border-[var(--pt-border)] shrink-0 flex-wrap gap-3">
         <div>
-          <h1 className="text-[17px] font-bold text-[var(--pt-text)]">Reports</h1>
-          <p className="text-[13px] text-[var(--pt-text-secondary)] mt-0.5">Analytics and performance data</p>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--pt-text)]">Reports</h1>
+          <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
+            {scope.isAll ? "All branches" : scope.branch?.name ?? ""}{tab === "inventory" ? " · stock right now" : ""}
+          </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {branches && branches.length > 1 && (
-            <select
-              value={branchId}
-              onChange={e => setBranchId(e.target.value)}
-              className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
-            >
-              <option value="">All branches</option>
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          )}
+        {/* The inventory report is stock right now — no dates. */}
+        {tab !== "inventory" && <div className="flex items-center gap-2 flex-wrap">
           <input
             type="date"
             value={from}
-            onChange={e => setFrom(e.target.value)}
+            aria-label="From date"
+            onChange={e => setParams({ from: e.target.value })}
             className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
           />
           <span className="text-[var(--pt-text-tertiary)] text-sm">to</span>
           <input
             type="date"
             value={to}
-            onChange={e => setTo(e.target.value)}
+            aria-label="To date"
+            onChange={e => setParams({ to: e.target.value })}
             className="h-9 text-sm rounded-lg border border-[var(--pt-border)] px-3 bg-[var(--pt-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--pt-green)]"
           />
-        </div>
+        </div>}
+        {tab !== "inventory" && <DateRangePresets value={{ from, to }} onChange={(r) => setParams(r)} className="w-full" />}
       </div>
 
       {/* Tabs */}
@@ -667,9 +666,10 @@ export default function ReportsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-4 sm:px-6 py-6">
-        {tab === "sales"     && <SalesTab from={from} to={to} branchId={branchId} />}
-        {tab === "inventory" && <InventoryTab branchId={branchId} />}
-        {tab === "financial" && <FinancialTab from={from} to={to} branchId={branchId} />}
+        {!scope.ready && <ReportSkeleton />}
+        {scope.ready && tab === "sales"     && <SalesTab from={from} to={to} branchId={branchId} />}
+        {scope.ready && tab === "inventory" && <InventoryTab branchId={branchId} />}
+        {scope.ready && tab === "financial" && <FinancialTab from={from} to={to} branchId={branchId} />}
       </div>
     </div>
   )
