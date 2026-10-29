@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { getMpesaConfig, mpesaStkAvailability } from "@/lib/mpesa/config"
-import { stkPush } from "@/lib/mpesa/daraja"
+import { formatPhone, stkCallbackUrl, stkPush } from "@/lib/mpesa/daraja"
+import { withTenant, mpesa_stk_request } from "@pharmatrack/db"
 
 const stkSchema = z.object({
   phone: z.string().min(9),
@@ -40,9 +41,23 @@ export async function POST(request: NextRequest) {
       phone: parsed.data.phone,
       amount: parsed.data.amount,
       accountRef: parsed.data.accountReference,
-      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/mpesa/callback`,
+      callbackUrl: stkCallbackUrl(),
     })
-    return NextResponse.json(res.data, { status: res.ok ? 200 : 502 })
+    const checkoutRequestId = typeof res.data.CheckoutRequestID === "string" ? res.data.CheckoutRequestID : null
+    if (!res.ok || !checkoutRequestId) {
+      const msg = (res.data.errorMessage ?? res.data.ResponseDescription ?? res.data.CustomerMessage) as string | undefined
+      return NextResponse.json({ error: msg ?? "M-Pesa didn't accept the request" }, { status: 502 })
+    }
+    // Recorded so the payment can be confirmed and tied to one sale (migration 045).
+    await withTenant(ctx, (db) => db.insert(mpesa_stk_request).values({
+      organization_id: ctx.organizationId,
+      checkout_request_id: checkoutRequestId,
+      merchant_request_id: typeof res.data.MerchantRequestID === "string" ? res.data.MerchantRequestID : null,
+      phone: formatPhone(parsed.data.phone),
+      amount: String(Math.ceil(parsed.data.amount)),
+      requested_by: ctx.userId,
+    }))
+    return NextResponse.json({ checkoutRequestId, message: res.data.CustomerMessage ?? "Prompt sent" })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "M-Pesa request failed" }, { status: 502 })
   }

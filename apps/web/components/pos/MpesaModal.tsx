@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Phone, Check, Info, RotateCcw } from "lucide-react"
+import { useState, useCallback } from "react"
+import { Phone, Check, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { formatKES } from "@/lib/store/cartStore"
+import { StkWaitPanel } from "./StkWaitPanel"
 
 type Mode = "prompt" | "manual"
 type Phase = "input" | "waiting"
@@ -19,8 +20,9 @@ interface Props {
   /** The sale is being saved — confirm stays off so it can't be sent twice. */
   submitting?: boolean
   onClose: () => void
-  /** viaPrompt: confirmed after an STK prompt (vs. a code typed by hand — uploaded as unverified by offline tills). */
-  onConfirm: (mpesaRef: string | null, how: { viaPrompt: boolean }) => void
+  /** viaPrompt + checkoutRequestId: M-Pesa confirmed the STK payment (the sale API checks it again).
+   *  Otherwise a manual confirmation — recorded as unverified. */
+  onConfirm: (mpesaRef: string | null, how: { viaPrompt: boolean; checkoutRequestId?: string }) => void
 }
 
 const CODE_RE = /^[A-Z0-9]{10}$/i
@@ -30,7 +32,8 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, su
   const [phase, setPhase] = useState<Phase>("input")
   const [phone, setPhone] = useState("")
   const [code, setCode] = useState("")
-  const [timer, setTimer] = useState(60)
+  // The push in flight (Daraja's CheckoutRequestID) — the wait panel polls it.
+  const [checkoutId, setCheckoutId] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [stkError, setStkError] = useState<string | null>(null)
 
@@ -46,20 +49,15 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, su
   const codeValid = CODE_RE.test(trimmedCode)
   const codeBlocks = trimmedCode.length > 0 && !codeValid
 
-  useEffect(() => {
-    if (phase !== "waiting") return
-    // Reset the countdown when the waiting phase begins.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTimer(60)
-    const id = setInterval(() => setTimer((t) => Math.max(0, t - 1)), 1000)
-    return () => clearInterval(id)
-  }, [phase])
-
   const reset = useCallback(() => {
     setPhase("input")
     setCode("")
-    setTimer(60)
+    setCheckoutId(null)
   }, [])
+
+  const onPaid = useCallback((receipt: string | null) => {
+    if (checkoutId) onConfirm(receipt, { viaPrompt: true, checkoutRequestId: checkoutId })
+  }, [checkoutId, onConfirm])
 
   const switchMode = (m: Mode) => {
     setModeChoice(m)
@@ -75,8 +73,9 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, su
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, amount: total, accountReference: "PHARMATRACK" }),
       })
-      const json = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok || json.error) throw new Error(json.error ?? "M-Pesa didn't accept the request")
+      const json = (await res.json().catch(() => ({}))) as { error?: string; checkoutRequestId?: string }
+      if (!res.ok || json.error || !json.checkoutRequestId) throw new Error(json.error ?? "M-Pesa didn't accept the request")
+      setCheckoutId(json.checkoutRequestId)
       setPhase("waiting")
     } catch (err) {
       // Say why, then fall back — the customer can still pay by Pay Bill.
@@ -182,54 +181,18 @@ export function MpesaModal({ open, total, online = true, stkAvailable = true, su
             </div>
           )}
 
-          {/* PROMPT — waiting */}
-          {mode === "prompt" && phase === "waiting" && (
-            <div className="bg-[var(--pt-green-50)] border border-[var(--pt-green-100)] rounded-xl p-5 text-center space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-[var(--pt-green)] flex items-center justify-center mx-auto font-black text-white text-lg tracking-tight">
-                M·P
-              </div>
-              <div>
-                <p className="font-bold">Request sent to +254{phone.replace(/\D/g, "")}</p>
-                <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">
-                  Ask customer to enter their M-Pesa PIN
-                </p>
-              </div>
-              {timer > 0 ? (
-                <div className="inline-flex items-center gap-2 bg-[var(--pt-surface)] rounded-full px-4 py-2 text-sm font-semibold tabular-nums">
-                  <span className="w-2 h-2 rounded-full bg-[var(--pt-green)] animate-pulse" />
-                  Waiting · 0:{String(timer).padStart(2, "0")} remaining
-                </div>
-              ) : (
-                <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                  The prompt has expired. Check the customer&apos;s M-Pesa SMS before confirming, or resend.
-                </p>
-              )}
-              <div className="flex gap-2 justify-center flex-wrap">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    reset()
-                    sendSTK()
-                  }}
-                  className="gap-1.5"
-                >
-                  <RotateCcw size={13} />
-                  Resend
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => switchMode("manual")}>
-                  Enter code manually
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => onConfirm(null, { viaPrompt: true })}
-                  disabled={submitting}
-                  className="bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white"
-                >
-                  {submitting ? "Saving…" : "Confirm received"}
-                </Button>
-              </div>
-            </div>
+          {/* PROMPT — waiting for M-Pesa to confirm; the sale completes by itself */}
+          {mode === "prompt" && phase === "waiting" && checkoutId && (
+            <StkWaitPanel
+              key={checkoutId}
+              checkoutRequestId={checkoutId}
+              phone={phone}
+              amount={Math.ceil(total)}
+              submitting={submitting}
+              onPaid={onPaid}
+              onResend={() => { reset(); void sendSTK() }}
+              onManual={() => switchMode("manual")}
+            />
           )}
 
           {/* MANUAL */}

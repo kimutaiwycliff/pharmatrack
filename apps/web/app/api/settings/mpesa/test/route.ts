@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm"
 import { dbAdmin, mpesa_config } from "@pharmatrack/db"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { getMpesaConfig, isConfigured } from "@/lib/mpesa/config"
-import { getDarajaToken, stkPush } from "@/lib/mpesa/daraja"
+import { getDarajaToken, stkCallbackUrl, stkPush } from "@/lib/mpesa/daraja"
 import { forbidden } from "@/lib/api-auth"
 
 const schema = z.object({ stkPhone: z.string().trim().optional() })
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await getDarajaToken(cfg) // throws on bad key/secret
+    await getDarajaToken(cfg, { fresh: true }) // throws on bad key/secret — never a cached token
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "Connection failed" }, { status: 200 })
   }
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     try {
       const res = await stkPush(cfg, {
         phone: stkPhone, amount: 1, accountRef: "TEST",
-        callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/mpesa/callback`,
+        callbackUrl: stkCallbackUrl(),
       })
       const accepted = res.ok && String(res.data.ResponseCode ?? "") === "0"
       stk = { requested: true, accepted, message: accepted
