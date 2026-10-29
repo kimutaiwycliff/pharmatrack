@@ -2,6 +2,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { dbAdmin, platform_admin } from "@pharmatrack/db"
 import { LoginForm } from "@/components/auth/LoginForm"
+import { HomeLink } from "@/components/auth/HomeLink"
 
 export const metadata = { title: "Sign in", robots: { index: false, follow: false } }
 // Reads platform_admins (service-role) to route first-run installs to /setup —
@@ -31,7 +32,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <div className="absolute top-1/2 -right-16 w-64 h-64 rounded-full bg-white/5" />
 
         {/* Logo */}
-        <Link href="/" className="relative flex items-center gap-2.5 w-fit">
+        <Link href="/" aria-label="PharmaTrack home" className="relative flex items-center gap-2.5 w-fit">
           <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
             <svg
               width="20"
@@ -83,7 +84,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       </div>
 
       {/* Right — login form */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 lg:py-0 relative">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-16 lg:py-0 relative">
+        <HomeLink />
         {/* Decorative blob — mobile/tablet only */}
         <div
           className="lg:hidden pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full opacity-60"
@@ -92,7 +94,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
         <div className="w-full max-w-[420px] relative">
           {/* Mobile-only logo */}
-          <div className="flex items-center gap-2 justify-center mb-7 lg:hidden">
+          <Link href="/" aria-label="PharmaTrack home" className="flex w-fit mx-auto items-center gap-2 justify-center mb-7 lg:hidden">
             <div className="w-9 h-9 rounded-lg bg-[var(--pt-green)] flex items-center justify-center">
               <svg
                 width="18"
@@ -110,7 +112,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <span className="text-xl font-bold tracking-tight text-[var(--pt-text)]">
               Pharma<span className="text-[var(--pt-green)]">Track</span>
             </span>
-          </div>
+          </Link>
 
           <LoginForm googleEnabled={!!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)} oauthError={oauthError ?? null} />
         </div>
