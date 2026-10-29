@@ -5,7 +5,8 @@ import { Search, ScanBarcode, Plus, AlertCircle } from "lucide-react"
 import { useCartStore } from "@/lib/store/cartStore"
 import { useBarcodeScanner } from "@/lib/barcode/useBarcodeScanner"
 import { useDeviceHealth } from "@/lib/printing/useDeviceHealth"
-import type { BarcodeScanEvent } from "@pharmatrack/core"
+import { parseBarcode, scanFromSearchBox, SCANNER_THRESHOLD_MS, wedgeKeyChar, WEDGE_GS, type BarcodeScanEvent } from "@pharmatrack/core"
+import { useDeviceStore } from "@/lib/printing/config"
 import { CameraScanner } from "./CameraScanner"
 import { useProductLookup } from "@/lib/hooks/useProductLookup"
 import { useQuery } from "@tanstack/react-query"
@@ -156,13 +157,18 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
 
   // Shared by the USB wedge and the camera scanner — both produce a parsed event.
   const handleScannedEvent = useCallback((event: BarcodeScanEvent) => {
-    if (!event.gtin) return
+    // A GTIN when there is one; otherwise the code itself — our own "PT…"
+    // labels and UPC/ITF codes are looked up by barcode_raw.
+    const code = event.gtin ?? event.raw.trim()
+    if (!code) return
     setSearchText("")
     if (!tillActive) {
-      setScannedBarcode(event.gtin)
+      // A new scan is always handled, even of the same code — scanning a
+      // second pack of the same medicine must add it again.
+      prevLookup.current = null
+      setScannedBarcode(code)
       return
     }
-    const code = event.gtin
     void lookupTill(code, branchId, online).then((r) => {
       if (!r.found || !r.product) {
         onBarcodeNotFound?.(code)
@@ -181,6 +187,33 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
     enabled: scannerEnabled && !cameraOpen,
     onScan: handleScannedEvent,
   })
+
+  // The cursor sits in the search box after each sale (and on F2), where the
+  // page-wide scanner listener leaves keystrokes alone — so a scan lands here
+  // as text. Watch for scanner-speed bursts and treat Enter after one (or
+  // after a typed barcode) as a scan.
+  const burstRef = useRef("")
+  const lastKeyRef = useRef(0)
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      const burst = burstRef.current
+      burstRef.current = ""
+      const code = scanFromSearchBox(burst, e.currentTarget.value)
+      if (!code) return
+      e.preventDefault()
+      if (code === burst) useDeviceStore.getState().markScan(code)
+      handleScannedEvent(parseBarcode(code))
+      return
+    }
+    const ch = wedgeKeyChar(e)
+    if (ch === null) return
+    const now = Date.now()
+    // Stricter than the page-wide listener: here a person is often typing.
+    if (now - lastKeyRef.current > SCANNER_THRESHOLD_MS) burstRef.current = ""
+    lastKeyRef.current = now
+    if (ch === WEDGE_GS) e.preventDefault()
+    burstRef.current += ch
+  }
 
   const displayProducts = searchText.length >= 2 ? (searchData?.products ?? []) : []
   // Quick-add: most-sold first (learned), then fill from the catalogue, de-duped.
@@ -210,6 +243,7 @@ export function ProductSearch({ branchId, onBarcodeNotFound, scannerEnabled = tr
             setSearchText(e.target.value)
             setScannedBarcode(null)
           }}
+          onKeyDown={onSearchKeyDown}
           id="pos-search"
           aria-keyshortcuts="F2"
           placeholder="Scan barcode or search product…  (F2)"

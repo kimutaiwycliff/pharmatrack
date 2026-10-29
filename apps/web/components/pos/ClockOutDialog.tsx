@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Shift } from "@pharmatrack/types"
 
 interface ClockOutDialogProps {
@@ -37,9 +37,23 @@ export function ClockOutDialog({ open, onOpenChange, shift, onSuccess }: ClockOu
   const [isPending, startTransition] = useTransition()
   const queryClient = useQueryClient()
 
+  // Cash taken this shift, fetched fresh when the dialog opens — the drawer
+  // should hold the float plus this (same sum the server records on close).
+  const { data: cashSales, isError: cashSalesFailed } = useQuery({
+    queryKey: ["shiftCashSales", shift.id],
+    queryFn: async () => {
+      const res = await fetch("/api/shifts/active")
+      if (!res.ok) throw new Error("Couldn't load this shift's cash sales")
+      return ((await res.json()) as { cashSales?: number }).cashSales ?? 0
+    },
+    enabled: open,
+    staleTime: 0,
+  })
+
   const duration = formatDuration(shift.clocked_in_at)
   const closing = parseFloat(closingCash)
-  const variance = !isNaN(closing) ? closing - shift.opening_float : null
+  const expected = cashSales === undefined ? null : shift.opening_float + cashSales
+  const variance = !isNaN(closing) && expected !== null ? Math.round((closing - expected) * 100) / 100 : null
 
   function handleClockOut() {
     if (isNaN(closing) || closing < 0) {
@@ -48,13 +62,19 @@ export function ClockOutDialog({ open, onOpenChange, shift, onSuccess }: ClockOu
     }
     setError("")
     startTransition(async () => {
-      const res = await fetch(`/api/shifts`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shift_id: shift.id, closing_cash: closing }),
-      })
+      let res: Response
+      try {
+        res = await fetch(`/api/shifts`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shift_id: shift.id, closing_cash: closing }),
+        })
+      } catch {
+        setError("No connection — the shift is still open. Check the internet and try again.")
+        return
+      }
       if (!res.ok) {
-        const data = (await res.json()) as { error?: string }
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
         setError(data.error ?? "Failed to end shift")
         return
       }
@@ -80,6 +100,17 @@ export function ClockOutDialog({ open, onOpenChange, shift, onSuccess }: ClockOu
               <span className="text-[var(--pt-text-secondary)]">Opening float</span>
               <span className="font-semibold">{kes(shift.opening_float)}</span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--pt-text-secondary)]">Cash sales</span>
+              <span className="font-semibold">{cashSales === undefined ? (cashSalesFailed ? "—" : "…") : kes(cashSales)}</span>
+            </div>
+            <div className="flex justify-between border-t border-[var(--pt-border)] pt-2">
+              <span className="font-medium">Expected in drawer</span>
+              <span className="font-bold">{expected === null ? (cashSalesFailed ? "—" : "…") : kes(expected)}</span>
+            </div>
+            {cashSalesFailed && (
+              <p className="text-xs text-[var(--pt-text-secondary)]">Couldn&apos;t load cash sales — the over/short is still worked out when you end the shift.</p>
+            )}
           </div>
 
           <div>
@@ -110,10 +141,10 @@ export function ClockOutDialog({ open, onOpenChange, shift, onSuccess }: ClockOu
                     : "bg-[var(--pt-red-50)] text-[var(--pt-red)]",
               ].join(" ")}
             >
-              <span>Variance</span>
+              <span>{variance === 0 ? "Cash matches" : variance > 0 ? "Over" : "Short"}</span>
               <span>
-                {variance >= 0 ? "+" : ""}
-                {kes(variance)}
+                {variance >= 0 ? "+" : "−"}
+                {kes(Math.abs(variance))}
               </span>
             </div>
           )}

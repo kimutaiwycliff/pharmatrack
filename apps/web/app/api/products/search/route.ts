@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
   // any direct match — so a brand search (e.g. "Voltaren") returns the generic and
   // all strengths (Diclofenac 50mg/100mg/cream/inj …), not just the brand row.
   const directMatch = or(
+    eq(product_stock.gtin, q), // a barcode typed into the till's search box
     ilike(product_stock.name, `%${q}%`),
     ilike(product_stock.brand_name, `%${q}%`),
     ilike(product_stock.strength, `%${q}%`),

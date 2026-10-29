@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseBarcode, wedgeKeyChar, WEDGE_GS } from "@pharmatrack/core"
+import { parseBarcode, scanFromSearchBox, wedgeKeyChar, WEDGE_GS } from "@pharmatrack/core"
 
 // What a keyboard-wedge scanner "types" for a GS1 DataMatrix whose batch (a
 // variable-length field) comes before the expiry: the separator arrives as Ctrl+].
@@ -41,5 +41,27 @@ describe("wedgeKeyChar", () => {
     expect(r.batchNumber).toBe("LOT7A")
     expect(r.expiryDate?.getFullYear()).toBe(2027)
     expect(r.expiryDate?.getMonth()).toBe(10)
+  })
+})
+
+describe("scanFromSearchBox", () => {
+  it("treats a scanner burst into the box as a scan, separator kept", () => {
+    const burst = "0106901028075909" + "10LOT7A" + WEDGE_GS + "17271130"
+    expect(scanFromSearchBox(burst, "0106901028075909" + "10LOT7A17271130")).toBe(burst)
+    // Something typed before the scan is left out of the code.
+    expect(scanFromSearchBox("6901028075909", "para6901028075909")).toBe("6901028075909")
+  })
+  it("still catches a barcode typed by hand", () => {
+    expect(scanFromSearchBox("", "6901028075909")).toBe("6901028075909")
+    expect(scanFromSearchBox("", " 12345678 ")).toBe("12345678")
+    expect(scanFromSearchBox("", "PTMH8K2Q1ZAB3C")).toBe("PTMH8K2Q1ZAB3C")
+  })
+  it("leaves ordinary searches alone", () => {
+    expect(scanFromSearchBox("", "paracetamol")).toBeNull()
+    expect(scanFromSearchBox("", "500")).toBeNull()
+    expect(scanFromSearchBox("", "amoxil 250")).toBeNull()
+    expect(scanFromSearchBox("pan", "panadol")).toBeNull() // fast typist, too short for a scan
+    expect(scanFromSearchBox("augmentin", "augmentin")).toBeNull() // fast typist, no digits
+    expect(scanFromSearchBox("amoxil 250", "amoxil 250")).toBeNull() // has a space
   })
 })

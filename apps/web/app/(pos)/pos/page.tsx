@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { ShoppingCart, ChevronUp } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -32,6 +32,18 @@ import { NetworkError } from "@/lib/till/http"
 import { receiptFromPayload } from "@/lib/till/receipt"
 
 type PayModal = "cash" | "mpesa" | "split" | null
+
+interface SaleParams {
+  paymentMethod: "cash" | "mpesa" | "split"
+  amountTendered: number | null
+  changeGiven: number | null
+  mpesaReference: string | null
+  cashAmount?: number
+  mpesaAmount?: number
+  customerPhone?: string | null
+  /** M-Pesa confirmed after an STK prompt (vs. a code typed by hand). */
+  mpesaViaPrompt?: boolean
+}
 
 interface ReceiptData {
   sale: Sale
@@ -94,17 +106,21 @@ export default function PosPage() {
 
   const suppliers = supData ?? []
 
-  async function submitSale(params: {
-    paymentMethod: "cash" | "mpesa" | "split"
-    amountTendered: number | null
-    changeGiven: number | null
-    mpesaReference: string | null
-    cashAmount?: number
-    mpesaAmount?: number
-    customerPhone?: string | null
-    /** M-Pesa confirmed after an STK prompt (vs. a code typed by hand). */
-    mpesaViaPrompt?: boolean
-  }) {
+  // One sale at a time. `submitting` is state, so two Enters in the same tick
+  // both see it false — this ref is what actually stops a double sale (or two
+  // queued offline copies of one).
+  const saleInFlight = useRef(false)
+  async function submitSale(params: SaleParams) {
+    if (saleInFlight.current) return
+    saleInFlight.current = true
+    try {
+      await recordSale(params)
+    } finally {
+      saleInFlight.current = false
+    }
+  }
+
+  async function recordSale(params: SaleParams) {
     if (!profile) return
     if (tillActive) {
       await submitTillSale(params)
@@ -379,7 +395,9 @@ export default function PosPage() {
         <ProductSearch
           branchId={activeBranch.id}
           onBarcodeNotFound={handleBarcodeNotFound}
-          scannerEnabled={!newProductOpen}
+          // Off while paying or on the receipt: a stray scan would type into the
+          // tendered-amount box and its Enter would confirm the sale.
+          scannerEnabled={!newProductOpen && !payModal && !receiptData}
         />
       </div>
 
@@ -424,11 +442,13 @@ export default function PosPage() {
       </Sheet>
 
       {/* Payment modals */}
-      {/* Remounted on each open so "tendered" starts from this sale's total. */}
+      {/* Remounted on each open so every sale starts fresh: this sale's total,
+          no phone number or "request sent" left over from the last customer. */}
       <CashModal
         key={payModal === "cash" ? "cash-open" : "cash-closed"}
         open={payModal === "cash"}
         total={total}
+        submitting={submitting}
         onClose={() => setPayModal(null)}
         onConfirm={(tendered, change) =>
           submitSale({
@@ -440,8 +460,10 @@ export default function PosPage() {
         }
       />
       <MpesaModal
+        key={payModal === "mpesa" ? "mpesa-open" : "mpesa-closed"}
         open={payModal === "mpesa"}
         total={total}
+        submitting={submitting}
         online={online}
         stkAvailable={stkAvailable}
         onClose={() => setPayModal(null)}
@@ -456,8 +478,10 @@ export default function PosPage() {
         }
       />
       <SplitModal
+        key={payModal === "split" ? "split-open" : "split-closed"}
         open={payModal === "split"}
         total={total}
+        submitting={submitting}
         online={online}
         stkAvailable={stkAvailable}
         onClose={() => setPayModal(null)}

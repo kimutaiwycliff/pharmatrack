@@ -36,6 +36,26 @@ export function wedgeKeyChar(e: { key: string; code?: string; ctrlKey?: boolean;
   return e.key.length === 1 ? e.key : null
 }
 
+// A burst this long into a text box is a scanner, not someone typing.
+export const INPUT_SCAN_MIN_LENGTH = 6
+
+/**
+ * Enter pressed in the till's search box: was that a barcode? `burst` is the
+ * run of keystrokes ≤ SCANNER_THRESHOLD_MS apart just before Enter (GS kept);
+ * `value` is what's in the box. A burst counts only if it looks like a code —
+ * no spaces, at least one digit — so a quick typist's "augmentin" stays a
+ * search. Otherwise a typed barcode — 8–14 digits, GS1 "(01)…"/"01…", or one
+ * of our own "PT…" codes — still counts. Returns the code to look up, or null
+ * to treat Enter as a normal search.
+ */
+export function scanFromSearchBox(burst: string, value: string): string | null {
+  const typed = value.trim()
+  const plain = burst.split(WEDGE_GS).join("")
+  if (plain.length >= INPUT_SCAN_MIN_LENGTH && !/\s/.test(plain) && /\d/.test(plain) && typed.endsWith(plain)) return burst
+  if (/^\d{8,14}$/.test(typed) || /^\(01\)\d{14}/.test(typed) || /^01\d{14}/.test(typed) || /^PT[0-9A-Z]{8,}$/.test(typed)) return typed
+  return null
+}
+
 // True when a completed buffer is long enough, and far enough past the last
 // accepted scan, to be treated as a genuine new scan rather than noise or an
 // accidental double-read of the same label.
