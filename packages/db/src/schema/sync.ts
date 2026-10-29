@@ -23,6 +23,10 @@ export const device = pgTable("device", {
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   // 'till' sells (stock share, offline sync) · 'office' = sign-in only (ADR-018, migration 041)
   purpose: text("purpose").notNull().default("till"),
+  // Migration 043: a temporary approval's end (null = until removed).
+  approved_until: timestamp("approved_until", { withTimezone: true }),
+  // Migration 043: all | selling | back_office — limits the person's role on this device.
+  access: text("access").notNull().default("all"),
 })
 
 // A blocked sign-in asking for this device to be approved (ADR-018,

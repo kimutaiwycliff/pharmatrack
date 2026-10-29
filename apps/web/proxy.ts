@@ -69,7 +69,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
   // Signed-in users who hit /login go to their app home (not the landing).
-  if (hasSession && pathname === "/login") {
+  // ?expired=1: the session cookie is still there but no longer valid (ended,
+  // or caught on an unapproved device) — let them sign in again.
+  if (hasSession && pathname === "/login" && !request.nextUrl.searchParams.has("expired")) {
     const home = request.nextUrl.clone()
     home.pathname = "/home"
     return NextResponse.redirect(home)

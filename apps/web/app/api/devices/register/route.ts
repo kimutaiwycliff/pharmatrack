@@ -5,7 +5,8 @@ import { getApiContext } from "@/lib/api-auth"
 import { zUuid } from "@/lib/api/validation"
 import { hashDeviceToken, newDeviceToken } from "@/lib/sync/device-token"
 import { createDevice } from "@/lib/devices/create"
-import { deviceCookie } from "@/lib/devices/lock"
+import { canApproveDevices } from "@pharmatrack/core"
+import { deviceCookie, loadDeviceLock } from "@/lib/devices/lock"
 
 // A manager/owner signed in on the phone registers it for offline selling.
 // Returns the device token ONCE — the app keeps it in secure storage. A
@@ -22,6 +23,12 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   const ctx = await getApiContext({ permission: "devices.manage" })
   if ("error" in ctx) return ctx.error
+  // With "Only approved devices" on, registering a device approves it — so the
+  // same rule applies: the owner, or managers only if the pharmacy allows it.
+  const lock = await loadDeviceLock(ctx.organizationId)
+  if (lock.enabled && !canApproveDevices(lock, ctx.role, ctx.permissions)) {
+    return NextResponse.json({ error: "Only the pharmacy owner can add devices while “Only approved devices” is on.", code: "owner_only" }, { status: 403 })
+  }
   const parsed = schema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const d = parsed.data

@@ -1,6 +1,8 @@
 "use client"
 
+import { useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { notifyDesktop } from "@/lib/desktop/notify"
 import { useQuery } from "@tanstack/react-query"
 import { Bell, AlertTriangle, ClipboardList, Clock, CreditCard, Phone, Tag, MonitorSmartphone } from "lucide-react"
 import {
@@ -57,6 +59,16 @@ export function NotificationsMenu({ branchId, ready }: { branchId: string | null
     retry: false,
   })
   const devicesWaiting = waitingNow ?? data?.devicesWaiting ?? 0
+  // A new request while the owner works elsewhere: an OS notification too
+  // (desktop app: even from the tray).
+  const lastWaiting = useRef<number | null>(null)
+  useEffect(() => {
+    if (waitingNow === undefined) return
+    if (lastWaiting.current !== null && waitingNow > lastWaiting.current) {
+      void notifyDesktop("A device is waiting for approval", "Someone is waiting at a new device. Approve it in Settings → Devices, or enter your PIN on that device.")
+    }
+    lastWaiting.current = waitingNow
+  }, [waitingNow])
   const countsWaiting = data?.stockTake?.waiting ?? 0
   const dueShelf = data?.stockTake?.dueShelf ?? null
   const count = lowStock.length + expiring.length + (trial ? 1 : 0) + (needsPrice > 0 ? 1 : 0) + (toCall > 0 ? 1 : 0) + (devicesWaiting > 0 ? 1 : 0) + (countsWaiting > 0 ? 1 : 0) + (dueShelf ? 1 : 0)

@@ -32,7 +32,7 @@ describe("setupProgress", () => {
     expect(p.next).toBe("staff")
   })
   it("ticks optional steps from real data", () => {
-    const p = setupProgress({ ...empty, products: 1, priced: 1, stocked: 1, sales: 1, staff: 3, mpesa: true, receiptLogo: true, devices: 2 })
+    const p = setupProgress({ ...empty, products: 1, priced: 1, stocked: 1, sales: 1, staff: 3, mpesa: true, receiptLogo: true, devices: 2, deviceLock: true })
     expect(p.steps.every((s) => s.done)).toBe(true)
     expect(p.next).toBeNull()
   })

@@ -7,24 +7,65 @@
 // so a pharmacy can't shut itself out.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Who may approve a new device: only the owner, or managers too. */
+export type DeviceApprovers = "owner" | "owner_managers"
+
 export interface DeviceLockSettings {
   enabled: boolean
   /** Let managers sign in anywhere (e.g. reports from home). */
   managers_exempt: boolean
+  /** Owner only by default — the owner's PIN is what lets a device in. */
+  approvers: DeviceApprovers
 }
 
-export const DEFAULT_DEVICE_LOCK: DeviceLockSettings = { enabled: false, managers_exempt: false }
+export const DEFAULT_DEVICE_LOCK: DeviceLockSettings = { enabled: false, managers_exempt: false, approvers: "owner" }
 
 /** Read the lock from org_settings.settings (any shape, never throws). */
 export function deviceLockFrom(settings: unknown): DeviceLockSettings {
   const raw = settings && typeof settings === "object" ? (settings as Record<string, unknown>).device_lock : null
   if (!raw || typeof raw !== "object") return { ...DEFAULT_DEVICE_LOCK }
   const r = raw as Record<string, unknown>
-  return { enabled: r.enabled === true, managers_exempt: r.managers_exempt === true }
+  return {
+    enabled: r.enabled === true,
+    managers_exempt: r.managers_exempt === true,
+    approvers: r.approvers === "owner_managers" ? "owner_managers" : "owner",
+  }
 }
 
+/**
+ * May this person approve a new device? The owner always; others only when
+ * the pharmacy lets managers approve and they hold "Manage selling devices".
+ */
+export function canApproveDevices(lock: Pick<DeviceLockSettings, "approvers">, role: string | null | undefined, permissions: readonly string[]): boolean {
+  if (role === "owner") return true
+  return lock.approvers === "owner_managers" && permissions.includes("devices.manage")
+}
+
+/** How long an approval lasts — "Just today" suits a locum or a borrowed phone. */
+export type ApprovalDuration = "today" | "week" | "always"
+
+export const APPROVAL_DURATIONS: Record<ApprovalDuration, { label: string; hint: string }> = {
+  always: { label: "Always", hint: "Until you remove it" },
+  week: { label: "7 days", hint: "Signs out by itself after a week" },
+  today: { label: "Just today", hint: "Signs out at midnight" },
+}
+
+/** When an approval ends (null = never). "Today" ends at midnight in Nairobi. */
+export function approvedUntil(duration: ApprovalDuration, now: Date = new Date()): Date | null {
+  if (duration === "always") return null
+  if (duration === "week") return new Date(now.getTime() + 7 * 86_400_000)
+  // Next midnight in Africa/Nairobi (UTC+3, no daylight saving).
+  const nairobi = new Date(now.getTime() + 3 * 3_600_000)
+  return new Date(Date.UTC(nairobi.getUTCFullYear(), nairobi.getUTCMonth(), nairobi.getUTCDate() + 1) - 3 * 3_600_000)
+}
+
+/** First Android JS bundle that sends its device key on every API call, so
+ *  the every-request check can apply to it. Older bundles are trusted on the
+ *  device their session started on until they update. */
+export const ANDROID_DEVICE_CHECK_MIN_VERSION = "1.3.2"
+
 /** Does the lock stop this role signing in on an unapproved device? */
-export function deviceLockApplies(lock: DeviceLockSettings, role: string | null | undefined): boolean {
+export function deviceLockApplies(lock: Pick<DeviceLockSettings, "enabled" | "managers_exempt">, role: string | null | undefined): boolean {
   if (!lock.enabled || !role) return false
   if (role === "owner") return false
   if (role === "manager" && lock.managers_exempt) return false
@@ -32,7 +73,7 @@ export function deviceLockApplies(lock: DeviceLockSettings, role: string | null 
 }
 
 /** Roles the lock applies to, for the settings summary. */
-export function lockedRoles(lock: DeviceLockSettings): string[] {
+export function lockedRoles(lock: Pick<DeviceLockSettings, "enabled" | "managers_exempt">): string[] {
   return ["manager", "pharmacist", "cashier"].filter((r) => deviceLockApplies({ ...lock, enabled: true }, r))
 }
 
@@ -41,6 +82,43 @@ export type DevicePurpose = "till" | "office"
 export const DEVICE_PURPOSES: Record<DevicePurpose, { label: string; description: string }> = {
   till: { label: "Selling till", description: "Sells at the till, works offline and holds a share of the branch's stock." },
   office: { label: "Back office", description: "For signing in to manage stock, reports and settings — doesn't sell offline or hold stock." },
+}
+
+// ── What a device may be used for (ADR-018 part 2) ─────────────────────────
+// With the lock on, a person can do on a device only what both their role
+// AND the device allow. "all" keeps a device as it always was.
+
+export type DeviceAccess = "all" | "selling" | "back_office"
+
+/** The till screen and what happens at the counter — no back office. */
+const SELLING_CAPS = new Set([
+  "pos.sell", "pos.discount", "sales.view_all", "shifts.view_all", "shifts.close_others", "sync.override",
+  "customers.manage", "prescriptions.manage", "appointments.manage",
+])
+/** Back office: everything except selling. */
+const SELLING_ONLY = new Set(["pos.sell", "pos.discount"])
+
+/** A person's permissions limited to what this device is for. */
+export function permissionsOnDevice<T extends string>(permissions: readonly T[], access: DeviceAccess): T[] {
+  if (access === "selling") return permissions.filter((p) => SELLING_CAPS.has(p))
+  if (access === "back_office") return permissions.filter((p) => !SELLING_ONLY.has(p))
+  return [...permissions]
+}
+
+/** The single "Used as" choice owners make; it sets both purpose and access. */
+export type DeviceUse = "till" | "office" | "all"
+
+export const DEVICE_USES: Record<DeviceUse, { label: string; description: string; purpose: DevicePurpose; access: DeviceAccess }> = {
+  till: { label: "Till only", description: "Selling, shifts and customers. No products, stock or reports screens.", purpose: "till", access: "selling" },
+  office: { label: "Back office", description: "Products, stock, purchasing and reports. No selling.", purpose: "office", access: "back_office" },
+  all: { label: "Everything", description: "Sells (offline too) and anything else the person's role allows.", purpose: "till", access: "all" },
+}
+
+/** Which "Used as" option a device is on now. */
+export function deviceUseOf(d: { purpose: string; access?: string | null }): DeviceUse {
+  if (d.access === "selling") return "till"
+  if (d.access === "back_office" || d.purpose === "office") return "office"
+  return "all"
 }
 
 /** How long a device has to be approved after a blocked sign-in. */

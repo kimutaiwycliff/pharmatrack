@@ -26,10 +26,10 @@ async function facts(orgId: string): Promise<SetupFacts> {
     db.select({ n: sql<number>`count(*)::int` }).from(device).where(and(eq(device.organization_id, orgId), isNull(device.revoked_at))),
     db.select({ settings: org_settings.settings }).from(org_settings).where(eq(org_settings.organization_id, orgId)).limit(1),
   ])
-  const s = (settings[0]?.settings ?? {}) as { receipt?: { logo?: unknown } }
+  const s = (settings[0]?.settings ?? {}) as { receipt?: { logo?: unknown }; device_lock?: { enabled?: unknown } }
   return {
     products: count(products), priced: count(priced), stocked: count(stocked), sales: count(sales),
-    staff: count(staff), mpesa: count(mpesa) > 0, receiptLogo: !!s.receipt?.logo, devices: count(devices),
+    staff: count(staff), mpesa: count(mpesa) > 0, receiptLogo: !!s.receipt?.logo, devices: count(devices), deviceLock: s.device_lock?.enabled === true,
   }
 }
 

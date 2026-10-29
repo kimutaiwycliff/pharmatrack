@@ -9,7 +9,8 @@ import { recordActivity } from "@/lib/insights/activity"
 // POST /api/sync/push — device uploads shifts/sales/overrides in order and gets
 // a result per item (synced / duplicate / rejected / retry). See lib/sync/push.ts.
 export async function POST(request: NextRequest) {
-  const ctx = await getDeviceContext(request)
+  // Sales made before a temporary approval ended still upload.
+  const ctx = await getDeviceContext(request, { allowExpired: true })
   if ("error" in ctx) return ctx.error
   const parsed = pushBody.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request", code: "invalid" }, { status: 400 })

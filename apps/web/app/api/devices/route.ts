@@ -16,7 +16,7 @@ export async function GET() {
     return NextResponse.json({
       devices: rows.map(({ d, branch_name, held, open_issues }) => ({
         id: d.id, name: d.name, code: d.device_code, branch_id: d.branch_id, branch_name,
-        platform: d.platform, app_version: d.app_version, purpose: d.purpose,
+        platform: d.platform, app_version: d.app_version, purpose: d.purpose, approved_until: d.approved_until, access: d.access,
         allocation_percent: d.allocation_percent == null ? null : Number(d.allocation_percent),
         last_seen_at: d.last_seen_at, last_sync_at: d.last_sync_at, revoked_at: d.revoked_at, created_at: d.created_at,
         units_held: held, open_issues,

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirm } from "@/components/ui/confirm-dialog"
-import { DEVICE_PURPOSES, formatPairingCode, type DevicePurpose, type DeviceLockSettings } from "@pharmatrack/core"
+import { APPROVAL_DURATIONS, DEVICE_USES, formatPairingCode, type ApprovalDuration, type DeviceLockSettings, type DeviceUse } from "@pharmatrack/core"
 
 // Settings → Devices: the "Only approved devices" switch (ADR-018) and the
 // devices waiting for approval.
@@ -132,6 +132,24 @@ export function DeviceLockCard({ branches }: { branches: Branch[] }) {
                 </span>
               </label>
             )}
+            {lock.enabled && (
+              <fieldset className="mt-3">
+                <legend className="text-sm font-medium">Who can approve new devices</legend>
+                <div className="mt-1.5 grid sm:grid-cols-2 gap-2">
+                  {([
+                    ["owner", "Only me (owner)", "Recommended. A new device needs your PIN — on that device or from here."],
+                    ["owner_managers", "Me and managers", "Managers with “Manage selling devices” can approve with their own PIN."],
+                  ] as const).map(([v, label, hint]) => (
+                    <button key={v} type="button" disabled={!canEdit || saving} aria-pressed={lock.approvers === v}
+                      onClick={() => void save({ ...lock, approvers: v })}
+                      className={`text-left rounded-lg border p-3 transition-colors disabled:opacity-60 ${lock.approvers === v ? "border-[var(--pt-green)] bg-[var(--pt-surface)] ring-1 ring-[var(--pt-green)]" : "border-[var(--pt-border)] bg-[var(--pt-surface)] hover:bg-[var(--pt-muted)]"}`}>
+                      <span className="block text-sm font-semibold">{label}</span>
+                      <span className="block text-xs text-[var(--pt-text-secondary)] mt-0.5">{hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             <p className="text-xs text-[var(--pt-text-tertiary)] mt-3">
               {s.tills} selling till{s.tills === 1 ? "" : "s"} · {s.office} back-office device{s.office === 1 ? "" : "s"} approved
               {!canEdit && " · Only the owner can change this setting"}
@@ -198,8 +216,11 @@ export function DeviceLockCard({ branches }: { branches: Branch[] }) {
 function ApproveDialog({ request, branches, onClose, onDone }: { request: PendingRequest; branches: Branch[]; onClose: () => void; onDone: () => void }) {
   const [name, setName] = useState(request.suggested_name)
   const [branchId, setBranchId] = useState(request.branch_id ?? branches[0]?.id ?? "")
-  const [purpose, setPurpose] = useState<DevicePurpose>("till")
+  const [use, setUse] = useState<DeviceUse>(request.requester_role === "cashier" ? "till" : "all")
+  const uses: DeviceUse[] = request.platform === "android" ? ["till", "all"] : ["till", "office", "all"]
   const [codeOk, setCodeOk] = useState(false)
+  const [duration, setDuration] = useState<ApprovalDuration>("always")
+  const [pin, setPin] = useState("")
   const [busy, setBusy] = useState(false)
 
   async function approve() {
@@ -207,12 +228,13 @@ function ApproveDialog({ request, branches, onClose, onDone }: { request: Pendin
     try {
       await json(await fetch(`/api/device-requests/${request.id}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve", name: name.trim(), branch_id: branchId, purpose: request.platform === "android" ? "till" : purpose }),
+        body: JSON.stringify({ action: "approve", name: name.trim(), branch_id: branchId, purpose: DEVICE_USES[use].purpose, use, duration, pin }),
       }))
       toast.success(`${name.trim()} approved — it will continue on its own in a few seconds`)
       onDone()
     } catch (e) {
       toast.error((e as Error).message)
+      setPin("")
       setBusy(false)
     }
   }
@@ -246,26 +268,40 @@ function ApproveDialog({ request, branches, onClose, onDone }: { request: Pendin
               </select>
             </div>
           )}
-          {request.platform === "android" ? (
-            <p className="text-xs text-[var(--pt-text-secondary)]">Phones are approved as selling tills — they work offline and hold a share of the branch&apos;s stock.</p>
-          ) : (
           <fieldset>
             <legend className="text-sm font-medium">Used as</legend>
-            <div className="mt-1.5 grid grid-cols-2 gap-2">
-              {(Object.keys(DEVICE_PURPOSES) as DevicePurpose[]).map((p) => (
-                <button key={p} type="button" onClick={() => setPurpose(p)} aria-pressed={purpose === p}
-                  className={`text-left rounded-lg border p-3 transition-colors ${purpose === p ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]" : "border-[var(--pt-border)] hover:bg-[var(--pt-muted)]"}`}>
-                  <span className="block text-sm font-semibold">{DEVICE_PURPOSES[p].label}</span>
-                  <span className="block text-xs text-[var(--pt-text-secondary)] mt-0.5">{DEVICE_PURPOSES[p].description}</span>
+            <div className={`mt-1.5 grid ${uses.length === 3 ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
+              {uses.map((p) => (
+                <button key={p} type="button" onClick={() => setUse(p)} aria-pressed={use === p}
+                  className={`text-left rounded-lg border p-3 transition-colors ${use === p ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]" : "border-[var(--pt-border)] hover:bg-[var(--pt-muted)]"}`}>
+                  <span className="block text-sm font-semibold">{DEVICE_USES[p].label}</span>
+                  <span className="block text-xs text-[var(--pt-text-secondary)] mt-0.5">{DEVICE_USES[p].description}</span>
                 </button>
               ))}
             </div>
           </fieldset>
-          )}
+          <fieldset>
+            <legend className="text-sm font-medium">Approved for</legend>
+            <div className="mt-1.5 grid grid-cols-3 gap-2">
+              {(["always", "week", "today"] as ApprovalDuration[]).map((d) => (
+                <button key={d} type="button" onClick={() => setDuration(d)} aria-pressed={duration === d}
+                  className={`rounded-lg border p-2.5 text-left transition-colors ${duration === d ? "border-[var(--pt-green)] bg-[var(--pt-green-50)]" : "border-[var(--pt-border)] hover:bg-[var(--pt-muted)]"}`}>
+                  <span className="block text-sm font-semibold">{APPROVAL_DURATIONS[d].label}</span>
+                  <span className="block text-[11px] text-[var(--pt-text-secondary)] mt-0.5">{APPROVAL_DURATIONS[d].hint}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <div>
+            <label htmlFor="approve-pin" className="text-sm font-medium">Your PIN</label>
+            <Input id="approve-pin" className="mt-1.5 h-10 tracking-[0.4em] font-mono" type="password" inputMode="numeric" autoComplete="off"
+              value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="••••" />
+            <p className="text-xs text-[var(--pt-text-secondary)] mt-1">Your till PIN confirms it&apos;s you letting this device in.</p>
+          </div>
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={!codeOk || busy || name.trim().length < 2 || !branchId} onClick={() => void approve()}
+          <Button disabled={!codeOk || busy || name.trim().length < 2 || !branchId || pin.length < 4} onClick={() => void approve()}
             className="bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white">
             {busy ? <Loader2 size={15} className="animate-spin" /> : "Approve device"}
           </Button>

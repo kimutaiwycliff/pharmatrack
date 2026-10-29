@@ -1,6 +1,7 @@
 import { getCookie } from "./auth-client"
 import { env } from "./env"
 import { TimeoutError, UserFacingError } from "./errors"
+import { readDeviceToken } from "./sync/device-key"
 
 // Every request has a time limit, so a button never spins forever on a weak
 // connection. The limit covers getting the response headers; apiJson() also
@@ -30,6 +31,14 @@ async function timedFetch(url: string, init: RequestInit, ms: number): Promise<R
 // so Better Auth's origin-trust check doesn't apply here). Attaches the same
 // session the expoClient keeps in SecureStore as a plain Cookie header, the
 // mechanism @better-auth/expo's own client exposes getCookie() for.
+// Approved devices only (ADR-018): every call carries this phone's device key,
+// so the server can check each request — not just the sign-in — comes from
+// the approved till its session started on.
+async function deviceHeaders(): Promise<Record<string, string>> {
+  const token = await readDeviceToken().catch(() => null)
+  return token ? { "x-pt-device": token, "x-pt-platform": "android" } : { "x-pt-platform": "android" }
+}
+
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   // ADR-014: the Offline Edition build has no EXPO_PUBLIC_API_URL at all —
   // fail loudly here rather than silently fetching "undefined/api/...", so a
@@ -40,12 +49,14 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     throw new UserFacingError(OFFLINE_BUILD)
   }
   const cookie = getCookie()
+  const device = await deviceHeaders()
   return timedFetch(
     `${env.EXPO_PUBLIC_API_URL}${path}`,
     {
       ...init,
       headers: {
         ...(init?.headers ?? {}),
+        ...device,
         ...(cookie ? { cookie } : {}),
         "Content-Type": "application/json",
       },
@@ -65,6 +76,7 @@ export async function apiFetchFormData(path: string, formData: FormData, init?: 
     throw new UserFacingError(OFFLINE_BUILD)
   }
   const cookie = getCookie()
+  const device = await deviceHeaders()
   return timedFetch(
     `${env.EXPO_PUBLIC_API_URL}${path}`,
     {
@@ -73,6 +85,7 @@ export async function apiFetchFormData(path: string, formData: FormData, init?: 
       body: formData,
       headers: {
         ...(init?.headers ?? {}),
+        ...device,
         ...(cookie ? { cookie } : {}),
       },
     },
