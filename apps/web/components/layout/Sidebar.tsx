@@ -178,8 +178,10 @@ export function Sidebar() {
       <aside
         aria-label="Main menu"
         className={[
-          "relative flex flex-col shrink-0 border-r border-[var(--pt-border)] bg-[var(--pt-surface)] transition-all duration-200",
-          // Mobile: fixed off-canvas drawer (always full width when shown)
+          "flex flex-col shrink-0 border-r border-[var(--pt-border)] bg-[var(--pt-surface)] transition-all duration-200",
+          // Mobile: fixed off-canvas drawer over the page (always full width when
+          // shown). Don't add another position class above — `relative` once won
+          // and the hidden drawer squeezed every page to 150px on phones.
           "fixed inset-y-0 left-0 z-50 w-60 lg:static lg:z-auto lg:translate-x-0",
           // Off-screen only below lg; desktop sidebar never gets a transform
           mobileNavOpen ? "translate-x-0" : "max-lg:-translate-x-full",

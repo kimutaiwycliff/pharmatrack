@@ -160,7 +160,7 @@ export default function InventoryPage() {
             {ready ? `${data?.total ?? "—"} products${isAll ? " · all branches" : ""}` : "Loading…"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             onClick={backfillAndPrint}
