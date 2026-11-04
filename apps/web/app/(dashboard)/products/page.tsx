@@ -209,7 +209,7 @@ export default function ProductsPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <SlidersHorizontal size={14} className="text-[var(--pt-text-tertiary)]" />
           <select
             value={categoryId}

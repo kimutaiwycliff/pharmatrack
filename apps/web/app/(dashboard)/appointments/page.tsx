@@ -82,7 +82,7 @@ export default function AppointmentsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 gap-3">
+      <div className="flex flex-wrap items-center justify-between mb-6 gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Appointments</h1>
           <p className="text-sm text-[var(--pt-text-secondary)] mt-0.5">Book and monitor injections, family planning and clinical visits</p>
