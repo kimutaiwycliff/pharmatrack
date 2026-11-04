@@ -6,6 +6,11 @@ on:
   push:
   pull_request:
   workflow_dispatch: # allow a manual re-deploy from the Actions tab
+    inputs:
+      android_apk:
+        description: "Build the Android APK (EAS) and publish it to the landing page, even with no mobile changes"
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -490,7 +495,12 @@ jobs:
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
           EVENT: ${{ github.event_name }}
+          FORCE_APK: ${{ inputs.android_apk }}
         run: |
+          # Asked for from the Run button (e.g. after the EAS monthly quota resets).
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$FORCE_APK" = "true" ]; then
+            echo "mobile=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           # See the identical comment in desktop-changes above — workflow_dispatch
           # now diffs against the parent commit too, instead of always rebuilding
           # (an EAS cloud build isn't free either, and stacks with the desktop
