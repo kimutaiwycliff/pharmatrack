@@ -12,8 +12,8 @@ const {
 } = await import("@pharmatrack/db")
 const {
   createSale, saleErrorResponse, InsufficientStockError, UnpricedProductError, InvalidProductError, MpesaNotConfirmedError,
-} = await import("../lib/sales/create-sale.ts")
-type SaleInput = import("../lib/sales/create-sale.ts").SaleInput
+} = await import("../lib/sales/create-sale")
+type SaleInput = import("../lib/sales/create-sale").SaleInput
 
 const admin = dbAdmin()
 const stamp = Date.now()
