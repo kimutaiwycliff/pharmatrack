@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { ArrowLeft, Clock, Loader2, LogOut, Moon, MoreHorizontal, Sun, Users } from "lucide-react"
 import { useTheme } from "next-themes"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -29,6 +30,8 @@ import { useTillActive, useTillStore } from "@/lib/till/store"
 import { receiptFromPayload } from "@/lib/till/receipt"
 import type { OutboxRow } from "@/lib/till/db"
 import { LogoutButton } from "@/components/LogoutButton"
+import { StationModePicker } from "@/components/cashier-station/StationModePicker"
+import { useStationModeStore, useStationRole, useStationStatus } from "@/lib/cashier-station/client"
 
 function formatDuration(from: string | number) {
   const ms = Date.now() - new Date(from).getTime()
@@ -68,6 +71,21 @@ export function PosShell({ userId, children }: { userId: string; children: React
     tillBranch ?? branches.find((b) => b.id === shift?.branch_id) ?? branches.find((b) => b.id === activeBranchId) ?? branches[0]
   const online = useOnline()
 
+  // Cashier station (ADR-021): a plain browser in a branch that pays at a
+  // cashier is either an order desk (no cash, no clock-in) or the cashier.
+  // Registered offline tills and every other branch sell exactly as before.
+  const station = useStationStatus(activeBranch?.id, till.ready && !tillActive)
+  const { role: stationRole, canSend, canCollect } = useStationRole(activeBranch?.id, station.data)
+  const setStationMode = useStationModeStore((s) => s.setMode)
+  const stationSettled = tillActive || !activeBranch || station.isFetched
+  const pathname = usePathname()
+  const router = useRouter()
+  useEffect(() => {
+    if (!stationSettled) return
+    if (stationRole === "cashier" && pathname === "/pos") router.replace("/pos/cashier")
+    else if (stationRole !== "cashier" && pathname === "/pos/cashier") router.replace("/pos")
+  }, [stationSettled, stationRole, pathname, router])
+
   // Someone switched in by PIN: back-office links would act as the signed-in user, so hide them.
   const sellingAsOther = tillActive && !!till.staff && till.staff.id !== profile?.id
   const sellerName = tillActive ? till.staff?.name : profile?.full_name
@@ -103,8 +121,20 @@ export function PosShell({ userId, children }: { userId: string; children: React
       return <>{runner}<TillLockScreen onSetUpAgain={() => setSetupOpen(true)} /><SetupTillDialog open={setupOpen} onOpenChange={setSetupOpen} /></>
     }
     if (!till.shift) return <>{runner}<TillClockIn /></>
-  } else if (shift === null) {
-    return <ClockInDialog onSuccess={() => refetch()} />
+  } else {
+    if (!stationSettled) {
+      return (
+        <div className="h-screen flex items-center justify-center bg-[var(--pt-bg)] text-[var(--pt-text-secondary)]">
+          {runner}
+          <Loader2 size={20} className="animate-spin" />
+        </div>
+      )
+    }
+    if (stationRole === "choose" && activeBranch) {
+      return <StationModePicker branchName={activeBranch.name} onPick={(m) => setStationMode(activeBranch.id, m)} />
+    }
+    // An order desk never takes money, so it doesn't open a cash shift.
+    if (shift === null && stationRole !== "desk") return <ClockInDialog onSuccess={() => refetch()} />
   }
 
   const shiftStart = tillActive ? till.shift?.opened_at : shift?.clocked_in_at
@@ -132,6 +162,22 @@ export function PosShell({ userId, children }: { userId: string; children: React
             <span className="hidden lg:inline text-xs text-[var(--pt-text-tertiary)]">· {till.device.name} ({till.device.code})</span>
           )}
         </div>
+
+        {(stationRole === "desk" || stationRole === "cashier") && (
+          canSend && canCollect && activeBranch ? (
+            <button
+              onClick={() => setStationMode(activeBranch.id, stationRole === "desk" ? "cashier" : "desk")}
+              title={stationRole === "desk" ? "Make this computer the cashier" : "Make this computer an order desk"}
+              className="shrink-0 rounded-full border border-[var(--pt-border)] px-2.5 py-1 text-xs font-semibold hover:bg-[var(--pt-muted)]"
+            >
+              {stationRole === "desk" ? "Order desk" : "Cashier"} <span className="text-[var(--pt-text-tertiary)]">· switch</span>
+            </button>
+          ) : (
+            <span className="shrink-0 rounded-full bg-[var(--pt-muted)] px-2.5 py-1 text-xs font-semibold">
+              {stationRole === "desk" ? "Order desk" : "Cashier"}
+            </span>
+          )
+        )}
 
         <div className="flex-1" />
 

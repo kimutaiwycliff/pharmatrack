@@ -30,6 +30,9 @@ import { AllowanceError, cartToLines, commitTillSale, TillLockedError, type Comm
 import { refreshTillState, requestTopUp, scheduleSoonSync } from "@/lib/till/engine"
 import { NetworkError } from "@/lib/till/http"
 import { receiptFromPayload } from "@/lib/till/receipt"
+import { useStationRole, useStationStatus, type StationOrder } from "@/lib/cashier-station/client"
+import { MyOrdersStrip } from "@/components/cashier-station/MyOrdersStrip"
+import { OrderSlipModal } from "@/components/cashier-station/OrderSlipModal"
 
 type PayModal = "cash" | "mpesa" | "split" | null
 
@@ -102,6 +105,15 @@ export default function PosPage() {
   const discount = useCartStore((s) => s.discount)
   const clearCart = useCartStore((s) => s.clearCart)
   const total = cartTotal(items, discount)
+
+  // Cashier station (ADR-021): at an order desk the cart goes to the cashier.
+  // Off for registered tills and for branches without the station.
+  const { data: station } = useStationStatus(activeBranch?.id, !tillActive)
+  const { role: stationRole } = useStationRole(activeBranch?.id, station)
+  const deskMode = stationRole === "desk"
+  // Paying here too is allowed only where the branch permits direct sales.
+  const showPay = !deskMode || !!station?.direct_sale
+  const [slip, setSlip] = useState<StationOrder | null>(null)
 
   // Suppliers for NewProductDialog (categories are fetched by CategoryPicker)
   const { data: supData } = useSuppliers({ enabled: !!activeBranch })
@@ -324,6 +336,36 @@ export default function PosPage() {
     }
   }
 
+  async function sendToCashier() {
+    if (saleInFlight.current || !activeBranch) return
+    if (items.length === 0) { toast.error("Cart is empty."); return }
+    if (!online) { toast.error("No connection — the cashier can't see new orders. Try again when you're back online."); return }
+    const badItem = items.find((i) => !isUuid(i.product_id))
+    if (badItem) { toast.error(`"${badItem.product_name}" is missing a valid product id — remove and re-add it.`); return }
+    saleInFlight.current = true
+    setSubmitting(true)
+    try {
+      const out = await postJson<{ order: StationOrder }>("/api/orders", {
+        branch_id: activeBranch.id, items, discount_amount: discount,
+        customer_name: null, customer_phone: null, client_reference: crypto.randomUUID(),
+      })
+      setCartOpen(false)
+      clearCart()
+      setSlip(out.order)
+      qc.invalidateQueries({ queryKey: ["myOrders", activeBranch.id] })
+      qc.invalidateQueries({ queryKey: ["productSearch"] })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "The order wasn't sent")
+    } finally {
+      saleInFlight.current = false
+      setSubmitting(false)
+    }
+  }
+
+  // The F8 handler below reads this, so it always sends the current cart.
+  const sendToCashierRef = useRef(sendToCashier)
+  useEffect(() => { sendToCashierRef.current = sendToCashier })
+
   const handleNewSale = useCallback(() => {
     clearCart()
     setReceiptData(null)
@@ -338,8 +380,13 @@ export default function PosPage() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.altKey || e.ctrlKey || e.metaKey) return
-      if (payModal || receiptData || newProductOpen) return
-      const pay = e.key === "F8" ? "cash" : e.key === "F9" ? "mpesa" : e.key === "F4" ? "split" : null
+      if (payModal || receiptData || newProductOpen || slip) return
+      if (deskMode && e.key === "F8") {
+        e.preventDefault()
+        if (!submitting) void sendToCashierRef.current()
+        return
+      }
+      const pay = !showPay ? null : e.key === "F8" ? "cash" : e.key === "F9" ? "mpesa" : e.key === "F4" ? "split" : null
       if (e.key === "F2") {
         e.preventDefault()
         const el = document.getElementById("pos-search") as HTMLInputElement | null
@@ -359,7 +406,7 @@ export default function PosPage() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [payModal, receiptData, newProductOpen, items.length, submitting])
+  }, [payModal, receiptData, newProductOpen, items.length, submitting, slip, deskMode, showPay])
 
   const handleBarcodeNotFound = useCallback((barcode: string) => {
     setNotFoundBarcode(barcode)
@@ -390,17 +437,20 @@ export default function PosPage() {
           cashierName={profile.full_name}
           onPay={handlePay}
           submitting={submitting}
+          onSend={deskMode ? () => void sendToCashier() : undefined}
+          showPay={showPay}
         />
       </div>
 
       {/* Product search — fills the screen on mobile, right pane on desktop */}
       <div className="order-1 md:order-2 flex-1 w-full min-h-0 flex flex-col overflow-hidden">
+        {deskMode && <MyOrdersStrip branchId={activeBranch.id} online={online} />}
         <ProductSearch
           branchId={activeBranch.id}
           onBarcodeNotFound={handleBarcodeNotFound}
           // Off while paying or on the receipt: a stray scan would type into the
           // tendered-amount box and its Enter would confirm the sale.
-          scannerEnabled={!newProductOpen && !payModal && !receiptData}
+          scannerEnabled={!newProductOpen && !payModal && !receiptData && !slip}
         />
       </div>
 
@@ -440,6 +490,8 @@ export default function PosPage() {
             onPay={handlePay}
             submitting={submitting}
             onClose={() => setCartOpen(false)}
+            onSend={deskMode ? () => void sendToCashier() : undefined}
+            showPay={showPay}
           />
         </SheetContent>
       </Sheet>
@@ -506,6 +558,16 @@ export default function PosPage() {
       {/* First sale coaching + celebration (ADR-019) */}
       <PosCoach cartCount={items.length} paused={payModal !== null || receiptData !== null || newProductOpen} />
       <FirstSaleCelebration receiptOpen={receiptData !== null} />
+
+      {/* Order desk: the number the customer takes to the cashier (ADR-021) */}
+      <OrderSlipModal
+        order={slip}
+        branchName={activeBranch.name}
+        onClose={() => {
+          setSlip(null)
+          window.setTimeout(() => document.getElementById("pos-search")?.focus(), 50)
+        }}
+      />
 
       {/* Receipt */}
       <ReceiptModal

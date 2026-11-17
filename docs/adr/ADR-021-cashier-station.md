@@ -226,6 +226,10 @@ still be paid for. Branch-locked staff only reach their own branch's orders.
 
 ### UI (web + desktop; desktop is the same app in Tauri, ADR-012)
 - **POS, branch off:** identical to today. No new buttons, no polling.
+- **Registered offline tills (ADR-016) keep selling as today in v1.** Order
+  desk and cashier modes need live server calls and a server shift, so they
+  are offered on plain browsers only. A registered till in an enabled branch
+  is listed as a direct sale (see above).
 - **POS, branch on:** the device picks a mode once, remembered on the device
   (`localStorage`; per-device, not per-user):
   - *Order desk*: the payment buttons become **Send to cashier** (plus
