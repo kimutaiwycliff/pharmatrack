@@ -40,6 +40,11 @@ const DIGEST_URL = `${TARGET.replace(/\/$/, "")}/api/cron/platform-digest`
 const ACTIVATION_INTERVAL_MS = Number(process.env.ACTIVATION_INTERVAL_MS || 60 * 60 * 1000)
 const ACTIVATION_URL = `${TARGET.replace(/\/$/, "")}/api/cron/activation-emails`
 
+// Every 5 minutes: mark cashier-station orders past their hold time as expired
+// (ADR-021). Holds already stop counting at expiry; this tidies the queue.
+const EXPIRE_ORDERS_INTERVAL_MS = Number(process.env.EXPIRE_ORDERS_INTERVAL_MS || 5 * 60 * 1000)
+const EXPIRE_ORDERS_URL = `${TARGET.replace(/\/$/, "")}/api/cron/expire-orders`
+
 function log(level, msg, extra) {
   process.stdout.write(
     JSON.stringify({ ts: new Date().toISOString(), level, svc: "worker", msg, ...extra }) + "\n",
@@ -84,6 +89,7 @@ const runSubscriptionSweep = () => runTick("subscription-expiry", SUBSCRIPTION_U
 const runSubscriptionReminders = () => runTick("subscription-reminder", SUBSCRIPTION_REMINDER_URL)
 const runPlatformDigest = () => runTick("platform-digest", DIGEST_URL)
 const runActivationEmails = () => runTick("activation-emails", ACTIVATION_URL)
+const runExpireOrders = () => runTick("expire-orders", EXPIRE_ORDERS_URL)
 
 log("info", "worker started", {
   reminderTarget: REMINDER_URL, reminderIntervalMs: INTERVAL_MS,
@@ -91,6 +97,7 @@ log("info", "worker started", {
   subscriptionReminderTarget: SUBSCRIPTION_REMINDER_URL, subscriptionReminderIntervalMs: REMINDER_SWEEP_INTERVAL_MS,
   digestTarget: DIGEST_URL, digestIntervalMs: DIGEST_INTERVAL_MS,
   activationTarget: ACTIVATION_URL, activationIntervalMs: ACTIVATION_INTERVAL_MS,
+  expireOrdersTarget: EXPIRE_ORDERS_URL, expireOrdersIntervalMs: EXPIRE_ORDERS_INTERVAL_MS,
 })
 
 // Run once each on boot (web is gated by depends_on: service_healthy), then on interval.
@@ -99,17 +106,20 @@ runSubscriptionSweep()
 runSubscriptionReminders()
 runPlatformDigest()
 runActivationEmails()
+runExpireOrders()
 const timer = setInterval(runReminders, INTERVAL_MS)
 const subscriptionTimer = setInterval(runSubscriptionSweep, SUBSCRIPTION_INTERVAL_MS)
 const subscriptionReminderTimer = setInterval(runSubscriptionReminders, REMINDER_SWEEP_INTERVAL_MS)
 const digestTimer = setInterval(runPlatformDigest, DIGEST_INTERVAL_MS)
 const activationTimer = setInterval(runActivationEmails, ACTIVATION_INTERVAL_MS)
+const expireOrdersTimer = setInterval(runExpireOrders, EXPIRE_ORDERS_INTERVAL_MS)
 
 function shutdown(signal) {
   log("info", "shutting down", { signal })
   clearInterval(timer)
   clearInterval(subscriptionTimer)
   clearInterval(subscriptionReminderTimer)
+  clearInterval(expireOrdersTimer)
   clearInterval(digestTimer)
   clearInterval(activationTimer)
   process.exit(0)

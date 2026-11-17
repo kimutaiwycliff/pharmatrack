@@ -158,8 +158,10 @@ ALTER TABLE payment ADD COLUMN reference text;
   - POS product search "in stock" figure.
 - Everything runs under the existing per-branch advisory lock
   (`alloc:<branch_id>`), so sends, sales and allowance refreshes can't race.
-- **When the branch has the station off, `reservedByOrders` is not called**,
-  so tenants without the add-on run exactly the queries they run today.
+- `reservedByOrders` runs on every sale, as one indexed lookup
+  (`idx_counter_order_queue`) that finds nothing for branches that never used
+  the station. Counting holds unconditionally keeps stock safe for orders
+  still open when an add-on lapses or a branch is switched off.
 
 ### Sale creation is shared, not copied
 `POST /api/sales`'s transaction body moves into
@@ -189,9 +191,11 @@ any add-on code depends on it.
 | `GET/POST /api/settings/addons` | `billing.manage` | View and activate/cancel add-ons (activation goes via Paystack). |
 | `PATCH /api/branches/[id]` (extend) | `branches.manage` | The three branch fields. Enabling requires the add-on to be active. |
 
-Every orders route first runs `requireAddon(orgId, "cashier_station")` and
-checks that the branch has it enabled. Without both, it returns
-`403 { code: "addon_locked" }`.
+Routes that **create** orders (send, resend) need the add-on
+(`403 addon_locked`) and the branch switched on (`403 station_off`). Routes
+that work on **existing** orders (queue, view, collect, remove line, cancel)
+need only the permission, so if the add-on lapses, orders already sent can
+still be paid for. Branch-locked staff only reach their own branch's orders.
 
 ### Enforcing the split (only in enabled branches)
 - New capabilities in `packages/core/src/permissions.ts`, group
@@ -283,8 +287,9 @@ Commission reports. Offline Edition (ADR-014) support.
    to today's behaviour (`cashier_station_enabled = false`). No existing
    CHECK, default or column is changed. `migrate:down` drops it all cleanly.
 2. **One gate.** Every new code path checks *add-on active **and** branch
-   enabled*. That is resolved once per request. When it is false, no
-   order-hold query runs, no new UI renders and no polling starts.
+   enabled*. When it is false, no order can be created, no new UI renders
+   and no polling starts. The only extra work on an ordinary sale is the
+   empty order-hold lookup above.
 3. **The only shared change is the `createSale` refactor**, shipped alone in
    PR 1 with parity tests and no behaviour change, before anything depends
    on it.

@@ -5,6 +5,7 @@ import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { apiError, zodErrorResponse } from "@/lib/api/errors"
 import { resolveBranchScope } from "@/lib/inventory/aggregate"
 import { createSale, saleErrorResponse, saleSchema } from "@/lib/sales/create-sale"
+import { mustUseCashier } from "@/lib/cashier-station/guard"
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -73,6 +74,13 @@ export async function POST(request: NextRequest) {
 
   const parsed = saleSchema.safeParse(await request.json())
   if (!parsed.success) return zodErrorResponse(parsed.error)
+  // Cashier station branches (ADR-021): order desks send orders to the cashier.
+  if (await mustUseCashier(ctx, parsed.data.branch_id, parsed.data.offline_reference)) {
+    return NextResponse.json(
+      { error: "This branch pays at the cashier — send the order to the cashier instead.", code: "use_cashier" },
+      { status: 403 },
+    )
+  }
   // No discount permission → any submitted discount is clamped to zero, the
   // same "clamp, never trust upward" rule the per-product cap uses.
   const actor = { organizationId: ctx.organizationId, userId: ctx.userId, mayDiscount: ctx.permissions.includes("pos.discount") }

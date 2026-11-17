@@ -7,7 +7,7 @@ import {
 import { nairobiYYMMDD } from "@pharmatrack/core/sync"
 import { stkCoversSale } from "@/lib/mpesa/stk"
 import { saleTimestamp } from "@/lib/sales/sold-at"
-import { reservedByDevices } from "@/lib/sync/allocation"
+import { mergeHolds, reservedByDevices, reservedByOrders } from "@/lib/sync/allocation"
 import { zUuid } from "@/lib/api/validation"
 
 // Recording a sale: price guard, stock guard, FEFO decrement, controlled
@@ -86,6 +86,28 @@ export const saleSchema = z.object({
 })
 export type SaleInput = z.infer<typeof saleSchema>
 
+/** What createSale records: a till sale (SaleInput), or a cashier-station
+ *  collect (ADR-021), which may also be paid by card. */
+export type SaleData = Omit<SaleInput, "payment_method"> & {
+  payment_method: SaleInput["payment_method"] | "card"
+  card_reference?: string | null
+}
+
+/** A price fixed when an order was sent: per line, in item order. */
+export interface LockedPricing {
+  lines: Array<{ unitPrice: number; discountPercent: number }>
+  discountAmount: number
+}
+
+export interface SaleOptions {
+  /** Charge these prices instead of re-pricing (an order collected after a price edit). */
+  locked?: LockedPricing
+  /** The order being collected: its own stock hold is what this sale consumes. */
+  counterOrderId?: string
+  /** Who served at the order desk (cashier_id is who took the money). */
+  soldBy?: string | null
+}
+
 export interface SaleActor {
   organizationId: string
   userId: string
@@ -98,18 +120,18 @@ function receiptNumber(seq: number, at: Date): string {
   return `RCP-${nairobiYYMMDD(at.getTime())}-${String(seq).padStart(6, "0")}`
 }
 
-/** Record one sale inside the caller's `withTenant` transaction. Throws the
- *  errors above (mapped to responses by `saleErrorResponse`), which roll the
- *  whole transaction back. */
-export async function createSale(db: DrizzleDB, actor: SaleActor, data: SaleInput) {
-  const { mayDiscount } = actor
-  // ── Idempotency: a re-synced offline sale must not duplicate ──────────────
-  if (data.offline_reference) {
-    const [dupe] = await db.select().from(sale).where(eq(sale.offline_reference, data.offline_reference)).limit(1)
-    if (dupe) return { sale: dupe, items: [], deduped: true }
-  }
-
-  const productIds = [...new Set(data.items.map((i) => i.product_id))]
+/** Server-side price of a cart: each line from the product's current price
+ *  (or pack price), discounts clamped to what's allowed — or, with `locked`,
+ *  the prices fixed when an order was sent. Throws InvalidProductError /
+ *  UnpricedProductError. Shared by sales and cashier-station orders. */
+export async function priceCart(
+  db: DrizzleDB,
+  items: SaleInput["items"],
+  discountRequested: number,
+  mayDiscount: boolean,
+  locked?: LockedPricing,
+) {
+  const productIds = [...new Set(items.map((i) => i.product_id))]
 
   // ── Price guard: the server is the source of truth for money, never the
   // client — a request payload (mobile or web) is just as easy to tamper
@@ -128,7 +150,7 @@ export async function createSale(db: DrizzleDB, actor: SaleActor, data: SaleInpu
     costPrice: p.cost_price,
   }]))
 
-  const packIds = data.items.map((i) => i.sell_unit?.pack_size_id).filter((id): id is string => !!id)
+  const packIds = items.map((i) => i.sell_unit?.pack_size_id).filter((id): id is string => !!id)
   const packRows = packIds.length > 0
     ? await db.select({
         id: product_pack_size.id, product_id: product_pack_size.product_id, unit_count: product_pack_size.unit_count,
@@ -137,9 +159,14 @@ export async function createSale(db: DrizzleDB, actor: SaleActor, data: SaleInpu
     : []
   const packMap = new Map(packRows.map((p) => [p.id, p]))
 
-  const itemPricing = data.items.map((item) => {
+  const itemPricing = items.map((item, idx) => {
     const priced = priceMap.get(item.product_id)
     if (!priced) throw new InvalidProductError(item.product_id, item.product_name)
+    const fixed = locked?.lines[idx]
+    if (fixed) {
+      const lineTotal = Number((item.quantity * fixed.unitPrice * (1 - fixed.discountPercent / 100)).toFixed(2))
+      return { unitPrice: fixed.unitPrice, discountPercent: fixed.discountPercent, lineTotal }
+    }
     let unitPrice = priced.sellingPrice
     if (item.sell_unit) {
       const pack = packMap.get(item.sell_unit.pack_size_id)
@@ -167,36 +194,70 @@ export async function createSale(db: DrizzleDB, actor: SaleActor, data: SaleInpu
   // submitting any discount_amount at all. Capped by the most restrictive
   // max_discount_percent across the cart's actual products (server-fetched
   // priceMap, not client-claimed), same rule the UI computes for display.
-  const discountCapPercent = Math.min(...data.items.map((item) => priceMap.get(item.product_id)!.maxDiscount))
+  const discountCapPercent = Math.min(...items.map((item) => priceMap.get(item.product_id)!.maxDiscount))
   const maxDiscountAmount = (subtotal * discountCapPercent) / 100
-  const discountAmount = mayDiscount ? Math.min(data.discount_amount, maxDiscountAmount) : 0
+  const discountAmount = locked
+    ? Math.min(locked.discountAmount, subtotal)
+    : mayDiscount ? Math.min(discountRequested, maxDiscountAmount) : 0
   const totalAmount = Math.max(0, Number((subtotal - discountAmount).toFixed(2)))
 
-  // ── Stock guard: never sell more than is on hand for this branch ──────────
+  return { priceMap, itemPricing, subtotal, discountAmount, totalAmount }
+}
+
+/** Stock guard: never sell (or hold) more than is on hand for the branch,
+ *  less what offline devices and other open orders hold. Takes the branch's
+ *  allocation lock for the rest of the transaction, so sales, order sends and
+ *  device top-ups can't race. Throws InsufficientStockError. */
+export async function assertStock(db: DrizzleDB, branchId: string, items: Array<{ product_id: string; product_name: string; quantity: number }>, excludeOrderId?: string) {
+  const productIds = [...new Set(items.map((i) => i.product_id))]
+  // Lock first, then read: a sale or send waiting here must see the stock and
+  // holds left by the one ahead of it, not a figure read before it committed.
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${"alloc:" + branchId}))`)
   const availRows = await db.select({
     pid: product_batch.product_id,
     avail: sql<number>`coalesce(sum(${product_batch.quantity_remaining}), 0)::int`,
   }).from(product_batch)
-    .where(and(eq(product_batch.branch_id, data.branch_id), inArray(product_batch.product_id, productIds), gt(product_batch.quantity_remaining, 0)))
+    .where(and(eq(product_batch.branch_id, branchId), inArray(product_batch.product_id, productIds), gt(product_batch.quantity_remaining, 0)))
     .groupBy(product_batch.product_id)
   // Units held by registered devices' offline allowances aren't ours to sell
   // here — that's what guarantees offline devices can never oversell.
   // Same per-branch lock as allocation refresh, so the two can't race.
-  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${"alloc:" + data.branch_id}))`)
-  const held = await reservedByDevices(db, data.branch_id, productIds)
+  // Stock held by cashier-station orders (ADR-021) isn't ours to sell either,
+  // except the order this sale is collecting.
+  const held = mergeHolds(
+    await reservedByDevices(db, branchId, productIds),
+    await reservedByOrders(db, branchId, productIds, excludeOrderId),
+  )
   const availMap = new Map(availRows.map((r) => [r.pid, Math.max(0, Number(r.avail) - (held.get(r.pid) ?? 0))]))
 
   const requested = new Map<string, number>()
-  for (const i of data.items) requested.set(i.product_id, (requested.get(i.product_id) ?? 0) + i.quantity)
+  for (const i of items) requested.set(i.product_id, (requested.get(i.product_id) ?? 0) + i.quantity)
 
   const shortfalls: Shortfall[] = []
   for (const [pid, qty] of requested) {
     const avail = availMap.get(pid) ?? 0
     if (qty > avail) {
-      shortfalls.push({ product_id: pid, product_name: data.items.find((i) => i.product_id === pid)?.product_name ?? "Item", requested: qty, available: avail })
+      shortfalls.push({ product_id: pid, product_name: items.find((i) => i.product_id === pid)?.product_name ?? "Item", requested: qty, available: avail })
     }
   }
   if (shortfalls.length > 0) throw new InsufficientStockError(shortfalls)
+}
+
+/** Record one sale inside the caller's `withTenant` transaction. Throws the
+ *  errors above (mapped to responses by `saleErrorResponse`), which roll the
+ *  whole transaction back. */
+export async function createSale(db: DrizzleDB, actor: SaleActor, data: SaleData, options: SaleOptions = {}) {
+  const { mayDiscount } = actor
+  // ── Idempotency: a re-synced offline sale must not duplicate ──────────────
+  if (data.offline_reference) {
+    const [dupe] = await db.select().from(sale).where(eq(sale.offline_reference, data.offline_reference)).limit(1)
+    if (dupe) return { sale: dupe, items: [], deduped: true }
+  }
+
+  const { priceMap, itemPricing, subtotal, discountAmount, totalAmount } =
+    await priceCart(db, data.items, data.discount_amount, mayDiscount, options.locked)
+
+  await assertStock(db, data.branch_id, data.items, options.counterOrderId)
 
   const seqRows = (await db.execute(sql`select nextval('receipt_number_seq')::int as n`)) as unknown as Array<{ n: number }>
   const soldAt = saleTimestamp(data.offline_reference, data.sold_at)
@@ -220,6 +281,8 @@ export async function createSale(db: DrizzleDB, actor: SaleActor, data: SaleInpu
     customer_name: data.customer_name,
     customer_phone: data.customer_phone,
     created_at: soldAt,
+    counter_order_id: options.counterOrderId ?? null,
+    sold_by: options.soldBy ?? null,
   }).returning()
 
   // Build sale_item rows with FEFO batch deduction. `meta` runs parallel to the
@@ -330,6 +393,7 @@ export async function createSale(db: DrizzleDB, actor: SaleActor, data: SaleInpu
       sale_id: saleRow!.id, method: data.payment_method, amount: String(totalAmount),
       mpesa_receipt: mpesaRef,
       mpesa_checkout_id: stk?.checkout_request_id ?? null,
+      reference: data.payment_method === "card" ? (data.card_reference ?? null) : null,
     })
   }
 
