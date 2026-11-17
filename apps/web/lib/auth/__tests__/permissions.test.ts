@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest"
 import {
   CAPABILITY_KEYS, resolvePermissions, toggleCapability, overridesFor, homeRouteFor, hasBackOfficeAccess,
+  capabilityVisible, type Capability,
 } from "@pharmatrack/core"
+
+// What a tenant without any add-on can see and change.
+const core = (caps: Capability[]) => caps.filter((c) => capabilityVisible(c, []))
 
 describe("role permissions", () => {
   it("owner always has every capability, overrides ignored", () => {
@@ -11,7 +15,7 @@ describe("role permissions", () => {
 
   it("defaults reproduce the original hard-coded behaviour", () => {
     const cashier = resolvePermissions("cashier")
-    expect(cashier).toEqual(["pos.sell", "pos.discount"])
+    expect(core(cashier)).toEqual(["pos.sell", "pos.discount"])
     expect(hasBackOfficeAccess(cashier)).toBe(false)
     expect(homeRouteFor(cashier)).toBe("/pos")
 
@@ -59,5 +63,35 @@ describe("role permissions", () => {
     expect(overridesFor("pharmacist", resolvePermissions("pharmacist"))).toEqual([])
     const changed = toggleCapability(resolvePermissions("pharmacist"), "reports.view", true)
     expect(overridesFor("pharmacist", changed)).toEqual([{ capability: "reports.view", allowed: true }])
+  })
+
+  describe("add-on capabilities (ADR-021)", () => {
+    it("are hidden without the add-on and shown with it", () => {
+      expect(capabilityVisible("orders.collect", [])).toBe(false)
+      expect(capabilityVisible("orders.send", [])).toBe(false)
+      expect(capabilityVisible("orders.collect", ["cashier_station"])).toBe(true)
+      expect(capabilityVisible("pos.sell", [])).toBe(true)
+    })
+
+    it("default to the cashier collecting and everyone sending", () => {
+      expect(resolvePermissions("cashier")).toEqual(expect.arrayContaining(["orders.send", "orders.collect"]))
+      expect(resolvePermissions("pharmacist")).toContain("orders.send")
+      expect(resolvePermissions("pharmacist")).not.toContain("orders.collect")
+      expect(resolvePermissions("manager")).toContain("orders.collect")
+    })
+
+    it("don't change where anyone lands or their back-office access", () => {
+      for (const role of ["manager", "pharmacist", "cashier"] as const) {
+        const all = resolvePermissions(role)
+        expect(homeRouteFor(all)).toBe(homeRouteFor(core(all)))
+        expect(hasBackOfficeAccess(all)).toBe(hasBackOfficeAccess(core(all)))
+      }
+    })
+
+    it("go off with pos.sell, since they need it", () => {
+      const after = toggleCapability(resolvePermissions("cashier"), "pos.sell", false)
+      expect(after).not.toContain("orders.send")
+      expect(after).not.toContain("orders.collect")
+    })
   })
 })

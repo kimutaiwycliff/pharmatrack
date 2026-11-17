@@ -45,6 +45,11 @@ export const sale = pgTable("sale", {
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   device_id: uuid("device_id"),
   synced_at: timestamp("synced_at", { withTimezone: true }),
+  // Cashier station (ADR-021, migration 046): the order this sale collected
+  // (FK in SQL; no Drizzle reference, to avoid a circular schema import) and
+  // who served at the order desk. cashier_id is who took the money.
+  counter_order_id: uuid("counter_order_id"),
+  sold_by: text("sold_by").references(() => user.id, { onDelete: "set null" }),
 })
 
 export const sale_item = pgTable("sale_item", {
@@ -70,6 +75,8 @@ export const payment = pgTable("payment", {
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   mpesa_checkout_id: text("mpesa_checkout_id"),
   mpesa_receipt: text("mpesa_receipt"),
+  // Card approval code at the cashier station (migration 046).
+  reference: text("reference"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

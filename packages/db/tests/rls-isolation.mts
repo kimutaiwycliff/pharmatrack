@@ -70,6 +70,16 @@ async function seed(orgId: string, tag: string) {
   const [sc] = await admin.insert(s.stock_count).values({ organization_id: orgId, branch_id: b.id, kind: "count", title: `${tag} shelf` }).returning()
   await admin.insert(s.stock_count_line).values({ id: crypto.randomUUID(), organization_id: orgId, count_id: sc.id, product_id: p.id, expiry_date: "2027-06-30", counted_qty: 3 })
   await admin.insert(s.idempotency_key).values({ organization_id: orgId, key: `k-rls-test-${tag}`, scope: "batch.create", status_code: 201, response: { tag } })
+  // ADR-021 cashier station: the add-on (operator-granted) and one open order.
+  await admin.insert(s.org_addon).values({ organization_id: orgId, addon_code: "cashier_station" })
+  const [co] = await admin.insert(s.counter_order).values({
+    organization_id: orgId, branch_id: b.id, business_date: "2026-11-17", number: 1, sent_by: `rls-user-${orgId}`,
+    subtotal: "5.00", total_amount: "5.00", expires_at: new Date(Date.now() + 1_800_000),
+  }).returning()
+  await admin.insert(s.counter_order_item).values({
+    order_id: co.id, organization_id: orgId, product_id: p.id, product_name: p.name, base_unit: "tablet",
+    quantity: 1, unit_price: "5.00", line_total: "5.00",
+  })
 }
 
 async function run() {
@@ -86,6 +96,7 @@ async function run() {
     ["stock_count", s.stock_count], ["stock_count_line", s.stock_count_line],
     ["notification_state", s.notification_state],
     ["mpesa_stk_request", s.mpesa_stk_request],
+    ["org_addon", s.org_addon], ["counter_order", s.counter_order], ["counter_order_item", s.counter_order_item],
   ]
 
   // Each org sees only its own rows on each table.
@@ -181,6 +192,34 @@ async function run() {
     } catch {
       ok("trial_extension_request: cross-tenant insert blocked")
     }
+  }
+
+  // org_addon: a tenant reads its own add-ons but can never grant, change or
+  // cancel one (only the billing webhook / operator, as app_owner).
+  {
+    try {
+      await withTenant({ organizationId: T1, role: "owner" }, (db: any) => db.insert(s.org_addon).values({ organization_id: T1, addon_code: "sneaky" }))
+      bad("org_addon: tenant insert succeeded (should be blocked)")
+    } catch {
+      ok("org_addon: tenant insert blocked")
+    }
+    const updated = await withTenant({ organizationId: T1, role: "owner" }, (db: any) =>
+      db.update(s.org_addon).set({ status: "cancelled" }).where(eq(s.org_addon.organization_id, T1)).returning())
+    updated.length === 0 ? ok("org_addon: tenant cannot change its own add-on") : bad(`org_addon: tenant updated ${updated.length} row(s)`)
+    const catalogue = await withTenant(T1, (db: any) => db.select().from(s.addon))
+    catalogue.some((a: any) => a.code === "cashier_station") ? ok("addon: catalogue readable by tenants") : bad("addon: catalogue not readable")
+  }
+
+  // counter_order: no inserting an order into another tenant.
+  try {
+    const [b2] = await admin.select().from(s.branch).where(eq(s.branch.organization_id, T2))
+    await withTenant(T1, (db: any) => db.insert(s.counter_order).values({
+      organization_id: T2, branch_id: b2.id, business_date: "2026-11-17", number: 99, sent_by: `rls-user-${T1}`,
+      subtotal: "1.00", total_amount: "1.00", expires_at: new Date(),
+    }))
+    bad("counter_order: cross-tenant insert succeeded (should be blocked)")
+  } catch {
+    ok("counter_order: cross-tenant insert blocked")
   }
 
   // Deny-by-default: no org set → nothing visible.

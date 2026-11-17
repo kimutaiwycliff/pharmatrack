@@ -13,6 +13,10 @@ export const branch = pgTable("branch", {
   address: text("address"),
   is_active: boolean("is_active").notNull().default(true),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Cashier station add-on (ADR-021, migration 046): off unless switched on.
+  cashier_station_enabled: boolean("cashier_station_enabled").notNull().default(false),
+  order_hold_minutes: integer("order_hold_minutes").notNull().default(30),
+  order_desk_direct_sale: boolean("order_desk_direct_sale").notNull().default(false),
 })
 
 export const staff_profile = pgTable("staff_profile", {

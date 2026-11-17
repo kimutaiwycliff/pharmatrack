@@ -1,11 +1,11 @@
 import "server-only"
 import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
-import { eq, sql } from "drizzle-orm"
-import { dbAdmin, subscription, plan } from "@pharmatrack/db"
+import { and, eq, sql } from "drizzle-orm"
+import { dbAdmin, subscription, plan, org_addon } from "@pharmatrack/db"
 import {
   hasFeature, canAdd, planLimit, effectivePlanCode, entitlements,
-  type Feature, type Limit, type PlanCode,
+  ADDON_LABELS, isAddonCode, type AddonCode, type Feature, type Limit, type PlanCode,
 } from "@pharmatrack/core"
 
 // Server-side entitlement resolution + guards. Plan code is read from the org's
@@ -74,4 +74,41 @@ export async function requireCapacityApi(
 export async function requireFeaturePage(organizationId: string, feature: Feature): Promise<void> {
   const code = await planCodeForOrg(organizationId)
   if (!hasFeature(code, feature)) redirect(`/dashboard?locked=${feature}`)
+}
+
+// ── Paid add-ons (ADR-021) ───────────────────────────────────────────────────
+// A separate axis from plan features: an `org_addon` row per tenant. Each
+// add-on also has a deploy-wide kill switch, off until launch, so the code can
+// ship dark and be turned off again without a release.
+
+const ADDON_SWITCH: Record<AddonCode, boolean> = {
+  cashier_station: process.env.CASHIER_STATION_ENABLED === "true",
+}
+
+/** Whether an add-on is offered on this deploy at all. */
+export function addonOffered(code: AddonCode): boolean {
+  return ADDON_SWITCH[code]
+}
+
+/** The tenant's active add-ons (only those offered on this deploy). */
+export async function activeAddons(organizationId: string): Promise<AddonCode[]> {
+  if (!Object.values(ADDON_SWITCH).some(Boolean)) return []
+  const rows = await dbAdmin()
+    .select({ code: org_addon.addon_code })
+    .from(org_addon)
+    .where(and(eq(org_addon.organization_id, organizationId), eq(org_addon.status, "active")))
+  return rows.map((r) => r.code).filter(isAddonCode).filter(addonOffered)
+}
+
+export async function hasAddon(organizationId: string, code: AddonCode): Promise<boolean> {
+  return (await activeAddons(organizationId)).includes(code)
+}
+
+/** API guard — returns a 403 JSON response when the tenant lacks the add-on, else null. */
+export async function requireAddonApi(organizationId: string, code: AddonCode): Promise<NextResponse | null> {
+  if (await hasAddon(organizationId, code)) return null
+  return NextResponse.json(
+    { error: `This needs the ${ADDON_LABELS[code]} add-on. The owner can turn it on in Settings.`, code: "addon_locked", addon: code },
+    { status: 403 },
+  )
 }

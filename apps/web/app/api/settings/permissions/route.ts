@@ -3,10 +3,11 @@ import { z } from "zod"
 import { and, eq } from "drizzle-orm"
 import { withTenant, role_permission, audit_log } from "@pharmatrack/db"
 import {
-  CONFIGURABLE_ROLES, isCapability, overridesFor, resolveMatrix, resolvePermissions, toggleCapability,
+  CONFIGURABLE_ROLES, capabilityVisible, isCapability, overridesFor, resolveMatrix, resolvePermissions, toggleCapability,
   type Capability, type StaffRole,
 } from "@pharmatrack/core"
 import { getApiContext } from "@/lib/api-auth"
+import { activeAddons } from "@/lib/entitlements"
 
 // Settings → Roles & permissions. Owner-only by design: the matrix itself is
 // not a delegable capability, otherwise a manager could grant themselves
@@ -27,12 +28,13 @@ async function ownerContext() {
   return ctx
 }
 
-async function readMatrix(ctx: Parameters<typeof withTenant>[0]) {
+async function readMatrix(ctx: Parameters<typeof withTenant>[0] & { organizationId: string }) {
   const overrides = await withTenant(ctx, (db) =>
     db.select({ role: role_permission.role, capability: role_permission.capability, allowed: role_permission.allowed })
       .from(role_permission),
   )
-  return { matrix: resolveMatrix(overrides), overrides }
+  // Add-on capabilities only show (and can only be changed) with the add-on.
+  return { matrix: resolveMatrix(overrides), overrides, addons: await activeAddons(ctx.organizationId) }
 }
 
 export async function GET() {
@@ -47,6 +49,9 @@ export async function PATCH(req: NextRequest) {
   const parsed = patchSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
   const body = parsed.data
+  if (!("reset" in body) && !capabilityVisible(body.capability as Capability, await activeAddons(ctx.organizationId))) {
+    return NextResponse.json({ error: "That permission needs an add-on this pharmacy doesn't have" }, { status: 403 })
+  }
 
   await withTenant(ctx, async (db) => {
     const roles: StaffRole[] = "reset" in body
