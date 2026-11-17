@@ -1,5 +1,5 @@
 # ADR-021 — Cashier station (paid add-on)
-**Status:** Proposed (2026-11-17)
+**Status:** Accepted (2026-11-17)
 
 ## Context
 Busier pharmacies run several counters. Today every till takes its own
@@ -334,13 +334,19 @@ Commission reports. Offline Edition (ADR-014) support.
 Phase 2 (after pilot): Paybill/C2B auto-match by order number, "Now serving"
 display, Android modes.
 
-## Open questions
-1. Add-on price (KES / month), and whether annual plans get the annual
-   discount on it.
-2. Pro-rata on activation (recommended), or free until the next renewal?
-3. Default hold time: 30 min, or shorter at busy branches?
-4. Should order-desk staff hear a "Paid" alert for their orders, or is the
-   status strip enough?
+## Resolved (2026-11-17)
+1. **Price: KES 1,500 / month per tenant**, the same as Starter. It is a
+   third of Growth (4,500), the plan most multi-counter pharmacies are on.
+   Seeded in `addon`, so the operator can change it without a release.
+   Plans are monthly only today. If annual billing is added later, the
+   add-on gets the same discount as the plan.
+2. **Pro-rata on activation**: a one-off part-month charge for the rest of
+   the current period, then included in each renewal. The same total applies
+   to the self-serve "I've paid via M-Pesa" claim (migration 021), so manual
+   and Paystack payments both cover plan + add-on.
+3. **Hold time: 30 minutes by default**, adjustable per branch (5–240).
+4. **"Paid" alert:** a short chime and a toast on the order desk that sent
+   the order. The chime can be muted per device and is on by default.
 
 ## Consequences
 - **+** One drawer per branch and clear cash accountability, which is the
