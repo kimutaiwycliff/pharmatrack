@@ -17,6 +17,7 @@ import { useUrlParams } from "@/lib/hooks/useUrlParams"
 import { LoadError } from "@/components/LoadError"
 import { DateRangePresets } from "@/components/DateRangePresets"
 import { rangeFor } from "@/lib/sales/ranges"
+import { StationReport, type StationReportData } from "@/components/cashier-station/StationReport"
 
 /** Y-axis money: "500", "1.2k", "45k" — "(v/1000).toFixed(0)k" showed 0k 0k 0k for small takings. */
 const axisKES = (v: number) => (v < 1000 ? String(v) : v < 10_000 ? `${(v / 1000).toFixed(1).replace(/\.0$/, "")}k` : `${Math.round(v / 1000)}k`)
@@ -41,7 +42,11 @@ interface SalesReport {
     id: string; receipt_number: string; created_at: string
     payment_method: string; total_amount: number; discount_amount: number
     cashier: string; branch: string; item_count: number
+    /** Cashier-station pharmacies only: who served at the order desk. */
+    sold_by?: string
   }>
+  /** Only for pharmacies with the Cashier station add-on (ADR-021). */
+  station: StationReportData | null
 }
 
 interface InventoryReport {
@@ -135,7 +140,8 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
   if (isLoading) return <ReportSkeleton />
   if (!data) return <LoadError what="the sales report" onRetry={refetch} />
 
-  const { summary, dailyChart, byCashier, topProducts, transactions } = data
+  const { summary, dailyChart, byCashier, topProducts, transactions, station } = data
+  const cols = ["Receipt", "Date", "Cashier", ...(station ? ["Sold by"] : []), "Payment", "Items", "Discount", "Total"]
   const maxRevenue = Math.max(...(topProducts.map(p => p.revenue)), 1)
 
   return (
@@ -240,6 +246,8 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
         </div>
       </div>
 
+      {station && <StationReport data={station} onExport={exportCSV} />}
+
       {/* Transactions table */}
       <div className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5">
         <div className="flex items-center justify-between mb-4">
@@ -255,7 +263,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--pt-border)]">
-                {["Receipt", "Date", "Cashier", "Payment", "Items", "Discount", "Total"].map(h => (
+                {cols.map(h => (
                   <th key={h} className="px-3 py-2 text-left text-[11px] font-bold text-[var(--pt-text-secondary)] uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -268,6 +276,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
                     {new Date(t.created_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Nairobi" })}
                   </td>
                   <td className="px-3 py-2.5 text-[12px]">{t.cashier}</td>
+                  {station && <td className="px-3 py-2.5 text-[12px] text-[var(--pt-text-secondary)]">{t.sold_by || "—"}</td>}
                   <td className="px-3 py-2.5">
                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                       t.payment_method === "mpesa" ? "bg-green-50 text-green-700 dark:text-green-300"
@@ -283,7 +292,7 @@ function SalesTab({ from, to, branchId }: { from: string; to: string; branchId: 
                 </tr>
               ))}
               {transactions.length === 0 && (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-[var(--pt-text-tertiary)] text-[13px]">No transactions in range</td></tr>
+                <tr><td colSpan={cols.length} className="px-3 py-8 text-center text-[var(--pt-text-tertiary)] text-[13px]">No transactions in range</td></tr>
               )}
             </tbody>
           </table>
