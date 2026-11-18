@@ -1,5 +1,5 @@
 import { and, eq, gt, gte, inArray, isNull, ne, sql } from "drizzle-orm"
-import { device, device_stock_allocation, product_batch, sale, type DrizzleDB } from "@pharmatrack/db"
+import { counter_order, counter_order_item, device, device_stock_allocation, product_batch, sale, type DrizzleDB } from "@pharmatrack/db"
 import { reservationExpiry } from "./time"
 
 // Per-device stock allowance: the guarantee that offline devices can't oversell.
@@ -54,6 +54,35 @@ export async function reservedByDevices(db: DrizzleDB, branchId: string, product
   return new Map(rows.map((r) => [r.product_id, Number(r.qty)]))
 }
 
+/** Units of each product held by cashier-station orders waiting for payment
+ *  (ADR-021): open, not expired, line not removed. An expired order simply
+ *  stops counting — no job needed. Optionally excluding one order (the one
+ *  being collected). Returns nothing for branches that never used the add-on. */
+export async function reservedByOrders(db: DrizzleDB, branchId: string, productIds?: string[], excludeOrderId?: string) {
+  const rows = await db.select({
+    product_id: counter_order_item.product_id,
+    qty: sql<string>`sum(${counter_order_item.quantity})`,
+  }).from(counter_order_item)
+    .innerJoin(counter_order, eq(counter_order.id, counter_order_item.order_id))
+    .where(and(
+      eq(counter_order.branch_id, branchId),
+      eq(counter_order.status, "awaiting_payment"),
+      gt(counter_order.expires_at, sql`now()`),
+      isNull(counter_order_item.removed_at),
+      productIds && productIds.length > 0 ? inArray(counter_order_item.product_id, productIds) : undefined,
+      excludeOrderId ? ne(counter_order.id, excludeOrderId) : undefined,
+    ))
+    .groupBy(counter_order_item.product_id)
+  return new Map(rows.filter((r) => r.product_id).map((r) => [r.product_id!, Number(r.qty)]))
+}
+
+/** Sum per-product hold maps (devices + orders). */
+export function mergeHolds(...maps: Array<Map<string, number>>): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const m of maps) for (const [k, v] of m) out.set(k, (out.get(k) ?? 0) + v)
+  return out
+}
+
 async function branchStock(db: DrizzleDB, branchId: string, productIds?: string[]) {
   const rows = await db.select({
     product_id: product_batch.product_id,
@@ -97,6 +126,8 @@ export async function refreshAllocation(db: DrizzleDB, dev: { id: string; branch
   const [stock, held, share] = await Promise.all([
     branchStock(db, dev.branch_id), reservedByDevices(db, dev.branch_id, undefined, dev.id), deviceShare(db, dev),
   ])
+  // Stock held by cashier-station orders isn't given to devices either.
+  for (const [pid, qty] of await reservedByOrders(db, dev.branch_id)) held.set(pid, (held.get(pid) ?? 0) + qty)
   const until = reservationExpiry()
   const rows = [...stock.entries()]
     .map(([product_id, qty]) => ({ product_id, quantity: allowanceFor(qty, held.get(product_id) ?? 0, share) }))
@@ -112,9 +143,11 @@ export async function refreshAllocation(db: DrizzleDB, dev: { id: string; branch
 /** Grant more of one product to an online device, from stock no-one holds. */
 export async function topUpAllocation(db: DrizzleDB, dev: { id: string; branch_id: string }, productId: string, wanted: number) {
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${"alloc:" + dev.branch_id}))`)
-  const [stock, held] = await Promise.all([
+  const [stock, devHeld, orderHeld] = await Promise.all([
     branchStock(db, dev.branch_id, [productId]), reservedByDevices(db, dev.branch_id, [productId]),
+    reservedByOrders(db, dev.branch_id, [productId]),
   ])
+  const held = mergeHolds(devHeld, orderHeld)
   const free = Math.max(0, (stock.get(productId) ?? 0) - (held.get(productId) ?? 0))
   const grant = Math.min(free, Math.max(0, Math.floor(wanted)))
   const until = reservationExpiry()
