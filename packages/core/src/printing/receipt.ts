@@ -5,7 +5,7 @@
 // Money is integer cents throughout.
 import { formatKES, type Cents } from "../money"
 import { EscPos, toPrinterText, type Align } from "./escpos"
-import { DEFAULT_FOOTER, base64ToBytes, type LogoRaster } from "./receiptProfile"
+import { DEFAULT_FOOTER, base64ToBytes, qrRaster, type LogoRaster } from "./receiptProfile"
 
 export type PaperWidth = "58mm" | "80mm"
 
@@ -142,7 +142,15 @@ export function receiptRows(doc: ReceiptDoc, paper: PaperWidth): ReceiptRow[] {
 
   for (const l of doc.lines) {
     for (const t of wrapText(l.name, w)) rows.push({ text: t, bold: true })
-    pair(`  ${receiptQtyText(l)}`, formatKES(l.totalCents))
+    // "2 x Strip of 10 @ 120.00   KES 240.00" — on narrow paper that doesn't
+    // fit, so the quantity gets its own line(s) and the amount the next one
+    // (pairLine would otherwise cut the unit price short).
+    const qty = receiptQtyText(l), amount = formatKES(l.totalCents)
+    if (2 + qty.length + 1 + amount.length <= w) pair(`  ${qty}`, amount)
+    else {
+      for (const t of wrapText(qty, w - 2)) rows.push({ text: `  ${t}` })
+      pair("", amount)
+    }
     if (l.discountCents && l.discountCents > 0) pair("  Discount", `-${formatKES(l.discountCents)}`)
   }
   rows.push(rule)
@@ -202,7 +210,9 @@ export function encodeReceipt(doc: ReceiptDoc, opts: EncodeOptions): Uint8Array 
     }
     p.size(1, 1).bold(false)
     if (doc.qrData) {
-      p.align("center").qr(doc.qrData, opts.paper === "58mm" ? 4 : 6).line()
+      // As an image, not the printer's QR command: see qrRaster.
+      const q = qrRaster(doc.qrData, PAPER_DOTS[opts.paper], opts.paper === "58mm" ? 4 : 5)
+      p.align("center").raster(q.width, q.height, q.data).line()
       if (doc.qrCaption) for (const t of wrapText(doc.qrCaption, PAPER_COLUMNS[opts.paper])) p.line(t)
     }
     p.align("left").feed(3)
