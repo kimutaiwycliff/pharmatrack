@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, desc, eq, gte, inArray, lt, asc, sql } from "drizzle-orm"
-import { withTenant, sale, sale_item, product, product_batch, product_stock, user, branch } from "@pharmatrack/db"
+import { alias } from "drizzle-orm/pg-core"
+import { withTenant, sale, sale_item, product, product_batch, product_stock, user, branch, org_addon, staff_profile, role_permission } from "@pharmatrack/db"
+import { resolvePermissions } from "@pharmatrack/core"
+import { stationReport } from "@/lib/cashier-station/report"
 import { getTenantContext, requireActiveSubscription } from "@/lib/auth/helpers"
 import { requireFeatureApi } from "@/lib/entitlements"
 import { forbidden } from "@/lib/api-auth"
@@ -9,6 +12,9 @@ const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
 function toNairobiDate(d: Date): string {
   return new Date(d.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 10)
 }
+
+// Who served at the order desk (ADR-021): a second join on user.
+const seller = alias(user, "seller")
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -36,8 +42,11 @@ export async function GET(request: NextRequest) {
         id: sale.id, created_at: sale.created_at, receipt_number: sale.receipt_number,
         payment_method: sale.payment_method, total_amount: sale.total_amount, discount_amount: sale.discount_amount,
         cashier_name: user.name, branch_name: branch.name,
+        cashier_id: sale.cashier_id, branch_id: sale.branch_id, sold_by_name: seller.name,
+        counter_order_id: sale.counter_order_id, offline_reference: sale.offline_reference,
       }).from(sale)
         .leftJoin(user, eq(user.id, sale.cashier_id))
+        .leftJoin(seller, eq(seller.id, sale.sold_by))
         .leftJoin(branch, eq(branch.id, sale.branch_id))
         .where(and(
           eq(sale.status, "completed"),
@@ -107,7 +116,27 @@ export async function GET(request: NextRequest) {
 
       const dailyChart = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({ date, ...v }))
 
+      // Cashier station (ADR-021): only for pharmacies that have (or had) the
+      // add-on — everyone else gets exactly the report they always did.
+      const [hasAddon] = await db.select({ code: org_addon.addon_code }).from(org_addon).limit(1)
+      let station: ReturnType<typeof stationReport> | null = null
+      if (hasAddon) {
+        const stationBranches = new Map((await db.select({ id: branch.id, direct: branch.order_desk_direct_sale })
+          .from(branch).where(eq(branch.cashier_station_enabled, true))).map((b) => [b.id, { direct: b.direct }]))
+        const sellerIds = [...new Set(sales.map((s) => s.cashier_id).filter((id): id is string => !!id))]
+        const roles = sellerIds.length
+          ? await db.select({ id: staff_profile.user_id, role: staff_profile.role }).from(staff_profile).where(inArray(staff_profile.user_id, sellerIds))
+          : []
+        const overrides = await db.select({ role: role_permission.role, capability: role_permission.capability, allowed: role_permission.allowed }).from(role_permission)
+        const collects = new Set(roles.filter((r) => resolvePermissions(r.role, overrides).includes("orders.collect")).map((r) => r.id))
+        station = stationReport(
+          sales.map((s) => ({ ...s, total_amount: Number(s.total_amount) })),
+          { stationBranches, canCollect: (id) => !!id && collects.has(id) },
+        )
+      }
+
       return NextResponse.json({
+        station,
         summary: { totalRevenue, totalCash, totalMpesa, totalSplit, totalDiscount, transactionCount, totalCost, totalProfit },
         dailyChart,
         byCashier: Object.values(byCashier).sort((a, b) => b.revenue - a.revenue),
@@ -116,6 +145,7 @@ export async function GET(request: NextRequest) {
           id: s.id, receipt_number: s.receipt_number, created_at: s.created_at, payment_method: s.payment_method,
           total_amount: Number(s.total_amount), discount_amount: Number(s.discount_amount),
           cashier: s.cashier_name ?? "—", branch: s.branch_name ?? "—", item_count: (itemsBySale[s.id] ?? []).length,
+          ...(station && { sold_by: s.sold_by_name ?? "" }),
         })),
       })
     }
