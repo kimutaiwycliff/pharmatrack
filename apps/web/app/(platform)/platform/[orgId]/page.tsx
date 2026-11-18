@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PaymentPeriodDialog } from "@/components/platform/PaymentPeriodDialog"
+import { AddonsAdminPanel } from "@/components/platform/AddonsAdminPanel"
 import { PreviousTrialsPanel, TrialRequestsPanel, type PreviousTrial, type TrialRequest } from "@/components/platform/TrialSignalsPanel"
 import { daysLeft, endOfNairobiDay, nairobiDay } from "@/lib/billing/period"
 import { TenantHealthLine, TenantInsightsTab, type InsightsTab } from "@/components/platform/insights/TenantInsights"
@@ -265,6 +266,7 @@ export default function TenantDetailPage() {
       {tab !== "billing" ? <TenantInsightsTab orgId={orgId} tab={tab} /> : (
       <div className="max-w-3xl">
       <TrialRequestsPanel orgId={orgId} requests={data.trial_requests} onChanged={() => void refresh()} />
+      <AddonsAdminPanel orgId={orgId} />
 
       {/* Subscription */}
       <section className="bg-[var(--pt-surface)] rounded-xl border border-[var(--pt-border)] p-5 mb-5">

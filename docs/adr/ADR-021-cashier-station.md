@@ -258,27 +258,32 @@ still be paid for. Branch-locked staff only reach their own branch's orders.
   *Revoke* (for comps and manual payments), and an add-on line in the
   insights card (ADR-017).
 
-### Billing: flat per tenant, per month
-- `addon.price_kes_month` is charged **once per tenant**, however many
-  branches use it.
-- **Activation mid-period:** a one-off Paystack checkout for the rest of the
-  current period, pro-rated by day in integer cents (ADR-008), with
-  `type: "addon_activation"` in metadata. The webhook sets
-  `org_addon.status = 'active'` and records a `subscription_payment` row.
-- **Renewal:** `POST /api/billing/checkout` adds active add-ons to the plan
-  amount: one payment and one period end, so there is nothing new for the
-  tenant to track. For annual plans, the add-on is charged × 12. Whether to
-  apply the annual discount is an open question below.
-- **During the trial:** the add-on can be tried free until `trial_ends_at`.
-  It is then included in the first checkout like the plan.
-- **Lapse:** if the subscription goes `past_due`/`suspended`, the existing
-  gate applies to everything. If only the add-on is cancelled, enabled
-  branches revert to normal checkout at once. Open orders can still be
-  **collected** (no customer is stranded), but no new ones can be sent.
+### Billing: flat per tenant, per month, switched on by the operator
+*(Revised 2026-11-18: the operator enables the add-on after the payment
+arrives; there is no self-serve checkout.)*
+- `addon.price_kes_month` (KES 1,500) is charged **once per tenant**, however
+  many branches use it.
+- **Request:** the owner opens **Settings → Add-ons** (only listed when the
+  deploy offers an add-on). It shows the price, the M-Pesa number to pay
+  (`PLATFORM_PAYMENT_NUMBER`) and an *"I've paid — switch it on"* button with
+  an optional note (M-Pesa code). That sets `org_addon.status = 'requested'`
+  and emails the operator (migration 047).
+- **Activation:** in the operator console the tenant page has an **Add-ons**
+  panel. *Confirm payment* takes months (1–12), amount, method and reference.
+  It records a confirmed `subscription_payment` row tagged with `addon_code`,
+  sets the add-on `active` until `paid_until` (inclusive Nairobi day), writes
+  an audit row and emails the owner. Paying early continues from the day after
+  the current end; paying after a lapse starts again from today
+  (`addonCoverage`). A `waived` method covers comps.
+- **Lapse:** an add-on counts as active only while `paid_until` is today or
+  later, so it switches itself off when unpaid. Enabled branches then sell as
+  normal tills. Open orders can still be **collected**, but no new ones can be
+  sent. *Switch off* (revoke) does the same immediately.
+- Plan billing is unchanged. Add-on payments are left out of the owner's plan
+  history and of the trial-extension "has paid" check, and are included in
+  revenue in the operator insights.
 - `requireAddon()` lives in `apps/web/lib/entitlements.ts` beside
   `requireFeatureApi`. Add-ons are a separate axis from plan features.
-  Including an add-on in a plan (for example Enterprise) can come later as a
-  plan → add-on mapping.
 
 ### Not in v1
 Android order-desk and cashier modes. C2B/Paybill auto-matching (order
@@ -335,10 +340,10 @@ Commission reports. Offline Edition (ADR-014) support.
    enforcement, direct-sale flagging.
 4. **POS UI:** mode picker, order desk (send, slip, my orders), cashier
    station (queue, scan, pay with card added, release), offline behaviour.
-5. **Billing + settings:** Add-ons page, branch toggles, pro-rata activation,
-   renewal bundling, webhook, operator grant/revoke, reports' *Sold by* and
-   direct-sales list.
-6. **Pilot:** one tenant, one branch, two weeks. Then GA and a landing-page /
+5. **Add-ons + settings:** owner request page, branch switches, operator
+   confirm-payment / switch-off, paid-until lapse (migration 047).
+6. **Reports:** *Sold by* column and the direct-sales-at-order-desks list.
+7. **Pilot:** one tenant, one branch, two weeks. Then GA and a landing-page /
    pricing update.
 
 Phase 2 (after pilot): Paybill/C2B auto-match by order number, "Now serving"
@@ -350,10 +355,8 @@ display, Android modes.
    Seeded in `addon`, so the operator can change it without a release.
    Plans are monthly only today. If annual billing is added later, the
    add-on gets the same discount as the plan.
-2. **Pro-rata on activation**: a one-off part-month charge for the rest of
-   the current period, then included in each renewal. The same total applies
-   to the self-serve "I've paid via M-Pesa" claim (migration 021), so manual
-   and Paystack payments both cover plan + add-on.
+2. ~~Pro-rata on activation~~. Superseded 2026-11-18: the operator switches
+   the add-on on after payment, for whole months (see Billing).
 3. **Hold time: 30 minutes by default**, adjustable per branch (5–240).
 4. **"Paid" alert:** a short chime and a toast on the order desk that sent
    the order. The chime can be muted per device and is on by default.

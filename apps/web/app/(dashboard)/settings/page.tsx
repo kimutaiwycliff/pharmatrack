@@ -1,13 +1,14 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone, ShieldCheck, TabletSmartphone, Printer, ReceiptText } from "lucide-react"
+import { Building2, GitBranch, User, Palette, Syringe, CreditCard, Smartphone, ShieldCheck, TabletSmartphone, Printer, ReceiptText, Puzzle } from "lucide-react"
 import { hasFeature, type Feature, type Capability } from "@pharmatrack/core"
 import { OrgSettingsForm } from "@/components/settings/OrgSettingsForm"
 import { BranchList } from "@/components/settings/BranchList"
 import { ProfileSettingsForm } from "@/components/settings/ProfileSettingsForm"
 import { AppointmentServiceList, SERVICES_MANAGE_KEY } from "@/components/settings/AppointmentServiceList"
 import { BillingPanel } from "@/components/settings/BillingPanel"
+import { AddonsPanel, ADDONS_KEY, type AddonsResponse } from "@/components/settings/AddonsPanel"
 import { MpesaSettings } from "@/components/settings/MpesaSettings"
 import { RolePermissionsPanel } from "@/components/settings/RolePermissionsPanel"
 import { DevicesPanel } from "@/components/settings/DevicesPanel"
@@ -38,7 +39,7 @@ function useSettings() {
   })
 }
 
-type Tab = "org" | "receipt" | "branches" | "devices" | "hardware" | "services" | "payments" | "billing" | "permissions" | "profile" | "appearance"
+type Tab = "org" | "receipt" | "branches" | "devices" | "hardware" | "services" | "payments" | "billing" | "addons" | "permissions" | "profile" | "appearance"
 
 // `anyOf`: shown when the user holds any of these permissions (omit = everyone).
 // `ownerOnly`: the permissions matrix itself is never delegable.
@@ -53,6 +54,8 @@ const TABS: { key: Tab; label: string; icon: React.ElementType; group: string; a
   { key: "services",   group: "Pharmacy", label: "Services",     icon: Syringe, anyOf: ["appointment_services.manage", "appointments.manage"] },
   { key: "payments",   group: "Pharmacy", label: "Payments",     icon: Smartphone, anyOf: ["settings.organization"], requiresFeature: "mpesa_stk" },
   { key: "billing",    group: "Billing", label: "Billing",      icon: CreditCard, anyOf: ["billing.manage"] },
+  // Paid add-ons (ADR-021) — only listed when this deploy offers one.
+  { key: "addons",     group: "Billing", label: "Add-ons",      icon: Puzzle, anyOf: ["billing.manage", "branches.manage", "settings.organization"] },
   { key: "permissions", group: "Team", label: "Roles & permissions", icon: ShieldCheck, ownerOnly: true },
   { key: "profile",    group: "Account", label: "My Profile",   icon: User },
   { key: "appearance", group: "Account", label: "Appearance",   icon: Palette },
@@ -63,7 +66,19 @@ export default function SettingsPage() {
   const planCode = useSessionStore((s) => s.planCode)
   const permissions = useSessionStore((s) => s.permissions)
   const isOwner = profile?.role === "owner"
+  const mayAddons = ["billing.manage", "branches.manage", "settings.organization"].some((c) => permissions.includes(c as Capability))
+  const { data: addonsData } = useQuery<AddonsResponse>({
+    queryKey: ADDONS_KEY,
+    enabled: mayAddons,
+    queryFn: async () => {
+      const r = await fetch("/api/settings/addons")
+      if (!r.ok) throw new Error("Couldn't load add-ons")
+      return r.json() as Promise<AddonsResponse>
+    },
+    staleTime: 60_000,
+  })
   const visibleTabs = TABS.filter((t) =>
+    (t.key !== "addons" || (addonsData?.addons.length ?? 0) > 0) &&
     (!t.ownerOnly || isOwner) &&
     (!t.anyOf || t.anyOf.some((c) => permissions.includes(c))) &&
     (!t.requiresFeature || hasFeature(planCode, t.requiresFeature)),
@@ -174,6 +189,8 @@ export default function SettingsPage() {
         <MpesaSettings />
       ) : tab === "billing" ? (
         <BillingPanel />
+      ) : tab === "addons" ? (
+        <AddonsPanel />
       ) : tab === "devices" ? (
         <DevicesPanel />
       ) : tab === "hardware" ? (

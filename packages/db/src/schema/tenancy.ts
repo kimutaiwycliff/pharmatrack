@@ -87,6 +87,8 @@ export const subscription_payment = pgTable("subscription_payment", {
   claimed_by: text("claimed_by").references(() => user.id),
   // Migration 028.
   confirmed_at: timestamp("confirmed_at", { withTimezone: true }),
+  // Migration 047: an add-on payment (null = the plan).
+  addon_code: text("addon_code"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

@@ -126,7 +126,10 @@ try {
   await admin.update(counter_order).set({ expires_at: new Date(Date.now() - 1000) }).where(eq(counter_order.id, s3.order.id))
   ok(!(await tx((db) => reservedByOrders(db, br!.id, [para!.id]))).has(para!.id), "an expired order holds nothing")
   ok(await code(tx((db) => collectOrder(db, cashier, s3.order.id, cash))) === "order_expired", "can't be collected")
-  ok(await expireOrders(admin) === 1, "the cron marks it expired")
+  // The sweep covers every pharmacy (as the cron does), so count ≥ 1 and check ours.
+  const swept = await expireOrders(admin)
+  const [s3row] = await admin.select({ status: counter_order.status }).from(counter_order).where(eq(counter_order.id, s3.order.id))
+  ok(swept >= 1 && s3row?.status === "expired", "the cron marks it expired")
   await admin.update(product).set({ selling_price: "3.00" }).where(eq(product.id, para!.id))
   const again = await tx((db) => resendOrder(db, desk, s3.order.id, 30, false))
   ok(again.order.label === "A-004" && again.order.total_amount === 30, `resent as A-004 at today's price (${again.order.total_amount})`)

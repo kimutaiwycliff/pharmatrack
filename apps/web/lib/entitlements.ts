@@ -90,13 +90,17 @@ export function addonOffered(code: AddonCode): boolean {
   return ADDON_SWITCH[code]
 }
 
-/** The tenant's active add-ons (only those offered on this deploy). */
+/** The tenant's active add-ons (only those offered on this deploy): switched
+ *  on by the operator and paid up to today (Nairobi), or with no end date. */
 export async function activeAddons(organizationId: string): Promise<AddonCode[]> {
   if (!Object.values(ADDON_SWITCH).some(Boolean)) return []
   const rows = await dbAdmin()
     .select({ code: org_addon.addon_code })
     .from(org_addon)
-    .where(and(eq(org_addon.organization_id, organizationId), eq(org_addon.status, "active")))
+    .where(and(
+      eq(org_addon.organization_id, organizationId), eq(org_addon.status, "active"),
+      sql`(${org_addon.paid_until} is null or ${org_addon.paid_until} >= (now() at time zone 'Africa/Nairobi')::date)`,
+    ))
   return rows.map((r) => r.code).filter(isAddonCode).filter(addonOffered)
 }
 
