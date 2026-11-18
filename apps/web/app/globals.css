@@ -196,7 +196,13 @@
   body *:not(:has(#receipt-printable)):not(#receipt-printable):not(#receipt-printable *) { display: none !important; }
   :has(#receipt-printable) {
     position: static !important;
+    /* Tailwind v4 centres the dialog with the `translate` property (and
+       animates `scale`), separate from `transform` — reset all of them, or
+       the receipt prints shifted half off the page. */
     transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    rotate: none !important;
     overflow: visible !important;
     max-height: none !important;
     height: auto !important;
