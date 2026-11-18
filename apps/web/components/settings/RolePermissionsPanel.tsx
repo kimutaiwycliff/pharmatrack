@@ -5,8 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Lock, RotateCcw, Search, ShieldCheck, Loader2 } from "lucide-react"
 import {
-  CAPABILITIES, CAPABILITY_KEYS, CONFIGURABLE_ROLES, PERMISSION_GROUPS, defaultAllows, toggleCapability,
-  type Capability, type StaffRole,
+  CAPABILITIES, CAPABILITY_KEYS, CONFIGURABLE_ROLES, PERMISSION_GROUPS, capabilityVisible, defaultAllows, toggleCapability,
+  type AddonCode, type Capability, type StaffRole,
 } from "@pharmatrack/core"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 
 type Matrix = Record<StaffRole, Capability[]>
+// `addons`: the tenant's active add-ons; their capabilities only show with them.
+type MatrixData = { matrix: Matrix; addons: AddonCode[] }
 
 const ROLE_LABEL: Record<StaffRole, string> = {
   owner: "Owner", manager: "Manager", pharmacist: "Pharmacist", cashier: "Cashier",
@@ -24,9 +26,10 @@ const MATRIX_KEY = ["settings", "permissions"]
 
 type Change = { role: StaffRole; capability: Capability; allowed: boolean } | { reset: StaffRole | "all" }
 
-function describeChange(role: StaffRole, before: Capability[], after: Capability[]) {
-  const granted = after.filter((c) => !before.includes(c))
-  const revoked = before.filter((c) => !after.includes(c))
+function describeChange(role: StaffRole, before: Capability[], after: Capability[], addons: readonly AddonCode[]) {
+  // Add-on capabilities flip with their dependencies too; only name the visible ones.
+  const granted = after.filter((c) => !before.includes(c) && capabilityVisible(c, addons))
+  const revoked = before.filter((c) => !after.includes(c) && capabilityVisible(c, addons))
   const names = (cs: Capability[]) => cs.map((c) => `“${CAPABILITIES[c].label}”`).join(", ")
   if (granted.length > 0) {
     return {
@@ -50,12 +53,12 @@ export function RolePermissionsPanel() {
   // Narrow screens show one role at a time; wide screens show the full matrix.
   const [mobileRole, setMobileRole] = useState<StaffRole>("manager")
 
-  const { data, isLoading, isError } = useQuery<{ matrix: Matrix }>({
+  const { data, isLoading, isError } = useQuery<MatrixData>({
     queryKey: MATRIX_KEY,
     queryFn: async () => {
       const res = await fetch("/api/settings/permissions")
       if (!res.ok) throw new Error("Failed to load permissions")
-      return res.json() as Promise<{ matrix: Matrix }>
+      return res.json() as Promise<MatrixData>
     },
   })
 
@@ -66,19 +69,19 @@ export function RolePermissionsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(change),
       })
-      const json = (await res.json()) as { matrix?: Matrix; error?: string }
+      const json = (await res.json()) as { matrix?: Matrix; addons?: AddonCode[]; error?: string }
       if (!res.ok || !json.matrix) throw new Error(json.error ?? "Failed to save")
-      return { matrix: json.matrix }
+      return { matrix: json.matrix, addons: json.addons ?? [] }
     },
     // Optimistic: flip the cell (with its dependency cascade) immediately.
     onMutate: async (change) => {
       await queryClient.cancelQueries({ queryKey: MATRIX_KEY })
-      const previous = queryClient.getQueryData<{ matrix: Matrix }>(MATRIX_KEY)
+      const previous = queryClient.getQueryData<MatrixData>(MATRIX_KEY)
       if (previous && !("reset" in change)) {
         const before = previous.matrix[change.role]
         const after = toggleCapability(before, change.capability, change.allowed)
-        queryClient.setQueryData(MATRIX_KEY, { matrix: { ...previous.matrix, [change.role]: after } })
-        const msg = describeChange(change.role, before, after)
+        queryClient.setQueryData(MATRIX_KEY, { ...previous, matrix: { ...previous.matrix, [change.role]: after } })
+        const msg = describeChange(change.role, before, after, previous.addons ?? [])
         if (msg) toast.success(msg.title, { description: msg.description })
       }
       return { previous }
@@ -96,16 +99,18 @@ export function RolePermissionsPanel() {
   })
 
   const q = query.trim().toLowerCase()
+  const addons = useMemo(() => data?.addons ?? [], [data?.addons])
   const groups = useMemo(() => PERMISSION_GROUPS.map((group) => ({
     group,
     caps: CAPABILITY_KEYS.filter((c) => {
       const def = CAPABILITIES[c]
-      return def.group === group && (!q || def.label.toLowerCase().includes(q) || def.description.toLowerCase().includes(q))
+      return def.group === group && capabilityVisible(c, addons) &&
+        (!q || def.label.toLowerCase().includes(q) || def.description.toLowerCase().includes(q))
     }),
-  })).filter((g) => g.caps.length > 0), [q])
+  })).filter((g) => g.caps.length > 0), [q, addons])
 
   const customisedCount = (role: StaffRole) =>
-    data ? CAPABILITY_KEYS.filter((c) => defaultAllows(role, c) !== data.matrix[role].includes(c)).length : 0
+    data ? CAPABILITY_KEYS.filter((c) => capabilityVisible(c, addons) && defaultAllows(role, c) !== data.matrix[role].includes(c)).length : 0
 
   async function reset(role: StaffRole | "all") {
     const ok = await confirm(

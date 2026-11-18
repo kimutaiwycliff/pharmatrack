@@ -95,7 +95,7 @@ CREATE TABLE counter_order (
   number           integer NOT NULL,                -- shown as A-047
   status           text NOT NULL DEFAULT 'awaiting_payment'
                    CHECK (status IN ('awaiting_payment','paid','cancelled','expired')),
-  sent_by          text NOT NULL REFERENCES "user"(id),
+  sent_by          text REFERENCES "user"(id) ON DELETE SET NULL,
   collected_by     text REFERENCES "user"(id),
   cancelled_by     text REFERENCES "user"(id),
   sale_id          uuid REFERENCES sale(id) ON DELETE SET NULL,
@@ -116,7 +116,8 @@ CREATE TABLE counter_order_item (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id         uuid NOT NULL REFERENCES counter_order(id) ON DELETE CASCADE,
   organization_id  text NOT NULL,                   -- for RLS without a join
-  product_id       uuid NOT NULL REFERENCES product(id),
+  product_id       uuid REFERENCES product(id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+                                                    -- as purchase_order_item: product/tenant deletes keep the line by name
   product_name     text NOT NULL,
   product_strength text,
   base_unit        text NOT NULL,

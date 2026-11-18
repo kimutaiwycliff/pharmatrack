@@ -13,6 +13,8 @@
 // Pure + isomorphic — web server, web client and mobile all import this.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { AddonCode } from "./addons"
+
 export type StaffRole = "owner" | "manager" | "pharmacist" | "cashier"
 
 export const STAFF_ROLES: readonly StaffRole[] = ["owner", "manager", "pharmacist", "cashier"]
@@ -28,6 +30,7 @@ export type PermissionGroup =
   | "Customers & clinical"
   | "Reports & insights"
   | "Staff & administration"
+  | "Cashier station"
 
 interface CapabilityDef {
   group: PermissionGroup
@@ -37,6 +40,9 @@ interface CapabilityDef {
   /** Other capabilities this one is meaningless without — the matrix UI turns
    *  these on alongside it, and turns this off when one of them goes off. */
   requires?: readonly string[]
+  /** Only meaningful with this paid add-on: hidden from the matrix (and not
+   *  editable) unless the tenant has it. Routes still check the add-on. */
+  addon?: AddonCode
 }
 
 const ALL: readonly StaffRole[] = ["owner", "manager", "pharmacist", "cashier"]
@@ -90,6 +96,10 @@ export const CAPABILITIES = {
   "branches.manage": { group: "Staff & administration", label: "Edit branches", description: "Rename branches and change their details.", defaults: OM },
   "settings.organization": { group: "Staff & administration", label: "Organisation settings", description: "Edit the pharmacy's name, registration and contact details; add branches; M-Pesa setup.", defaults: O },
   "billing.manage": { group: "Staff & administration", label: "Billing & subscription", description: "View and pay for the PharmaTrack subscription.", defaults: O },
+
+  // ── Cashier station (paid add-on, ADR-021) ─────────────────────────────────
+  "orders.send": { group: "Cashier station", label: "Send orders to the cashier", description: "At an order desk, send the customer's order to the cashier to pay.", defaults: ALL, requires: ["pos.sell"], addon: "cashier_station" },
+  "orders.collect": { group: "Cashier station", label: "Run the cashier station", description: "Take payment for orders, hand the goods over, remove lines and cancel orders.", defaults: ["owner", "manager", "cashier"], requires: ["pos.sell"], addon: "cashier_station" },
 } as const satisfies Record<string, CapabilityDef>
 
 export type Capability = keyof typeof CAPABILITIES
@@ -104,6 +114,7 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
   "Customers & clinical",
   "Reports & insights",
   "Staff & administration",
+  "Cashier station",
 ]
 
 export function isCapability(value: string): value is Capability {
@@ -112,6 +123,12 @@ export function isCapability(value: string): value is Capability {
 
 export function capabilityDef(cap: Capability): CapabilityDef {
   return CAPABILITIES[cap]
+}
+
+/** Whether `cap` shows in the matrix for a tenant with these add-ons. */
+export function capabilityVisible(cap: Capability, addons: readonly AddonCode[]): boolean {
+  const def: CapabilityDef = CAPABILITIES[cap]
+  return !def.addon || addons.includes(def.addon)
 }
 
 /** Capabilities `cap` depends on (see CapabilityDef.requires). */
