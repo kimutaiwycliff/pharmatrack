@@ -9,6 +9,7 @@ import { consumeAllowance } from "./allocation"
 import { isLateSync } from "./time"
 import { pushItem, type PushResult, type SaleItem } from "./push-schema"
 import { z } from "zod"
+import { needsMpesaCheck } from "./mpesa-check"
 
 // Applies a device's uploaded items in order, each in its own transaction, so
 // one bad item never blocks the rest of the day. Sales keep what happened on
@@ -225,7 +226,7 @@ async function applySale(db: DrizzleDB, ctx: DeviceContext, it: SaleItem): Promi
   }
   await db.insert(payment).values(pays)
 
-  if (it.payment_method !== "cash" && !it.mpesa_verified) {
+  if (needsMpesaCheck(it)) {
     await issue(db, ctx, "mpesa_unverified", { sale_id: saleId, details: { reference: it.mpesa_reference ?? null, amount: it.mpesa_amount ?? total, receipt_number: it.receipt_number } })
     flags.push("mpesa_unverified")
   }
