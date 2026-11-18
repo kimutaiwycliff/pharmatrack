@@ -196,13 +196,7 @@
   body *:not(:has(#receipt-printable)):not(#receipt-printable):not(#receipt-printable *) { display: none !important; }
   :has(#receipt-printable) {
     position: static !important;
-    /* Tailwind v4 centres the dialog with the `translate` property (and
-       animates `scale`), separate from `transform` — reset all of them, or
-       the receipt prints shifted half off the page. */
     transform: none !important;
-    translate: none !important;
-    scale: none !important;
-    rotate: none !important;
     overflow: visible !important;
     max-height: none !important;
     height: auto !important;
@@ -215,6 +209,16 @@
     border-radius: 0 !important;
     box-shadow: none !important;
     background: #fff !important;
+  }
+
+  /* Tailwind v4 centres the dialog with the separate `translate` property.
+     Kept in its own rule: in the same rule as `transform`, the production
+     CSS minifier (LightningCSS) drops translate/scale/rotate as if
+     `transform` covered them — and the receipt printed half off the page. */
+  body :has(#receipt-printable) {
+    translate: none !important;
+    scale: none !important;
+    rotate: none !important;
   }
 
   #receipt-printable {
