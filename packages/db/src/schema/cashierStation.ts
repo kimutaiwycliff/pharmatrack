@@ -6,7 +6,7 @@ import { sale } from "./sales"
 
 // Mirrors infra/migrations/046_cashier_station.sql (ADR-021).
 
-export type OrgAddonStatus = "active" | "cancelled"
+export type OrgAddonStatus = "requested" | "active" | "cancelled"
 export type CounterOrderStatus = "awaiting_payment" | "paid" | "cancelled" | "expired"
 
 export const addon = pgTable("addon", {
@@ -24,6 +24,11 @@ export const org_addon = pgTable("org_addon", {
   activated_at: timestamp("activated_at", { withTimezone: true }).notNull().defaultNow(),
   cancelled_at: timestamp("cancelled_at", { withTimezone: true }),
   granted_by: text("granted_by"),
+  // Migration 047: operator-confirmed payments (Nairobi day, inclusive; null = no end).
+  paid_until: date("paid_until"),
+  requested_at: timestamp("requested_at", { withTimezone: true }),
+  requested_by: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+  request_note: text("request_note"),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.organization_id, t.addon_code] })])
 

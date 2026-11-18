@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq, isNull } from "drizzle-orm"
 import { withTenant, subscription, plan, subscription_payment } from "@pharmatrack/db"
 import { getApiContext } from "@/lib/api-auth"
 import { paystackConfigured } from "@/lib/billing/paystack"
@@ -20,7 +20,8 @@ export async function GET() {
       .where(eq(subscription.organization_id, ctx.organizationId)).limit(1)
 
     const payments = await db.select().from(subscription_payment)
-      .where(eq(subscription_payment.organization_id, ctx.organizationId))
+      // Plan payments; add-on payments show on Settings → Add-ons (migration 047).
+      .where(and(eq(subscription_payment.organization_id, ctx.organizationId), isNull(subscription_payment.addon_code)))
       .orderBy(desc(subscription_payment.created_at)).limit(20)
 
     return NextResponse.json({

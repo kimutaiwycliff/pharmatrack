@@ -98,6 +98,24 @@ export async function notifyPlatformTrialExtensionRequest(info: {
   } catch { /* best-effort */ }
 }
 
+export async function notifyPlatformAddonRequest(info: {
+  pharmacy: string; organizationId: string; email: string; addon: string; priceKes: number; renewal: boolean; message?: string | null
+}): Promise<void> {
+  try {
+    const url = process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/platform/${info.organizationId}` : null
+    await send(
+      `${info.renewal ? "Add-on renewal" : "Add-on request"} — ${info.addon} — ${info.pharmacy}`,
+      `<p>A pharmacy owner wants the <strong>${esc(info.addon)}</strong> add-on (KES ${info.priceKes.toLocaleString("en-KE")} / month)${info.renewal ? " renewed" : ""}.</p>
+       <ul>
+         <li><strong>Pharmacy:</strong> ${esc(info.pharmacy)}</li>
+         <li><strong>Owner email:</strong> ${esc(info.email)}</li>
+         ${info.message ? `<li><strong>Message:</strong> ${esc(info.message)}</li>` : ""}
+       </ul>
+       <p>Once their payment has arrived, confirm it in the operator console to switch the add-on on${url ? `: <a href="${url}">${url}</a>` : ""}.</p>`,
+    )
+  } catch { /* best-effort */ }
+}
+
 export async function notifyPlatformSubscription(info: {
   pharmacy: string; plan: string; email: string
 }): Promise<void> {

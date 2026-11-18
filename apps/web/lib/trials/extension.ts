@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, isNull } from "drizzle-orm"
 import {
   dbAdmin, withTenant, audit_log, organization, subscription, subscription_payment,
   trial_extension_request, trial_grant,
@@ -78,7 +78,8 @@ export async function trialExtensionStatus(organizationId: string): Promise<{
   const [[sub], [paid], requests, [grant]] = await Promise.all([
     db.select().from(subscription).where(eq(subscription.organization_id, organizationId)).limit(1),
     db.select({ id: subscription_payment.id }).from(subscription_payment)
-      .where(and(eq(subscription_payment.organization_id, organizationId), eq(subscription_payment.status, "confirmed"))).limit(1),
+      // Plan payments only: paying for an add-on isn't subscribing (migration 047).
+      .where(and(eq(subscription_payment.organization_id, organizationId), eq(subscription_payment.status, "confirmed"), isNull(subscription_payment.addon_code))).limit(1),
     db.select().from(trial_extension_request).where(eq(trial_extension_request.organization_id, organizationId))
       .orderBy(desc(trial_extension_request.created_at)).limit(5),
     db.select({ granted: trial_grant.granted }).from(trial_grant).where(eq(trial_grant.organization_id, organizationId))
