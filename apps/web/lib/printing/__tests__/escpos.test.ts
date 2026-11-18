@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
-  EscPos, encodeReceipt, isStatusByte, pairLine, printerHealth, receiptPreview, scannerHealth, statusRequest, toPrinterText, wrapText,
-  type ReceiptDoc,
+  EscPos, PAPER_DOTS, encodeReceipt, isStatusByte, pairLine, printerHealth, qrRaster, receiptPreview, scannerHealth, statusRequest,
+  toPrinterText, wrapText, type ReceiptDoc,
 } from "@pharmatrack/core"
 
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join(" ")
@@ -59,6 +59,34 @@ describe("receipt layout", () => {
     const b = hex(encodeReceipt(doc, { paper: "80mm", openDrawer: true, copies: 2 }))
     expect(b.startsWith("1b 40 1b 74 00 1b 70 00 19 fa")).toBe(true)
     expect(b.split("1d 56 42 03").length - 1).toBe(2)
+  })
+
+  it("keeps the unit price when the quantity line doesn't fit 58 mm", () => {
+    const line = { name: "Amoxil", qtyLabel: "2 x Strip of 10", unitPriceCents: 12000, totalCents: 24000 }
+    const narrow = receiptPreview({ ...doc, lines: [line] }, "58mm")
+    expect(narrow).toContain("  2 x Strip of 10 @ 120.00")
+    expect(narrow).toContain(pairLine("", "KES 240.00", 32))
+    // 80 mm has room: one line, as before.
+    expect(receiptPreview({ ...doc, lines: [line] }, "80mm")).toContain(pairLine("  2 x Strip of 10 @ 120.00", "KES 240.00", 48))
+  })
+
+  it("prints the QR code as an image every printer can print", () => {
+    const url = "https://wa.me/254712345678?text=Hello%20Afya%20Bora"
+    for (const paper of ["58mm", "80mm"] as const) {
+      const b = hex(encodeReceipt({ ...doc, qrData: url }, { paper }))
+      expect(b).not.toContain("1d 28 6b") // the printer's own QR command (GS ( k)
+      expect(b).toContain("1d 76 30 00") // a raster image (GS v 0)
+      const q = qrRaster(url, PAPER_DOTS[paper], paper === "58mm" ? 4 : 5)
+      expect(q.width % 8).toBe(0)
+      expect(q.width).toBeLessThanOrEqual(PAPER_DOTS[paper])
+      expect(q.data.length).toBe((q.width / 8) * q.height)
+    }
+  })
+
+  it("shrinks the QR modules for a long link instead of overflowing the paper", () => {
+    const long = "https://example.com/" + "x".repeat(280)
+    const q = qrRaster(long, PAPER_DOTS["58mm"], 4)
+    expect(q.width).toBeLessThanOrEqual(PAPER_DOTS["58mm"])
   })
 
   it("wraps long words and keeps values whole", () => {

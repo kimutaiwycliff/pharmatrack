@@ -186,19 +186,33 @@
 }
 
 @media print {
-  /* Hide everything except the receipt. `display: none` on body's direct
-     children doesn't work here — the receipt is rendered through a Dialog
-     portal several levels below body, and display:none on an ancestor
-     removes its whole subtree regardless of a descendant's own display
-     value. `visibility` is inherited but overridable per-descendant, so a
-     deeply nested #receipt-printable can flip itself back to visible even
-     though everything above it is hidden. */
-  body * { visibility: hidden !important; }
-  #receipt-printable, #receipt-printable * { visibility: visible !important; }
+  /* Print only the receipt, at its full length. It lives in a Dialog portal,
+     inside a translated, overflow-hidden dialog and a 55vh scroll box — each
+     of which clipped a long receipt (or pushed it down the page) when it was
+     merely made visible over a hidden page. So: remove everything that is
+     neither the receipt, inside it, nor one of its ancestors (no stray space
+     or blank pages), and un-clip those ancestors so the receipt flows from
+     the top of the paper for as long as it is. */
+  body *:not(:has(#receipt-printable)):not(#receipt-printable):not(#receipt-printable *) { display: none !important; }
+  :has(#receipt-printable) {
+    position: static !important;
+    transform: none !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
 
   #receipt-printable {
-    position: fixed;
-    inset: 0;
+    position: static;
     width: var(--pt-receipt-width, 80mm);
     margin: 0 auto;
     padding: 8mm 6mm;

@@ -296,7 +296,7 @@ export function logoToRaster(gray: ArrayLike<number>, width: number, height: num
 /**
  * The QR code for `data` as one SVG path in module units (draw it in a
  * `size × size` viewBox). Screens, react-pdf and Android's HTML all draw the
- * same path; thermal printers use their own QR command instead.
+ * same path; thermal printers get the same code as an image (`qrRaster`).
  */
 export function qrPath(data: string, margin = 2): { size: number; d: string } {
   const qr = qrcode(0, "M")
@@ -310,6 +310,38 @@ export function qrPath(data: string, margin = 2): { size: number; d: string } {
     }
   }
   return { size: n + margin * 2, d }
+}
+
+/**
+ * The QR code for `data` as a 1-bit raster for a thermal printer (GS v 0).
+ * Sent as an image rather than the printer's own QR command (GS ( k), which
+ * many generic 58/80 mm printers don't implement — they skip it or print
+ * garbage — while every ESC/POS printer prints raster images (the logo too).
+ * Each module is `moduleDots` dots square (≈0.6 mm at 5), shrunk so the code
+ * and its quiet zone fit `maxDots`; width is padded to a whole byte.
+ */
+export function qrRaster(data: string, maxDots: number, moduleDots = 5, quiet = 2): { width: number; height: number; data: Uint8Array } {
+  const qr = qrcode(0, "M")
+  qr.addData(data)
+  qr.make()
+  const n = qr.getModuleCount()
+  const cells = n + quiet * 2
+  const m = Math.max(1, Math.min(moduleDots, Math.floor(maxDots / cells)))
+  const side = cells * m
+  const width = Math.ceil(side / 8) * 8
+  const rowBytes = width / 8
+  const out = new Uint8Array(rowBytes * side)
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (!qr.isDark(r, c)) continue
+      const x0 = (c + quiet) * m
+      const y0 = (r + quiet) * m
+      for (let y = y0; y < y0 + m; y++) {
+        for (let x = x0; x < x0 + m; x++) out[y * rowBytes + (x >> 3)]! |= 0x80 >> (x & 7)
+      }
+    }
+  }
+  return { width, height: side, data: out }
 }
 
 /** Standalone SVG markup of a QR code (for HTML strings). */
