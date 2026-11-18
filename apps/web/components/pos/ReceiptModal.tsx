@@ -7,6 +7,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { hasDirectPrinter, usePrinterConfig, useDeviceStore } from "@/lib/printing/config"
 import { checkPrinter, paperFor, printReceipt, receiptDocFromSale } from "@/lib/printing/printer"
+import { printElement } from "@/lib/printing/printElement"
 import { useReceiptProfile } from "@/lib/printing/useReceiptProfile"
 import type { PaperWidth, ReceiptDoc } from "@pharmatrack/core"
 import type { Sale, SaleItem } from "@pharmatrack/types"
@@ -55,18 +56,25 @@ export function ReceiptModal({ open, data, onNewSale, closeLabel = "New sale", a
   const { data: profile } = useReceiptProfile()
   const doc = useMemo(() => (data ? receiptDocFromSale(data, profile) : null), [data, profile])
 
+  // The browser's print dialog, for just the receipt (see printElement).
+  function browserPrint() {
+    const el = document.getElementById("receipt-printable")
+    if (el) void printElement(el, paper)
+    else window.print()
+  }
+
   // Direct printer (Settings → Printer & scanner) when set up; otherwise, or if
   // it fails, the browser's print dialog.
   async function handlePrint() {
     if (!data || !doc) return
-    if (!hasDirectPrinter(config)) { window.print(); return }
+    if (!hasDirectPrinter(config)) { browserPrint(); return }
     setPrinting(true)
     try {
       await printReceipt(config, doc, { paper, cash: data.sale.payment_method === "cash" || data.sale.payment_method === "split" })
       toast.success("Receipt sent to the printer")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't reach the printer", {
-        action: { label: "Use print dialog", onClick: () => window.print() },
+        action: { label: "Use print dialog", onClick: browserPrint },
         duration: 8000,
       })
     } finally {

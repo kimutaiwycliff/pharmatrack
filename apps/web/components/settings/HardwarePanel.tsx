@@ -11,6 +11,7 @@ import { usePrinterConfig, useDeviceStore, type DesktopTarget, type PrintMode } 
 import { chooseSerialPrinter, webSerialSupported } from "@/lib/printing/webSerial"
 import { isDesktopApp, listDesktopPrinters, paperFor, printTestPage, type DesktopPrinters } from "@/lib/printing/printer"
 import { useDeviceHealth } from "@/lib/printing/useDeviceHealth"
+import { printElement } from "@/lib/printing/printElement"
 
 const BAUDS = [9600, 19200, 38400, 115200]
 
@@ -256,7 +257,11 @@ export function HardwarePanel({ orgName, orgPaper }: { orgName: string | null; o
             )}
             <Button size="sm" className="bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white" disabled={!!busy || (config.mode !== "browser" && printer.tone === "none")}
               onClick={() => run("test", async () => {
-                if (config.mode === "browser") { setShowPreview(true); setTimeout(() => window.print(), 50); return }
+                if (config.mode === "browser") {
+                  setShowPreview(true)
+                  setTimeout(() => { const el = document.getElementById("receipt-printable"); if (el) void printElement(el, paper); else window.print() }, 50)
+                  return
+                }
                 await printTestPage(config, paper, orgName)
                 toast.success("Test page sent to the printer")
                 await recheck()
