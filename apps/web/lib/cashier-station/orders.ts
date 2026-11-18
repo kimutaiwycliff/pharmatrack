@@ -40,6 +40,8 @@ export const collectSchema = z.object({
   amount_tendered: z.number().nonnegative().nullable().default(null),
   change_given: z.number().nonnegative().nullable().default(null),
   mpesa_checkout_request_id: z.string().min(1).max(100).nullable().optional(),
+  // M-Pesa confirmed by hand (Till/Paybill SMS), as at the till: unverified.
+  mpesa_reference: z.string().trim().max(40).nullable().optional(),
   cash_amount: z.number().nonnegative().nullable().optional(),
   mpesa_amount: z.number().nonnegative().nullable().optional(),
   // Card terminal approval code (no card API — the cashier types it).
@@ -208,7 +210,7 @@ export async function collectOrder(db: DrizzleDB, actor: SaleActor, orderId: str
     payment_method: pay.payment_method,
     amount_tendered: pay.amount_tendered,
     change_given: pay.change_given,
-    mpesa_reference: null,
+    mpesa_reference: pay.mpesa_reference ?? null,
     mpesa_checkout_request_id: pay.mpesa_checkout_request_id ?? null,
     cash_amount: pay.cash_amount ?? null,
     mpesa_amount: pay.mpesa_amount ?? null,

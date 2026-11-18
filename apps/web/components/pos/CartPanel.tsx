@@ -1,6 +1,6 @@
 "use client"
 
-import { ShoppingCart, AlertTriangle, ChevronDown } from "lucide-react"
+import { ShoppingCart, AlertTriangle, ChevronDown, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCartStore, cartSubtotal, cartTotal, formatKES } from "@/lib/store/cartStore"
 import { CartLine } from "./CartLine"
@@ -14,9 +14,13 @@ interface Props {
   submitting: boolean
   /** When provided (mobile sheet), shows a collapse handle to dismiss the cart. */
   onClose?: () => void
+  /** Order desk in a cashier-station branch (ADR-021): the main action sends
+   *  the order to the cashier. Pay buttons show only with `showPay`. */
+  onSend?: () => void
+  showPay?: boolean
 }
 
-export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClose }: Props) {
+export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClose, onSend, showPay = true }: Props) {
   const items = useCartStore((s) => s.items)
   const discount = useCartStore((s) => s.discount)
   const setDiscount = useCartStore((s) => s.setDiscount)
@@ -132,7 +136,22 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClo
         </div>
       </div>
 
+      {onSend && (
+        <div className={`px-4 sm:px-6 pt-4 ${showPay ? "" : "pb-[max(1rem,env(safe-area-inset-bottom))]"} shrink-0`}>
+          <Button
+            onClick={onSend}
+            aria-keyshortcuts="F8"
+            disabled={!hasItems || submitting}
+            className="w-full h-14 gap-2 text-base font-bold bg-[var(--pt-green)] hover:bg-[var(--pt-green-600)] text-white"
+          >
+            <Send size={18} />
+            SEND TO CASHIER <kbd className="hidden lg:inline ml-1 text-[10px] font-semibold opacity-70">F8</kbd>
+          </Button>
+        </div>
+      )}
+
       {/* Payment buttons */}
+      {showPay && (
       <div id="pos-pay" className="px-4 sm:px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] grid grid-cols-3 gap-2.5 shrink-0">
         <Button
           variant="outline"
@@ -164,6 +183,7 @@ export function CartPanel({ receiptNumber, cashierName, onPay, submitting, onClo
           <span>SPLIT <kbd className="hidden lg:inline ml-1 text-[10px] font-semibold opacity-60">F4</kbd></span>
         </Button>
       </div>
+      )}
     </div>
   )
 }
